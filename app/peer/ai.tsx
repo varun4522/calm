@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -13,16 +12,15 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import {
-  AIChatMessage,
-  clearChatHistoryFromSupabase,
-  loadChatHistoryFromSupabase,
-  saveConversationPair,
-  syncChatHistory
-} from '../../lib/aiChatStorage';
 
-// Using AIChatMessage from aiChatStorage.ts for consistency
-type Message = AIChatMessage;
+interface Message {
+  id: string;
+  text: string;
+  isUser: boolean;
+  timestamp: Date;
+  category?: string;
+  wellness_tip?: string;
+}
 
 interface CustomPrompt {
   id: string;
@@ -44,12 +42,11 @@ const AI = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [customPrompts, setCustomPrompts] = useState<CustomPrompt[]>([]);
   const [isServerOnline, setIsServerOnline] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadCustomPrompts();
-    loadAndSyncChatHistory();
+    loadChatHistory();
     checkServerStatus();
   }, []);
 
@@ -81,56 +78,26 @@ const AI = () => {
     }
   };
 
-  const loadAndSyncChatHistory = async () => {
-    try {
-      setIsSyncing(true);
-      
-      // First load local chat history
-      const localHistory = await loadLocalChatHistory();
-      
-      // Try to sync with Supabase
-      const syncedMessages = await syncChatHistory(localHistory);
-      
-      if (syncedMessages.length > 0) {
-        setMessages(syncedMessages);
-        await saveChatHistoryLocally(syncedMessages);
-      } else {
-        // If no synced messages, use local history
-        setMessages(localHistory);
-      }
-      
-      console.log(`Loaded ${syncedMessages.length || localHistory.length} messages`);
-    } catch (error) {
-      console.error('Error loading and syncing chat history:', error);
-      // Fallback to local history only
-      const localHistory = await loadLocalChatHistory();
-      setMessages(localHistory);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const loadLocalChatHistory = async (): Promise<Message[]> => {
+  const loadChatHistory = async () => {
     try {
       const stored = await AsyncStorage.getItem('chatHistory');
       if (stored) {
         const history = JSON.parse(stored);
-        return history.map((msg: any) => ({
+        setMessages(history.map((msg: any) => ({
           ...msg,
           timestamp: new Date(msg.timestamp)
-        }));
+        })));
       }
     } catch (error) {
-      console.error('Error loading local chat history:', error);
+      console.error('Error loading chat history:', error);
     }
-    return [];
   };
 
-  const saveChatHistoryLocally = async (messagesToSave: Message[]) => {
+  const saveChatHistory = async (messagesToSave: Message[]) => {
     try {
       await AsyncStorage.setItem('chatHistory', JSON.stringify(messagesToSave));
     } catch (error) {
-      console.error('Error saving chat history locally:', error);
+      console.error('Error saving chat history:', error);
     }
   };
 
@@ -218,21 +185,7 @@ const AI = () => {
 
       const finalMessages = [...newMessages, aiMessage];
       setMessages(finalMessages);
-      
-      // Save locally first for immediate access
-      await saveChatHistoryLocally(finalMessages);
-      
-      // Save conversation pair to Supabase for cross-device sync
-      try {
-        const success = await saveConversationPair(userMessage, aiMessage);
-        if (success) {
-          console.log('Successfully synced conversation to Supabase');
-        } else {
-          console.log('Failed to sync to Supabase, but saved locally');
-        }
-      } catch (error) {
-        console.error('Error syncing to Supabase:', error);
-      }
+      await saveChatHistory(finalMessages);
 
     } catch (error) {
       console.error('Error sending message:', error);
@@ -249,52 +202,13 @@ const AI = () => {
   };
 
   const clearChat = async () => {
-    Alert.alert(
-      'Clear Chat History',
-      'This will delete all your chat history from this device and cloud storage. Are you sure?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setIsSyncing(true);
-              
-              // Clear from Supabase
-              const supabaseCleared = await clearChatHistoryFromSupabase();
-              
-              // Clear locally
-              await AsyncStorage.removeItem('chatHistory');
-              
-              // Reset to initial message
-              const initialMessage: Message = {
-                id: '1',
-                text: "Hello! I'm your CALM companion AI. I'm here to help you with mental wellness, stress management, and emotional support. How are you feeling today?",
-                isUser: false,
-                timestamp: new Date()
-              };
-              
-              setMessages([initialMessage]);
-              
-              if (supabaseCleared) {
-                Alert.alert('Success', 'Chat history cleared from all devices');
-              } else {
-                Alert.alert('Partially Cleared', 'Local history cleared, but there was an issue clearing cloud storage');
-              }
-            } catch (error) {
-              console.error('Error clearing chat:', error);
-              Alert.alert('Error', 'Failed to clear chat history completely');
-            } finally {
-              setIsSyncing(false);
-            }
-          }
-        }
-      ]
-    );
+    setMessages([{
+      id: '1',
+      text: "Hello! I'm your CALM companion AI. I'm here to help you with mental wellness, stress management, and emotional support. How are you feeling today?",
+      isUser: false,
+      timestamp: new Date()
+    }]);
+    await AsyncStorage.removeItem('chatHistory');
   };
 
   return (
@@ -308,14 +222,9 @@ const AI = () => {
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>AI Companion</Text>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity onPress={loadAndSyncChatHistory} style={styles.syncButton} disabled={isSyncing}>
-            <Text style={styles.syncButtonText}>{isSyncing ? '🔄' : '↻'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={clearChat} style={styles.clearButton}>
-            <Text style={styles.clearButtonText}>Clear</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity onPress={clearChat} style={styles.clearButton}>
+          <Text style={styles.clearButtonText}>Clear</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Server Status */}
@@ -323,11 +232,6 @@ const AI = () => {
         <Text style={[styles.statusText, { color: isServerOnline ? '#2d5a2d' : '#c62828' }]}>
           {isServerOnline ? '✅ AI Server Online - Enhanced responses available' : '⚠️ Offline Mode - Basic responses only'}
         </Text>
-        {isSyncing && (
-          <Text style={[styles.statusText, { color: '#6c5ce7', fontSize: 10, marginTop: 2 }]}>
-            🔄 Syncing with cloud storage...
-          </Text>
-        )}
       </View>
 
       {/* Messages */}
@@ -436,24 +340,6 @@ const styles = StyleSheet.create({
   clearButtonText: {
     color: 'white',
     fontSize: 14,
-    fontWeight: 'bold',
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  syncButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    minWidth: 36,
-    alignItems: 'center',
-  },
-  syncButtonText: {
-    color: 'white',
-    fontSize: 16,
     fontWeight: 'bold',
   },
   statusBar: {
