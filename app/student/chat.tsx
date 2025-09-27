@@ -363,6 +363,7 @@ export default function Chat() {
       sender_name: studentInfo.name,
       sender_type: 'STUDENT' as const,
       message: textToSend,
+      created_at: new Date(),
     };
 
     try {

@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Database Setup Script for Calm Android App
+# This script provides instructions to fix database issues
+
+echo "🔧 Calm Android App - Database Fix Instructions"
+echo "==============================================="
+echo ""
+echo "ISSUE: Missing database tables and columns causing errors:"
+echo "1. Column peer_listeners.status does not exist"
+echo "2. Column book_request.expert_id does not exist" 
+echo "3. Could not find table 'public.expert' (should be 'experts')"
+echo ""
+echo "SOLUTION: Run the following SQL script in your Supabase dashboard:"
+echo ""
+echo "📁 File: database/fix_all_database_issues.sql"
+echo ""
+echo "STEPS TO FIX:"
+echo "1. Go to your Supabase dashboard"
+echo "2. Navigate to SQL Editor"
+echo "3. Copy and paste the contents of 'database/fix_all_database_issues.sql'"
+echo "4. Run the script"
+echo "5. Restart your React Native app"
+echo ""
+echo "✅ This will:"
+echo "   - Create missing tables (experts, peer_listeners, book_request)"
+echo "   - Add missing columns (status, expert_id, etc.)"
+echo "   - Insert sample data for testing"
+echo "   - Set up proper permissions and indexes"
+echo ""
+echo "📋 After running the script, all database errors should be resolved!"

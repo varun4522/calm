@@ -79,22 +79,22 @@ export default function StudentCalm() {
       try {
         console.log('Loading experts from database...');
         const { data: expertData, error } = await supabase
-          .from('expert')  // Using 'expert' table name (singular) to match our SQL schema
+          .from('experts')  // Using 'experts' table name (plural) - the correct table name
           .select('*')
           .eq('is_active', true)
           .eq('is_verified', true)
           .order('name');
 
         if (error) {
-          console.error('Error loading experts from "expert" table:', error);
+          console.error('Error loading experts from "experts" table:', error);
           console.error('Error details:', error.message);
 
-          // If table doesn't exist or has issues, try 'experts' (plural) as fallback
+          // If table doesn't exist or has issues, try 'expert' (singular) as fallback
           try {
             const { data: fallbackData, error: fallbackError } = await supabase
-              .from('experts')
+              .from('expert')
               .select('*')
-              .order('name');
+              .order('user_name');
 
             if (fallbackError) {
               console.error('Fallback "experts" table also failed:', fallbackError);
@@ -773,7 +773,7 @@ export default function StudentCalm() {
               setLoadingExperts(true);
               try {
                 console.log('Manual expert reload triggered');
-                const { data, error } = await supabase.from('expert').select('*');
+                const { data, error } = await supabase.from('experts').select('*');
                 console.log('Expert query result:', { data, error });
                 Alert.alert('Debug Info', `Data: ${data?.length || 0} experts, Error: ${error?.message || 'None'}`);
               } catch (err) {
