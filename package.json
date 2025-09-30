@@ -21,7 +21,8 @@
     "production": "npm run start:production",
     "build": "expo build",
     "publish": "expo publish",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "git:quick": "node scripts/git-quick-update.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",
