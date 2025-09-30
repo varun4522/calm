@@ -68,7 +68,7 @@ export default function StudentLogin() {
 
           await AsyncStorage.setItem('currentStudentData', JSON.stringify(mappedData));
 
-          Alert.alert('Login Success', `Welcome, ${studentData.user_name}!`);
+          //Alert.alert('Login Success', `Welcome, ${studentData.user_name}!`);
           router.replace(`./student/student-home?registration=${studentData.registration_number}`);
           return;
         }

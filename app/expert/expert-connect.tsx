@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -28,6 +28,7 @@ export default function ExpertConnect() {
     name: '',
     registration: ''
   });
+  const [expertId, setExpertId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showTodaysSessionsModal, setShowTodaysSessionsModal] = useState(false);
@@ -66,10 +67,12 @@ export default function ExpertConnect() {
 
         if (regNo) {
           const storedName = await AsyncStorage.getItem('currentExpertName');
+          const storedId = await AsyncStorage.getItem('currentExpertId');
           setExpertInfo({
             name: storedName || 'Expert',
             registration: regNo
           });
+          if (storedId) setExpertId(storedId);
         }
       } catch (error) {
         console.error('Error loading expert data:', error);
@@ -83,43 +86,81 @@ export default function ExpertConnect() {
   const loadSessionRequests = useCallback(async () => {
     setLoading(true);
     try {
-      // Load only from Supabase book_request table - no dummy data
-      const { data: supabaseRequests, error: supabaseError } = await supabase
-        .from('book_request')
-        .select('*')
-        .or(`expert_id.eq.${expertInfo.registration},expert_registration.eq.${expertInfo.registration},expert_name.eq.${expertInfo.name}`)
-        .order('created_at', { ascending: false });
+      // Fetch sessions by robust matching on expert_registration and expert_id
+      const results: any[] = [];
+      const seen = new Set<string>();
 
-      if (supabaseError) {
-        console.error('Supabase error:', supabaseError);
-        // Set empty array if database query fails
-        setSessionRequests([]);
-        return;
+      if (expertInfo.registration) {
+        const { data: byReg, error: byRegErr } = await supabase
+          .from('book_request')
+          .select('*')
+          .eq('expert_registration', expertInfo.registration);
+        if (byRegErr) console.error('Supabase error (expert_registration):', byRegErr);
+        if (byReg) {
+          for (const row of byReg) {
+            if (row && row.id && !seen.has(row.id)) { seen.add(row.id); results.push(row); }
+          }
+        }
+
+        const { data: byIdAsReg, error: byIdAsRegErr } = await supabase
+          .from('book_request')
+          .select('*')
+          .eq('expert_id', expertInfo.registration);
+        if (byIdAsRegErr) console.error('Supabase error (expert_id=registration):', byIdAsRegErr);
+        if (byIdAsReg) {
+          for (const row of byIdAsReg) {
+            if (row && row.id && !seen.has(row.id)) { seen.add(row.id); results.push(row); }
+          }
+        }
       }
 
-      if (supabaseRequests && supabaseRequests.length > 0) {
-        // Convert Supabase data format to component format
-        const formattedRequests: SessionRequest[] = supabaseRequests.map(request => ({
-          id: request.id,
-          studentName: request.student_name,
-          studentReg: request.student_reg,
-          studentEmail: request.student_email || '',
-          studentCourse: request.student_course || '',
-          psychologistId: request.expert_id,
-          psychologistName: request.expert_name,
-          expertRegistration: request.expert_registration,
-          date: request.session_date,
-          time: request.session_time,
-          status: request.status,
-          requestedAt: request.created_at,
-          notes: request.reason || ''
-        }));
-
-        setSessionRequests(formattedRequests);
-      } else {
-        // Set empty array - no dummy data
-        setSessionRequests([]);
+      if (expertId) {
+        const { data: byExpertId, error: byExpertIdErr } = await supabase
+          .from('book_request')
+          .select('*')
+          .eq('expert_id', expertId);
+        if (byExpertIdErr) console.error('Supabase error (expert_id):', byExpertIdErr);
+        if (byExpertId) {
+          for (const row of byExpertId) {
+            if (row && row.id && !seen.has(row.id)) { seen.add(row.id); results.push(row); }
+          }
+        }
       }
+
+      // Fallback: match by expert_name only if nothing else found
+      if (results.length === 0 && expertInfo.name) {
+        const { data, error } = await supabase
+          .from('book_request')
+          .select('*')
+          .eq('expert_name', expertInfo.name);
+        if (!error && data) {
+          for (const row of data) {
+            if (row && row.id && !seen.has(row.id)) { seen.add(row.id); results.push(row); }
+          }
+        }
+      }
+
+      // Sort newest first
+      results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      // Convert Supabase data format to component format
+      const formattedRequests: SessionRequest[] = results.map(request => ({
+        id: request.id,
+        studentName: request.student_name,
+        studentReg: request.student_reg,
+        studentEmail: request.student_email || '',
+        studentCourse: request.student_course || '',
+        psychologistId: request.expert_id,
+        psychologistName: request.expert_name,
+        expertRegistration: request.expert_registration,
+        date: request.session_date,
+        time: request.session_time,
+        status: (request.status === 'approved' ? 'confirmed' : request.status),
+        requestedAt: request.created_at,
+        notes: request.reason || ''
+      }));
+
+      setSessionRequests(formattedRequests);
     } catch (error) {
       console.error('❌ Error loading session requests from Supabase:', error);
       // Set empty array on error - no dummy data
@@ -127,7 +168,7 @@ export default function ExpertConnect() {
     } finally {
       setLoading(false);
     }
-  }, [expertInfo.registration, expertInfo.name]);
+  }, [expertInfo.registration, expertInfo.name, expertId]);
 
   // Load requests when expert info is available
   useEffect(() => {
@@ -153,7 +194,7 @@ export default function ExpertConnect() {
         .from('book_request')
         .select('*')
         .eq('student_reg', studentReg)
-        .eq('status', 'confirmed');
+        .in('status', ['approved']);
 
       if (error) {
         console.error('Error checking existing confirmed sessions:', error);
@@ -192,7 +233,7 @@ export default function ExpertConnect() {
           .from('book_request')
           .select('id, expert_name, session_date, session_time, status')
           .eq('student_reg', sessionRequest.studentReg)
-          .in('status', ['pending', 'confirmed'])
+          .in('status', ['pending', 'approved'])
           .neq('id', requestId)
           .limit(1);
 
@@ -226,10 +267,11 @@ export default function ExpertConnect() {
       }
 
       // Update in Supabase
+      const dbStatus = newStatus === 'confirmed' ? 'approved' : newStatus;
       const { error } = await supabase
         .from('book_request')
         .update({
-          status: newStatus,
+          status: dbStatus,
           updated_at: new Date().toISOString()
         })
         .eq('id', requestId);
@@ -452,21 +494,13 @@ export default function ExpertConnect() {
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>Loading session requests...</Text>
             </View>
-          ) : sessionRequests.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>📅</Text>
-              <Text style={styles.emptyTitle}>No Session Requests</Text>
-              <Text style={styles.emptyText}>
-                No students have booked sessions with you yet.
-                When students book sessions from the student section,
-                their real requests will appear here from the database.
-              </Text>
-              <Text style={styles.emptySubtext}>
-                ℹ️ Only showing real requests from Supabase database
-              </Text>
-            </View>
           ) : (
-            sessionRequests.map((request) => (
+            sessionRequests.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No session requests yet.</Text>
+              </View>
+            ) : (
+              sessionRequests.map((request) => (
               <View key={request.id} style={styles.requestCard}>
                 {/* Request Header */}
                 <View style={styles.requestHeader}>
@@ -598,7 +632,7 @@ export default function ExpertConnect() {
                 </Text>
               </View>
             ))
-          )}
+          ))}
         </ScrollView>
       </View>
 

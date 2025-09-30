@@ -1,11 +1,19 @@
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Dimensions,
+  Easing,
+  Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -15,14 +23,36 @@ import {
   View
 } from 'react-native';
 import { uploadFile } from '../../api/Library';
+import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
+
+// Mood tracking constants
+const MOOD_EMOJIS = [
+  { emoji: '😄', label: 'Happy' },
+  { emoji: '🙂', label: 'Good' },
+  { emoji: '😐', label: 'Neutral' },
+  { emoji: '😔', label: 'Sad' },
+  { emoji: '😡', label: 'Angry' },
+];
+
+const TABS = [
+  { key: 'home', label: 'Home', icon: '🏠' },
+  { key: 'connect', label: 'Connect', icon: '🔗' },
+  { key: 'mood', label: 'Mood Calendar', icon: '😊' },
+  { key: 'settings', label: 'Settings', icon: '⚙️' },
+];
+
+function getTodayKey() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
 
 export default function ExpertHome() {
   const router = useRouter();
   const params = useLocalSearchParams<{ registration?: string }>();
   const [expertName, setExpertName] = useState('');
   const [expertRegNo, setExpertRegNo] = useState('');
-  const [activeTab, setActiveTab] = useState<'home' | 'patients' | 'connect' | 'profile' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'patients' | 'connect' | 'settings' | 'mood'>('home');
   const [patients, setPatients] = useState<any[]>([]);
   const [bookedSessions, setBookedSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,6 +65,37 @@ export default function ExpertHome() {
     category: 'Academic Resources',
   });
 
+  // Settings tab states (mirror student design)
+  const profilePics = [
+    require('../../assets/images/profile/pic1.png'),
+    require('../../assets/images/profile/pic2.png'),
+    require('../../assets/images/profile/pic3.png'),
+    require('../../assets/images/profile/pic4.png'),
+    require('../../assets/images/profile/pic5.png'),
+    require('../../assets/images/profile/pic6.png'),
+    require('../../assets/images/profile/pic7.png'),
+    require('../../assets/images/profile/pic8.png'),
+    require('../../assets/images/profile/pic9.png'),
+    require('../../assets/images/profile/pic10.png'),
+    require('../../assets/images/profile/pic11.png'),
+    require('../../assets/images/profile/pic12.png'),
+    require('../../assets/images/profile/pic13.png'),
+  ];
+  const [selectedProfilePic, setSelectedProfilePic] = useState(0);
+  const [choosePicModal, setChoosePicModal] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Mood tracking states
+  const [moodModalVisible, setMoodModalVisible] = useState(false);
+  const [selectedMood, setSelectedMood] = useState<string | null>(null);
+  const [moodHistory, setMoodHistory] = useState<{[key: string]: string}>({});
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [dailyMoodEntries, setDailyMoodEntries] = useState<{[key: string]: {emoji: string, label: string, time: string}[]}>({});
+  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{date: string, emoji: string, label: string, time: string, notes?: string}[]>([]);
+  const [nextMoodPrompt, setNextMoodPrompt] = useState<Date | null>(null);
+  const [currentPromptInfo, setCurrentPromptInfo] = useState<{timeLabel: string, scheduleKey: string} | null>(null);
+
   const categories = [
     'Academic Resources',
     'Study Guides',
@@ -42,6 +103,44 @@ export default function ExpertHome() {
     'Career Support',
     'Life Skills'
   ];
+
+  // Animated bubble background (home tab only)
+  const { height: screenHeight } = Dimensions.get('window');
+  const bubbleConfigs = React.useRef(
+    Array.from({ length: 14 }).map((_, i) => {
+      const size = Math.floor(Math.random() * 90) + 40; // 40 - 130
+      return {
+        size,
+        left: Math.random() * 90, // percent
+        delay: Math.random() * 4000,
+        duration: 18000 + Math.random() * 10000, // 18s - 28s
+        color: [
+          'rgba(206,147,216,0.30)', // Colors.accent base
+          'rgba(186,104,200,0.25)', // Colors.tertiary variant
+          'rgba(142,36,170,0.22)',  // secondary tint
+          'rgba(225,190,231,0.28)'  // accentLight tint
+        ][i % 4],
+        opacity: 0.35 + Math.random() * 0.25
+      };
+    })
+  ).current;
+  const bubbleAnimations = React.useRef(bubbleConfigs.map(() => new Animated.Value(0))).current;
+
+  const startBubbleLoop = React.useCallback((index: number) => {
+    const cfg = bubbleConfigs[index];
+    bubbleAnimations[index].setValue(0);
+    Animated.timing(bubbleAnimations[index], {
+      toValue: 1,
+      duration: cfg.duration,
+      delay: cfg.delay,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    }).start(() => startBubbleLoop(index));
+  }, [bubbleConfigs, bubbleAnimations]);
+
+  useEffect(() => {
+    bubbleAnimations.forEach((_, i) => startBubbleLoop(i));
+  }, [bubbleAnimations, startBubbleLoop]);
 
   useEffect(() => {
     const loadExpertData = async () => {
@@ -58,6 +157,16 @@ export default function ExpertHome() {
           if (storedName) {
             setExpertName(storedName);
           }
+
+          // Load settings-specific data (profile pic)
+          try {
+            const picIdx = await AsyncStorage.getItem(`expertProfilePic_${regNo}`);
+            if (picIdx !== null) setSelectedProfilePic(parseInt(picIdx, 10));
+          } catch (e) {
+            console.warn('Expert profile pic load warning:', e);
+          }
+
+          // Initialize mood tracking for expert (next prompt will be set in loadMoodData if missing)
         }
       } catch (error) {
         console.error('Error loading expert data:', error);
@@ -66,6 +175,38 @@ export default function ExpertHome() {
 
     loadExpertData();
   }, [params.registration]);
+
+  // Save expert persistent/session data
+  const saveExpertDataToPersistentStorage = async (regNo: string, data: any) => {
+    try {
+      await AsyncStorage.setItem(`persistentExpertData_${regNo}`, JSON.stringify(data));
+      await AsyncStorage.setItem('currentExpertData', JSON.stringify(data));
+    } catch (err) {
+      console.error('Error saving expert persistent data:', err);
+    }
+  };
+
+  // Profile pic fade-in animation
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
+  }, [fadeAnim]);
+
+  const handleSelectExpertProfilePic = async (index: number) => {
+    setSelectedProfilePic(index);
+    setChoosePicModal(false);
+    try {
+      const regNo = expertRegNo;
+      if (regNo) {
+        await AsyncStorage.setItem(`expertProfilePic_${regNo}`, index.toString());
+        const persistentData = await AsyncStorage.getItem(`persistentExpertData_${regNo}`);
+        const data = persistentData ? JSON.parse(persistentData) : {};
+        data.profilePicIndex = index;
+        await saveExpertDataToPersistentStorage(regNo, data);
+      }
+    } catch (err) {
+      console.error('Error saving expert profile pic:', err);
+    }
+  };
 
   const loadPatients = async () => {
     setLoading(true);
@@ -130,6 +271,235 @@ export default function ExpertHome() {
       console.error('Logout error:', error);
     }
   };
+
+  // Mood tracking functions
+  const loadMoodData = async () => {
+    try {
+      const regNo = expertRegNo || 'expert_default';
+
+      // Load mood history
+      const moodHistoryData = await AsyncStorage.getItem(`expertMoodHistory_${regNo}`);
+      if (moodHistoryData) {
+        setMoodHistory(JSON.parse(moodHistoryData));
+      }
+
+      // Load daily mood entries
+      const dailyEntriesData = await AsyncStorage.getItem(`expertDailyMoodEntries_${regNo}`);
+      if (dailyEntriesData) {
+        setDailyMoodEntries(JSON.parse(dailyEntriesData));
+      }
+
+      // Load detailed mood entries
+      const detailedEntriesData = await AsyncStorage.getItem(`expertDetailedMoodEntries_${regNo}`);
+      if (detailedEntriesData) {
+        setDetailedMoodEntries(JSON.parse(detailedEntriesData));
+      }
+
+      // Load next mood prompt; if not present, schedule the next one
+      const nextPromptData = await AsyncStorage.getItem(`expertNextMoodPrompt_${regNo}`);
+      if (nextPromptData) {
+        setNextMoodPrompt(new Date(nextPromptData));
+      } else {
+        await setNextMoodPromptTime(regNo);
+      }
+    } catch (error) {
+      console.error('Error loading mood data:', error);
+    }
+  };
+
+  const saveMood = async (mood: string) => {
+    try {
+      const regNo = expertRegNo || 'expert_default';
+      const today = getTodayKey();
+      const currentTime = new Date().toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+
+      // Update simple mood history (one per day)
+      const updatedHistory = { ...moodHistory, [today]: mood };
+      setMoodHistory(updatedHistory);
+      await AsyncStorage.setItem(`expertMoodHistory_${regNo}`, JSON.stringify(updatedHistory));
+
+      // Update daily mood entries (multiple per day)
+      const moodData = MOOD_EMOJIS.find(m => m.emoji === mood);
+      const newEntry = {
+        emoji: mood,
+        label: moodData?.label || 'Unknown',
+        time: currentTime,
+      };
+
+      const updatedDailyEntries = {
+        ...dailyMoodEntries,
+        [today]: [...(dailyMoodEntries[today] || []), newEntry]
+      };
+      setDailyMoodEntries(updatedDailyEntries);
+      await AsyncStorage.setItem(`expertDailyMoodEntries_${regNo}`, JSON.stringify(updatedDailyEntries));
+
+      // Update detailed mood entries for analytics
+      const detailedEntry = {
+        date: today,
+        emoji: mood,
+        label: moodData?.label || 'Unknown',
+        time: currentTime,
+      };
+
+      const updatedDetailedEntries = [...detailedMoodEntries, detailedEntry];
+      setDetailedMoodEntries(updatedDetailedEntries);
+      await AsyncStorage.setItem(`expertDetailedMoodEntries_${regNo}`, JSON.stringify(updatedDetailedEntries));
+
+      console.log(`✅ Expert mood saved for ${regNo}: ${mood} at ${currentTime}`);
+      setMoodModalVisible(false);
+      setSelectedMood(null);
+
+      // Set next mood prompt (6 times daily)
+      await setNextMoodPromptTime(regNo);
+
+    } catch (error) {
+      console.error('Error saving expert mood:', error);
+      Alert.alert('Error', 'Failed to save mood');
+    }
+  };
+
+  const setNextMoodPromptTime = async (regNo: string) => {
+    const now = new Date();
+    const moodTimes = [
+      { hour: 8, minute: 0 },   // 8:00 AM
+      { hour: 11, minute: 0 },  // 11:00 AM
+      { hour: 14, minute: 0 },  // 2:00 PM
+      { hour: 17, minute: 0 },  // 5:00 PM
+      { hour: 20, minute: 0 },  // 8:00 PM
+      { hour: 22, minute: 0 },  // 10:00 PM
+    ];
+
+    let nextPrompt = null;
+
+    // Find the next mood prompt time today
+    for (const time of moodTimes) {
+      const promptTime = new Date();
+      promptTime.setHours(time.hour, time.minute, 0, 0);
+
+      if (promptTime > now) {
+        nextPrompt = promptTime;
+        break;
+      }
+    }
+
+    // If no more prompts today, set first prompt tomorrow
+    if (!nextPrompt) {
+      nextPrompt = new Date();
+      nextPrompt.setDate(nextPrompt.getDate() + 1);
+      nextPrompt.setHours(8, 0, 0, 0);
+    }
+
+    setNextMoodPrompt(nextPrompt);
+    await AsyncStorage.setItem(`expertNextMoodPrompt_${regNo}`, nextPrompt.toISOString());
+  };
+
+  const checkMoodPrompt = () => {
+    if (!nextMoodPrompt) return;
+
+    const now = new Date();
+    if (now >= nextMoodPrompt) {
+      setMoodModalVisible(true);
+      setCurrentPromptInfo({ timeLabel: 'Scheduled Check', scheduleKey: 'scheduled' });
+    }
+  };
+
+  // Generate calendar for current month
+  const generateCalendar = () => {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+    const calendar: (number | null)[] = [];
+
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < firstDay; i++) {
+      calendar.push(null);
+    }
+
+    // Add days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      calendar.push(day);
+    }
+
+    return calendar;
+  };
+
+  // Get mood for specific date
+  const getMoodForDate = (day: number) => {
+    const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return moodHistory[dateKey];
+  };
+
+  // Handle calendar cell press
+  const handleCalendarPress = (day: number) => {
+    const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dayEntries = dailyMoodEntries[dateKey];
+
+    if (dayEntries && dayEntries.length > 0) {
+      const selectedDate = new Date(dateKey);
+      const isToday = dateKey === getTodayKey();
+      const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const formattedDate = selectedDate.toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      });
+
+      let entriesText = `Mood entries for this day:\n\n`;
+      dayEntries.forEach((entry, index) => {
+        entriesText += `${index + 1}. ${entry.emoji} ${entry.label} at ${entry.time}\n`;
+      });
+
+      if (isToday) {
+        entriesText += `\n🌟 This is today's mood journey!`;
+      }
+
+      Alert.alert(
+        `${isToday ? '🌟 Today' : '📅'} ${dayName}, ${formattedDate}`,
+        entriesText,
+        [
+          { text: 'Close', style: 'cancel' }
+        ]
+      );
+    } else {
+      const selectedDate = new Date(dateKey);
+      const isToday = dateKey === getTodayKey();
+      const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const formattedDate = selectedDate.toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      });
+
+      Alert.alert(
+        `${isToday ? '🌟 Today' : '📅'} ${dayName}, ${formattedDate}`,
+        `😔 No mood entries found for this date.\n\n💡 ${isToday ? 'Start tracking your mood today!' : 'You can add mood entries for any day.'}`,
+        [
+          { text: 'Close', style: 'cancel' }
+        ]
+      );
+    }
+  };
+
+  // Load mood data on component mount
+  useEffect(() => {
+    if (expertRegNo) {
+      loadMoodData();
+    }
+  }, [expertRegNo]);
+
+  // Check for mood prompts every minute
+  useEffect(() => {
+    const interval = setInterval(checkMoodPrompt, 60000);
+    return () => clearInterval(interval);
+  }, [nextMoodPrompt]);
+
+  // Immediately check if a prompt is due when nextMoodPrompt changes (no waiting for interval)
+  useEffect(() => {
+    checkMoodPrompt();
+  }, [nextMoodPrompt]);
 
   const handleFileSelection = async () => {
     try {
@@ -258,87 +628,228 @@ export default function ExpertHome() {
     setShowUploadModal(true);
   };
 
+  // Mood Calendar Component
+  const MoodCalendar = () => {
+    const calendar = generateCalendar();
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    // Calculate most selected emoji for current month
+    const currentMonthEntries = Object.entries(dailyMoodEntries)
+      .filter(([date]) => {
+        const entryDate = new Date(date);
+        return entryDate.getMonth() === currentMonth && entryDate.getFullYear() === currentYear;
+      })
+      .flatMap(([_, entries]) => entries);
+
+    const emojiCounts = currentMonthEntries.reduce((counts: {[key: string]: number}, entry) => {
+      counts[entry.emoji] = (counts[entry.emoji] || 0) + 1;
+      return counts;
+    }, {});
+
+    const mostSelectedEmoji = Object.entries(emojiCounts).length > 0
+      ? Object.entries(emojiCounts).reduce((a, b) => emojiCounts[a[0]] > emojiCounts[b[0]] ? a : b)[0]
+      : '😐';
+
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%', paddingHorizontal: 0, backgroundColor: Colors.backgroundLight, borderRadius: 20, margin: 10, paddingVertical: 20, borderWidth: 1, borderColor: Colors.border }}>
+        {/* Most selected emoji display */}
+        <View style={{ marginBottom: 16, alignItems: 'center' }}>
+          <Text style={{ color: Colors.text, fontSize: 30, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.50)', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4 }}>
+              Expert Mood Calendar
+            </Text>
+          <Text style={{ color: Colors.primary, fontSize: 20, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.30)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2  }}>
+            Most Selected Mood This Month : {mostSelectedEmoji}
+          </Text>
+        </View>
+
+        {/* Month Navigation */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 10, backgroundColor: Colors.white, borderRadius: 20, padding: 10, borderWidth: 1, borderColor: Colors.border }}>
+          <TouchableOpacity
+            onPress={() => {
+              if (currentMonth === 0) {
+                setCurrentMonth(11);
+                setCurrentYear(currentYear - 1);
+              } else {
+                setCurrentMonth(currentMonth - 1);
+              }
+            }}
+            style={{ paddingHorizontal: 20, paddingVertical: 8, backgroundColor: Colors.accent, borderRadius: 15, marginHorizontal: 10 }}
+          >
+            <Text style={{ color: Colors.white, fontSize: 20, fontWeight: 'bold' }}>‹</Text>
+          </TouchableOpacity>
+
+          <Text style={{ color: Colors.text, fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 }}>
+            {monthNames[currentMonth]} {currentYear}
+          </Text>
+
+          <TouchableOpacity
+            onPress={() => {
+              if (currentMonth === 11) {
+                setCurrentMonth(0);
+                setCurrentYear(currentYear + 1);
+              } else {
+                setCurrentMonth(currentMonth + 1);
+              }
+            }}
+            style={{ paddingHorizontal: 20, paddingVertical: 8, backgroundColor: Colors.accent, borderRadius: 15, marginHorizontal: 10 }}
+          >
+            <Text style={{ color: Colors.white, fontSize: 20, fontWeight: 'bold' }}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Calendar Grid */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: 400 }}>
+          {calendar.map((day, index) => (
+            <TouchableOpacity
+              key={index}
+              style={{ width: 50, height: 60, alignItems: 'center', justifyContent: 'center', margin: 4, backgroundColor: Colors.white, borderRadius: 15, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2, borderWidth: 1, borderColor: Colors.border }}
+              onPress={() => day && handleCalendarPress(day)}
+              disabled={!day}
+            >
+              {day && (
+                <>
+                  {getMoodForDate(day) && (
+                    <Text style={{ fontSize: 20 }}>{getMoodForDate(day)}</Text>
+                  )}
+                  <Text style={{ color: Colors.text, fontSize: 10, marginTop: 4, fontWeight: '600' }}>{day}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Manual add removed for automatic mood checks */}
+      </View>
+    );
+  };
+
   let Content: React.ReactNode = null;
 
   if (activeTab === 'home') {
     Content = (
-      <View style={styles.content}>
-        <ScrollView style={styles.scrollView}>
-          <Text style={styles.welcomeText}>Welcome, Dr. {expertName}</Text>
-          <Text style={styles.subText}>Mental Health Expert Dashboard</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.background, paddingHorizontal: 16, paddingTop: 60, alignItems: 'center', width: '100%' }}>
+        {/* Animated Bubbles Background */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }} pointerEvents="none">
+          {bubbleConfigs.map((cfg, i) => {
+            const translateY = bubbleAnimations[i].interpolate({
+              inputRange: [0, 1],
+              outputRange: [screenHeight + cfg.size, -cfg.size],
+            });
+            const scale = bubbleAnimations[i].interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.6, 1.1],
+            });
+            return (
+              <Animated.View
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: `${cfg.left}%`,
+                  width: cfg.size,
+                  height: cfg.size,
+                  borderRadius: cfg.size / 2,
+                  backgroundColor: cfg.color,
+                  opacity: cfg.opacity,
+                  transform: [{ translateY }, { scale }],
+                }}
+              />
+            );
+          })}
+        </View>
 
-          {/* Quick Actions */}
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: '#6dd5ed' }]}
-              onPress={() => router.push('./calm')}
-            >
-              <Text style={styles.actionIcon}>🧘‍♀</Text>
-              <Text style={styles.actionTitle}>Calm Companion</Text>
-              <Text style={styles.actionSubtitle}>Guided meditation tools</Text>
-            </TouchableOpacity>
+        {/* Help Floating Button removed as per requirement: Help only on Select page */}
 
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: '#ff6b6b' }]}
-              onPress={() => setActiveTab('patients')}
-            >
-              <Text style={styles.actionIcon}>👥</Text>
-              <Text style={styles.actionTitle}>View Patients</Text>
-              <Text style={styles.actionSubtitle}>Student mental health data</Text>
-            </TouchableOpacity>
+        {/* AI Floating Button - Only show on Home tab */}
+        <View style={{ position: 'absolute', top: 42, right: 20, zIndex: 20 }}>
+          <TouchableOpacity
+            style={{ width: 40, height: 40, borderRadius: 22, backgroundColor: Colors.white, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 5, borderWidth: 2, borderColor: Colors.primary }}
+            onPress={() => router.push('/student/ai')}
+          >
+            <Text style={{ fontSize: 22, color: Colors.primary }}>🤖</Text>
+          </TouchableOpacity>
+        </View>
 
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: '#4ecdc4' }]}
-              onPress={() => Alert.alert('Feature Coming Soon', 'This feature will be available in the next update.')}
-            >
-              <Text style={styles.actionIcon}>📊</Text>
-              <Text style={styles.actionTitle}>Analytics</Text>
-              <Text style={styles.actionSubtitle}>Mental health insights</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: '#45b7d1' }]}
-              onPress={() => router.push(`./consultation?expertReg=${encodeURIComponent(expertRegNo)}&studentName=General&studentReg=&studentEmail=`)}
-            >
-              <Text style={styles.actionIcon}>💬</Text>
-              <Text style={styles.actionTitle}>Consultations</Text>
-              <Text style={styles.actionSubtitle}>Chat with students</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: '#9b59b6' }]}
-              onPress={openUploadModal}
-            >
-              <Text style={styles.actionIcon}>📁</Text>
-              <Text style={styles.actionTitle}>Upload Resources</Text>
-              <Text style={styles.actionSubtitle}>Share learning materials</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: '#f39c12' }]}
-              onPress={() => router.push("/expert/schedule")}
-            >
-              <Text style={styles.actionIcon}>📅</Text>
-              <Text style={styles.actionTitle}>Schedule</Text>
-              <Text style={styles.actionSubtitle}>Manage appointments</Text>
-            </TouchableOpacity>
+        <ScrollView style={{ flex: 1, width: '100%', paddingHorizontal: 16 }}>
+          <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 40 }}>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', color: Colors.primary, textAlign: 'center', marginBottom: 8 }}>
+              Welcome, {expertName}
+            </Text>
+            <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center' }}>
+              Expert Dashboard
+            </Text>
           </View>
 
-          {/* Expert Info */}
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Expert Information</Text>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Registration ID:</Text>
-              <Text style={styles.infoValue}>{expertRegNo}</Text>
+          {/* Quick Actions - 2x2 Button Matrix */}
+          <View style={styles.buttonMatrix}>
+            {/* First Row */}
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.matrixButton}
+                onPress={() => setActiveTab('patients')}
+              >
+                <Text style={styles.buttonIcon}>👥</Text>
+                <Text style={styles.matrixButtonText}>View Patients</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.matrixButton}
+                onPress={() => router.push(`./consultation?expertReg=${encodeURIComponent(expertRegNo)}&studentName=General&studentReg=&studentEmail=`)}
+              >
+                <Text style={styles.buttonIcon}>💬</Text>
+                <Text style={styles.matrixButtonText}>Consultations</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Specialization:</Text>
-              <Text style={styles.infoValue}>Mental Health Support</Text>
+
+            {/* Second Row */}
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.matrixButton}
+                onPress={openUploadModal}
+              >
+                <Text style={styles.buttonIcon}>📁</Text>
+                <Text style={styles.matrixButtonText}>Upload Resources</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.matrixButton}
+                onPress={() => router.push("/expert/schedule")}
+              >
+                <Text style={styles.buttonIcon}>📅</Text>
+                <Text style={styles.matrixButtonText}>Schedule</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Role:</Text>
-              <Text style={styles.infoValue}>Mental Health Expert</Text>
+          </View>
+
+          {/* Expert Info Card */}
+          <View style={{ backgroundColor: Colors.white, borderRadius: 20, padding: 20, marginTop: 20, marginBottom: 30, borderWidth: 1, borderColor: Colors.border, elevation: 3, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3.84 }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: Colors.primary, marginBottom: 15, textAlign: 'center' }}>Expert Information</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ fontSize: 16, color: Colors.textSecondary }}>Registration ID:</Text>
+              <Text style={{ fontSize: 16, fontWeight: 'bold', color: Colors.primary }}>{expertRegNo}</Text>
             </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ fontSize: 16, color: Colors.textSecondary }}>Specialization:</Text>
+              <Text style={{ fontSize: 16, fontWeight: 'bold', color: Colors.primary }}>Mental Health Support</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, color: Colors.textSecondary }}>Role:</Text>
+              <Text style={{ fontSize: 16, fontWeight: 'bold', color: Colors.primary }}>Mental Health Expert</Text>
+            </View>
+          </View>
+
+          {/* Mood Tracking Status Card */}
+          <View style={{ backgroundColor: Colors.white, borderRadius: 20, padding: 20, marginTop: 10, marginBottom: 30, borderWidth: 1, borderColor: Colors.border, elevation: 3, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3.84 }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: Colors.primary, marginBottom: 15, textAlign: 'center' }}>🌟 Daily Mood Tracking</Text>
+            <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginBottom: 10 }}>
+              Track your mood 6 times daily for better mental health insights
+            </Text>
+            {nextMoodPrompt && (
+              <Text style={{ fontSize: 14, color: Colors.primary, textAlign: 'center', marginBottom: 15, fontWeight: 'bold' }}>
+                Next prompt: {nextMoodPrompt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+              </Text>
+            )}
+            {/* Manual add removed for automatic mood checks */}
           </View>
         </ScrollView>
       </View>
@@ -373,92 +884,116 @@ export default function ExpertHome() {
         </ScrollView>
       </View>
     );
-  } else if (activeTab === 'profile') {
+  } else if (activeTab === 'mood') {
     Content = (
       <View style={styles.content}>
-        <ScrollView style={styles.scrollView}>
-          <Text style={styles.sectionTitle}>Expert Profile</Text>
-
-          <View style={styles.profileCard}>
-            <Text style={styles.profileName}>Dr. {expertName}</Text>
-            <Text style={styles.profileRole}>Mental Health Expert</Text>
-            <Text style={styles.profileId}>ID: {expertRegNo}</Text>
-
-            <View style={styles.profileStats}>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{patients.length}</Text>
-                <Text style={styles.statLabel}>Patients</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>Professional</Text>
-                <Text style={styles.statLabel}>Status</Text>
-              </View>
-            </View>
-          </View>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <MoodCalendar />
         </ScrollView>
       </View>
     );
   } else if (activeTab === 'settings') {
     Content = (
       <View style={styles.content}>
-        <View style={styles.settingsContainer}>
-          <Text style={styles.sectionTitle}>Settings</Text>
+        <ScrollView style={styles.scrollView} contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+          <View style={styles.exSettingContainer}>
+            {/* Profile picture */}
+            <Animated.View style={[styles.exProfilePicContainer, { opacity: fadeAnim }]}>
+              <View style={{
+                shadowColor: Colors.shadow,
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.3,
+                shadowRadius: 10,
+              }}>
+                <Image source={profilePics[selectedProfilePic]} style={styles.exProfilePic} />
+              </View>
+            </Animated.View>
+            <Text style={styles.exWelcomeText}>Welcome, Dr. {expertName || 'Expert'}!</Text>
 
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => Alert.alert('Feature Coming Soon', 'This feature will be available in the next update.')}
-          >
-            <Text style={styles.settingText}>Change Password</Text>
-          </TouchableOpacity>
+            <TouchableOpacity style={styles.exEditPhotoBtn} onPress={() => setChoosePicModal(true)}>
+              <Text style={styles.exEditPhotoText}>Edit your profile photo</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => Alert.alert('Feature Coming Soon', 'This feature will be available in the next update.')}
-          >
-            <Text style={styles.settingText}>Notification Settings</Text>
-          </TouchableOpacity>
+            {/* Expert Information */}
+            <View style={styles.exInfoBox}>
+              <View style={styles.exSectionTitleRow}>
+                <Ionicons name="person-circle" size={24} color={Colors.primary} />
+                <Text style={styles.exSectionTitle}>Expert Information</Text>
+              </View>
 
-          <TouchableOpacity
-            style={[styles.settingItem, styles.logoutButton]}
-            onPress={handleLogout}
-          >
-            <Text style={[styles.settingText, styles.logoutText]}>Logout</Text>
-          </TouchableOpacity>
-        </View>
+              <View style={styles.exInfoRow}>
+                <View style={styles.exStatIcon}>
+                  <Ionicons name="person-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.exStatContent}>
+                  <Text style={styles.exInfoLabel}>Full Name</Text>
+                  <Text style={styles.exInfoValue}>{expertName || 'Not available'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.exInfoRow}>
+                <View style={styles.exStatIcon}>
+                  <Ionicons name="id-card-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.exStatContent}>
+                  <Text style={styles.exInfoLabel}>Registration ID</Text>
+                  <Text style={styles.exInfoValue}>{expertRegNo || 'Not available'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.exInfoRow}>
+                <View style={styles.exStatIcon}>
+                  <Ionicons name="briefcase-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.exStatContent}>
+                  <Text style={styles.exInfoLabel}>Role</Text>
+                  <Text style={styles.exInfoValue}>Mental Health Expert</Text>
+                </View>
+              </View>
+            </View>
+
+
+            {/* Logout */}
+            <TouchableOpacity style={styles.exLogoutBtn} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={20} color="#d84315" style={{ marginRight: 8 }} />
+              <Text style={styles.exLogoutText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        {/* Profile Picture Selection Modal */}
+        <Modal visible={choosePicModal} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.exChoosePicModalContent}>
+              <Text style={styles.exModalTitle}>Choose Profile Photo</Text>
+              <View style={styles.exPicGridContainer}>
+                {Array.from({ length: Math.ceil(profilePics.length / 4) }).map((_, rowIdx) => (
+                  <View key={rowIdx} style={styles.exPicGridRow}>
+                    {profilePics.slice(rowIdx * 4, rowIdx * 4 + 4).map((pic, idx) => (
+                      <Pressable key={rowIdx * 4 + idx} onPress={() => handleSelectExpertProfilePic(rowIdx * 4 + idx)}>
+                        <Image source={pic} style={[
+                          styles.exPicOption,
+                          selectedProfilePic === rowIdx * 4 + idx && styles.exSelectedPicOption,
+                        ]} />
+                      </Pressable>
+                    ))}
+                  </View>
+                ))}
+              </View>
+              <TouchableOpacity onPress={() => setChoosePicModal(false)} style={styles.exClosePicModalBtn}>
+                <Text style={styles.exClosePicModalText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   } else if (activeTab === 'connect') {
-    Content = (
-      <View style={styles.content}>
-        <ScrollView style={styles.scrollView}>
-          <Text style={styles.sectionTitle}>Connect with Patients</Text>
 
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No active connections found.</Text>
-            <Text style={styles.emptySubText}>You can start a new connection or check your requests.</Text>
-
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => router.push('./expert-connect')}
-            >
-              <Text style={styles.buttonText}>Start New Connection</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Render active connections if any */}
-          {/* {activeConnections.map((connection) => (
-            <View key={connection.id} style={styles.connectionCard}>
-              <Text style={styles.connectionName}>{connection.patientName}</Text>
-              <Text style={styles.connectionStatus}>{connection.status}</Text>
-            </View>
-          ))} */}
-        </ScrollView>
-      </View>
-    );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
       {Content}
 
       {/* Upload Modal */}
@@ -626,46 +1161,83 @@ export default function ExpertHome() {
         </View>
       </Modal>
 
+      {/* Mood Modal */}
+      <Modal visible={moodModalVisible} animationType="slide" transparent={true}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.primaryOverlay }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ backgroundColor: Colors.white, borderRadius: 25, padding: 30, alignItems: 'center', width: 360, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.accent }}
+          >
+            <Text style={{ fontSize: 28, marginBottom: 10, color: Colors.text, fontWeight: 'bold', textAlign: 'center' }}>🌟 Expert Mood Check-In</Text>
+            <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 25 }}>
+              Hi {expertName}! How are you feeling right now?
+            </Text>
+            <Text style={{ fontSize: 14, color: Colors.primary, textAlign: 'center', marginBottom: 20, fontWeight: 'bold' }}>
+              Please select one emoji to continue
+            </Text>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginBottom: 20 }}>
+              {MOOD_EMOJIS.map((mood) => (
+                <TouchableOpacity
+                  key={mood.emoji}
+                  style={{ padding: 15, margin: 8, borderRadius: 15, backgroundColor: selectedMood === mood.emoji ? Colors.primary : Colors.white, borderWidth: 2, borderColor: selectedMood === mood.emoji ? Colors.white : Colors.primary, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 }}
+                  onPress={() => {
+                    setSelectedMood(mood.emoji);
+                    // Auto-save when emoji is selected
+                    setTimeout(() => {
+                      saveMood(mood.emoji);
+                    }, 300);
+                  }}
+                >
+                  <Text style={{ fontSize: 40 }}>{mood.emoji}</Text>
+                  <Text style={{ fontSize: 12, textAlign: 'center', marginTop: 5, color: selectedMood === mood.emoji ? Colors.white : Colors.primary, fontWeight: selectedMood === mood.emoji ? 'bold' : 'normal' }}>{mood.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
       {/* Bottom Tab Bar */}
-      <View style={styles.tabBar}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 9, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
         <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'home' && styles.activeTabItem]}
+          style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
           onPress={() => setActiveTab('home')}
         >
-          <Text style={[styles.tabIcon, activeTab === 'home' && styles.activeTabIcon]}>🏠</Text>
-          <Text style={[styles.tabLabel, activeTab === 'home' && styles.activeTabLabel]}>Home</Text>
+          <View style={{ alignItems: 'center', justifyContent: 'center', width: 48, height: 32, borderRadius: 16, backgroundColor: activeTab === 'home' ? Colors.accentLight : 'transparent' }}>
+            <Text style={{ fontSize: 20, color: activeTab === 'home' ? Colors.primary : Colors.tertiary, textShadowColor: activeTab === 'home' ? Colors.accentLight : 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>🏠</Text>
+          </View>
+          <Text style={{ fontSize: 11, color: activeTab === 'home' ? Colors.primary : Colors.tertiary, fontWeight: activeTab === 'home' ? 'bold' : 'normal', marginTop: 2 }}>Home</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'patients' && styles.activeTabItem]}
-          onPress={() => setActiveTab('patients')}
-        >
-          <Text style={[styles.tabIcon, activeTab === 'patients' && styles.activeTabIcon]}>👥</Text>
-          <Text style={[styles.tabLabel, activeTab === 'patients' && styles.activeTabLabel]}>Patients</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'connect' && styles.activeTabItem]}
+          style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
           onPress={() => router.push('./expert-connect')}
         >
-          <Text style={[styles.tabIcon, activeTab === 'connect' && styles.activeTabIcon]}>🔗</Text>
-          <Text style={[styles.tabLabel, activeTab === 'connect' && styles.activeTabLabel]}>Connect</Text>
+          <View style={{ alignItems: 'center', justifyContent: 'center', width: 48, height: 32, borderRadius: 16, backgroundColor: activeTab === 'connect' ? Colors.accentLight : 'transparent' }}>
+            <Text style={{ fontSize: 20, color: activeTab === 'connect' ? Colors.primary : Colors.tertiary, textShadowColor: activeTab === 'connect' ? Colors.accentLight : 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>🔗</Text>
+          </View>
+          <Text style={{ fontSize: 11, color: activeTab === 'connect' ? Colors.primary : Colors.tertiary, fontWeight: activeTab === 'connect' ? 'bold' : 'normal', marginTop: 2 }}>Connect</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'profile' && styles.activeTabItem]}
-          onPress={() => setActiveTab('profile')}
+          style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
+          onPress={() => setActiveTab('mood')}
         >
-          <Text style={[styles.tabIcon, activeTab === 'profile' && styles.activeTabIcon]}>👤</Text>
-          <Text style={[styles.tabLabel, activeTab === 'profile' && styles.activeTabLabel]}>Profile</Text>
+          <View style={{ alignItems: 'center', justifyContent: 'center', width: 48, height: 32, borderRadius: 16, backgroundColor: activeTab === 'mood' ? Colors.accentLight : 'transparent' }}>
+            <Image source={require('../../assets/images/mood calender.png')} style={{ width: 20, height: 20 }} />
+          </View>
+          <Text style={{ fontSize: 11, color: activeTab === 'mood' ? Colors.primary : Colors.tertiary, fontWeight: activeTab === 'mood' ? 'bold' : 'normal', marginTop: 2 }}>Mood</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'settings' && styles.activeTabItem]}
+          style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
           onPress={() => setActiveTab('settings')}
         >
-          <Text style={[styles.tabIcon, activeTab === 'settings' && styles.activeTabIcon]}>⚙</Text>
-          <Text style={[styles.tabLabel, activeTab === 'settings' && styles.activeTabLabel]}>Settings</Text>
+          <View style={{ alignItems: 'center', justifyContent: 'center', width: 48, height: 32, borderRadius: 16, backgroundColor: activeTab === 'settings' ? Colors.accentLight : 'transparent' }}>
+            <Text style={{ fontSize: 20, color: activeTab === 'settings' ? Colors.primary : Colors.tertiary, textShadowColor: activeTab === 'settings' ? Colors.accentLight : 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>⚙</Text>
+          </View>
+          <Text style={{ fontSize: 11, color: activeTab === 'settings' ? Colors.primary : Colors.tertiary, fontWeight: activeTab === 'settings' ? 'bold' : 'normal', marginTop: 2 }}>Settings</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -675,7 +1247,7 @@ export default function ExpertHome() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fef9e7',
+    backgroundColor: Colors.background,
   },
   content: {
     flex: 1,
@@ -694,19 +1266,19 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.primary,
     textAlign: 'center',
   },
   subText: {
     fontSize: 16,
-    color: '#6b7c93',
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: 30,
   },
   sectionTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.text,
     marginBottom: 20,
   },
   actionsContainer: {
@@ -722,10 +1294,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    backgroundColor: Colors.white,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   actionIcon: {
     fontSize: 30,
@@ -734,22 +1309,22 @@ const styles = StyleSheet.create({
   actionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.primary,
     marginBottom: 5,
     textAlign:'center'
   },
   actionSubtitle: {
     fontSize: 12,
-    color: '#fff',
+    color: Colors.textSecondary,
     textAlign: 'center',
     opacity: 0.9,
   },
   infoCard: {
-    backgroundColor: '#fff',
+    backgroundColor: Colors.white,
     borderRadius: 15,
     padding: 20,
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 3.84,
@@ -757,7 +1332,7 @@ const styles = StyleSheet.create({
   infoTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.text,
     marginBottom: 15,
   },
   infoRow: {
@@ -768,32 +1343,32 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 16,
-    color: '#666',
+    color: Colors.textSecondary,
   },
   infoValue: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.text,
   },
   loadingText: {
     fontSize: 16,
-    color: '#666',
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 50,
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: Colors.textLight,
     textAlign: 'center',
     marginTop: 50,
   },
   patientCard: {
-    backgroundColor: '#fff',
+    backgroundColor: Colors.white,
     borderRadius: 15,
     padding: 20,
     marginBottom: 15,
     elevation: 3,
-    shadowColor: '#e8b4ff',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 3.84,
@@ -807,16 +1382,16 @@ const styles = StyleSheet.create({
   patientName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#2d5a3d',
+    color: Colors.primary,
   },
   statusBadge: {
-    backgroundColor: '#88d8c0',
+    backgroundColor: Colors.secondaryLight,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
   },
   statusText: {
-    color: '#2d5a3d',
+    color: Colors.primary,
     fontSize: 12,
     fontWeight: 'bold',
   },
@@ -825,16 +1400,16 @@ const styles = StyleSheet.create({
   },
   patientDetail: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.textSecondary,
     marginBottom: 5,
   },
   profileCard: {
-    backgroundColor: '#fff',
+    backgroundColor: Colors.white,
     borderRadius: 15,
     padding: 30,
     alignItems: 'center',
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 3.84,
@@ -842,17 +1417,17 @@ const styles = StyleSheet.create({
   profileName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#7965AF',
+    color: Colors.primary,
     marginBottom: 5,
   },
   profileRole: {
     fontSize: 16,
-    color: '#666',
+    color: Colors.textSecondary,
     marginBottom: 5,
   },
   profileId: {
     fontSize: 14,
-    color: '#999',
+    color: Colors.textLight,
     marginBottom: 20,
   },
   profileStats: {
@@ -866,11 +1441,11 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#7965AF',
+    color: Colors.primary,
   },
   statLabel: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.textSecondary,
     marginTop: 5,
   },
   settingsContainer: {
@@ -878,23 +1453,23 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   settingItem: {
-    backgroundColor: '#fff',
+    backgroundColor: Colors.white,
     borderRadius: 15,
     padding: 20,
     marginBottom: 15,
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 3.84,
   },
   settingText: {
     fontSize: 16,
-    color: '#333',
+    color: Colors.text,
     textAlign: 'center',
   },
   logoutButton: {
-    backgroundColor: '#ff6b6b',
+    backgroundColor: Colors.error,
     marginTop: 30,
   },
   logoutText: {
@@ -903,13 +1478,13 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
+    backgroundColor: Colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingVertical: 15,
     paddingBottom: 25,
     elevation: 10,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.25,
     shadowRadius: 3,
@@ -925,50 +1500,57 @@ const styles = StyleSheet.create({
   tabIcon: {
     fontSize: 24,
     marginBottom: 4,
-    color: '#b19cd9',
+    color: Colors.secondaryLight,
   },
   activeTabIcon: {
-    color: '#a8e6cf',
+    color: Colors.primary,
   },
   tabLabel: {
     fontSize: 12,
-    color: '#b19cd9',
+    color: Colors.secondaryLight,
     fontWeight: '500',
   },
   activeTabLabel: {
-    color: '#a8e6cf',
+    color: Colors.primary,
     fontWeight: 'bold',
   },
   button: {
-    backgroundColor: '#4ecdc4',
+    backgroundColor: Colors.white,
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 20,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   // Session styles for Connect tab
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 40,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: Colors.backgroundLight,
     borderRadius: 10,
     marginVertical: 20,
   },
   emptySubText: {
     fontSize: 14,
-    color: '#6b7c93',
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 5,
   },
   sessionCard: {
-    backgroundColor: '#fff',
+    backgroundColor: Colors.white,
     borderRadius: 15,
     padding: 20,
     marginVertical: 8,
     marginHorizontal: 5,
-    shadowColor: '#e8b4ff',
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -992,7 +1574,7 @@ const styles = StyleSheet.create({
   sessionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#2d5a3d',
+    color: Colors.primary,
     flex: 1,
   },
   sessionStatus: {
@@ -1002,7 +1584,7 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   sessionStatusText: {
-    color: '#fff',
+    color: Colors.white,
     fontSize: 12,
     fontWeight: 'bold',
   },
@@ -1017,12 +1599,12 @@ const styles = StyleSheet.create({
   sessionLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#2d5a3d',
+    color: Colors.primary,
     minWidth: 100,
   },
   sessionValue: {
     fontSize: 14,
-    color: '#2d5a3d',
+    color: Colors.primary,
     flex: 1,
     marginLeft: 10,
   },
@@ -1032,7 +1614,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
     paddingTop: 15,
     borderTopWidth: 1,
-    borderTopColor: '#f8f9fa',
+    borderTopColor: Colors.backgroundLight,
   },
   sessionButton: {
     paddingHorizontal: 15,
@@ -1055,12 +1637,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: Colors.white,
     borderRadius: 20,
     width: '90%',
     maxHeight: '85%',
     elevation: 10,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
@@ -1071,24 +1653,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: Colors.border,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.text,
   },
   modalCloseButton: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: Colors.backgroundLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalCloseText: {
     fontSize: 16,
-    color: '#666',
+    color: Colors.textSecondary,
     fontWeight: 'bold',
   },
   modalBody: {
@@ -1101,17 +1683,17 @@ const styles = StyleSheet.create({
   formLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: Colors.text,
     marginBottom: 8,
   },
   formInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: Colors.border,
     borderRadius: 10,
     paddingHorizontal: 15,
     paddingVertical: 12,
     fontSize: 16,
-    backgroundColor: '#fafafa',
+    backgroundColor: Colors.backgroundLight,
   },
   formTextArea: {
     height: 100,
@@ -1123,33 +1705,33 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   categoryOption: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: Colors.backgroundLight,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: Colors.border,
   },
   selectedCategoryOption: {
-    backgroundColor: '#9b59b6',
-    borderColor: '#9b59b6',
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   categoryOptionText: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.textSecondary,
     fontWeight: '500',
   },
   selectedCategoryOptionText: {
-    color: '#ffffff',
+    color: Colors.white,
     fontWeight: 'bold',
   },
   fileUploadSection: {
     marginBottom: 20,
   },
   fileUploadButton: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: Colors.backgroundLight,
     borderWidth: 2,
-    borderColor: '#dee2e6',
+    borderColor: Colors.border,
     borderStyle: 'dashed',
     borderRadius: 10,
     paddingVertical: 20,
@@ -1163,12 +1745,12 @@ const styles = StyleSheet.create({
   },
   fileUploadText: {
     fontSize: 16,
-    color: '#666',
+    color: Colors.textSecondary,
     fontWeight: '500',
   },
   fileUploadHint: {
     fontSize: 12,
-    color: '#999',
+    color: Colors.textLight,
     textAlign: 'center',
   },
   modalFooter: {
@@ -1176,10 +1758,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: Colors.border,
   },
   modalCancelButton: {
-    backgroundColor: '#6c757d',
+    backgroundColor: Colors.textSecondary,
     paddingHorizontal: 25,
     paddingVertical: 12,
     borderRadius: 25,
@@ -1187,12 +1769,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCancelButtonText: {
-    color: '#ffffff',
+    color: Colors.white,
     fontSize: 16,
     fontWeight: 'bold',
   },
   modalUploadButton: {
-    backgroundColor: '#9b59b6',
+    backgroundColor: Colors.primary,
     paddingHorizontal: 25,
     paddingVertical: 12,
     borderRadius: 25,
@@ -1200,10 +1782,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalUploadButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: Colors.buttonDisabled,
   },
   modalUploadButtonText: {
-    color: '#ffffff',
+    color: Colors.white,
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -1213,9 +1795,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   selectedFileContainer: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: Colors.backgroundLight,
     borderWidth: 1,
-    borderColor: '#dee2e6',
+    borderColor: Colors.border,
     borderRadius: 10,
     padding: 15,
     marginBottom: 8,
@@ -1235,23 +1817,288 @@ const styles = StyleSheet.create({
   selectedFileName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: Colors.text,
     marginBottom: 4,
   },
   selectedFileSize: {
     fontSize: 12,
-    color: '#666',
+    color: Colors.textSecondary,
   },
   changeFileButton: {
-    backgroundColor: '#9b59b6',
+    backgroundColor: Colors.primary,
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
     alignSelf: 'flex-start',
   },
   changeFileButtonText: {
-    color: '#ffffff',
+    color: Colors.white,
     fontSize: 14,
+    fontWeight: '600',
+  },
+  // 2x2 Button Matrix Styles
+  buttonMatrix: {
+    width: '100%',
+    paddingHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  matrixButton: {
+    width: '48%',
+    height: 120,
+    backgroundColor: Colors.white,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  buttonIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  matrixButtonText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  // Expert settings styles (mirrors student with ex- prefix)
+  exSettingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 40,
+    paddingHorizontal: 24,
+    width: '100%',
+  },
+  exProfilePicContainer: {
+    overflow: 'hidden',
+    borderRadius: 65,
+    width: 130,
+    height: 130,
+    marginBottom: 16,
+    borderWidth: 4,
+    borderColor: Colors.accent,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  exProfilePic: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 65,
+    resizeMode: 'cover',
+  },
+  exWelcomeText: {
+    color: Colors.primary,
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 1,
+  },
+  exEditPhotoBtn: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    marginBottom: 30,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  exEditPhotoText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  exInfoBox: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    marginBottom: 20,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4.65,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  exInfoLabel: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  exInfoValue: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  exInfoRow: {
+    marginBottom: 14,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  exSectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    color: Colors.primary,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 1,
+  },
+  exSectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  exStatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  exStatLabel: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  exStatValue: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exStatIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.backgroundLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  exStatContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  exLogoutBtn: {
+    backgroundColor: Colors.white,
+    borderRadius: 25,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.error,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.23,
+    shadowRadius: 2.62,
+    elevation: 4,
+  },
+  exLogoutText: {
+    color: Colors.error,
+    fontWeight: 'bold',
+    fontSize: 16,
+    letterSpacing: 1,
+  },
+  exChoosePicModalContent: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    width: 340,
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  exModalTitle: {
+    color: Colors.primary,
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  exPicGridContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  exPicGridRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  exPicOption: {
+    width: 65,
+    height: 65,
+    borderRadius: 32.5,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    marginHorizontal: 8,
+    resizeMode: 'cover',
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  exSelectedPicOption: {
+    borderColor: Colors.primary,
+    borderWidth: 3,
+  },
+  exClosePicModalBtn: {
+    marginTop: 24,
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 26,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  exClosePicModalText: {
+    color: Colors.primary,
+    fontSize: 16,
     fontWeight: '600',
   },
 });

@@ -1,10 +1,10 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/Colors';
+import { supabase } from '../lib/supabase';
 
 export default function StudentRegister() {
   const router = useRouter();
@@ -111,24 +111,26 @@ export default function StudentRegister() {
       <View style={{ position: 'absolute', top: 50, left: 20, zIndex: 10 }}>
         <TouchableOpacity
           style={{
-            backgroundColor: Colors.secondary,
+            backgroundColor: Colors.white,
             paddingVertical: 10,
             paddingHorizontal: 16,
             borderRadius: 20,
             elevation: 4,
-            shadowColor: Colors.accent,
+            shadowColor: Colors.shadow,
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.3,
             shadowRadius: 4,
+            borderWidth: 2,
+            borderColor: Colors.primary,
           }}
           onPress={() => router.back()}
         >
-          <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold', fontFamily: 'Roboto' }}>← Back</Text>
+          <Text style={{ color: Colors.primary, fontSize: 16, fontWeight: 'bold', fontFamily: 'Roboto' }}>← Back</Text>
         </TouchableOpacity>
       </View>
 
       <LinearGradient
-        colors={[Colors.white, Colors.backgroundLight]}
+        colors={["#FFFFFF", "#D8BFD8"]}
         style={{ flex: 1 }}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
@@ -141,7 +143,7 @@ export default function StudentRegister() {
         >
           <Path
             d="M0,20 C30,40 70,0 100,20 L100,100 L0,100 Z"
-            fill={Colors.backgroundLight}
+            fill="#D8BFD8"
           />
         </Svg>
         <KeyboardAvoidingView
@@ -152,11 +154,11 @@ export default function StudentRegister() {
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
             <Text style={{
               fontSize: 40,
-              color: 'Colors.textSecondary',
+              color: Colors.white,
               fontFamily: 'Roboto',
               marginBottom: 32,
               fontWeight: 'bold',
-              textShadowColor: 'black',
+              textShadowColor: Colors.black,
               textShadowOffset: { width: 3, height: 3 },
               textShadowRadius: 3
             }}>
@@ -164,12 +166,12 @@ export default function StudentRegister() {
             </Text>
             <TextInput
               placeholder="Name"
-              placeholderTextColor="Colors.textLight"
+              placeholderTextColor={Colors.textLight}
               value={name}
               onChangeText={setName}
               style={{
                 width: 280,
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.secondary,
                 color: 'white',
                 borderRadius: 8,
                 padding: 12,
@@ -179,12 +181,12 @@ export default function StudentRegister() {
             />
             <TextInput
               placeholder="Username"
-              placeholderTextColor="Colors.textLight"
+              placeholderTextColor={Colors.textLight}
               value={username}
               onChangeText={setUsername}
               style={{
                 width: 280,
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.secondary,
                 color: 'white',
                 borderRadius: 8,
                 padding: 12,
@@ -195,12 +197,12 @@ export default function StudentRegister() {
             />
             <TextInput
               placeholder="Registration Number"
-              placeholderTextColor="Colors.textLight"
+              placeholderTextColor={Colors.textLight}
               value={registrationNumber}
               onChangeText={setRegistrationNumber}
               style={{
                 width: 280,
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.secondary,
                 color: 'white',
                 borderRadius: 8,
                 padding: 12,
@@ -211,12 +213,12 @@ export default function StudentRegister() {
             />
             <TextInput
               placeholder="Course"
-              placeholderTextColor="Colors.textLight"
+              placeholderTextColor={Colors.textLight}
               value={course}
               onChangeText={setCourse}
               style={{
                 width: 280,
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.secondary,
                 color: 'white',
                 borderRadius: 8,
                 padding: 12,
@@ -226,12 +228,12 @@ export default function StudentRegister() {
             />
             <TextInput
               placeholder="Phone Number"
-              placeholderTextColor="Colors.textLight"
+              placeholderTextColor={Colors.textLight}
               value={phone}
               onChangeText={setPhone}
               style={{
                 width: 280,
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.secondary,
                 color: 'white',
                 borderRadius: 8,
                 padding: 12,
@@ -242,12 +244,12 @@ export default function StudentRegister() {
             />
             <TextInput
               placeholder="Date of Birth (YYYY-MM-DD)"
-              placeholderTextColor="Colors.textLight"
+              placeholderTextColor={Colors.textLight}
               value={dob}
               onChangeText={setDob}
               style={{
                 width: 280,
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.secondary,
                 color: 'white',
                 borderRadius: 8,
                 padding: 12,
@@ -257,12 +259,12 @@ export default function StudentRegister() {
             />
             <TextInput
               placeholder="Email"
-              placeholderTextColor="Colors.textLight"
+              placeholderTextColor={Colors.textLight}
               value={email}
               onChangeText={setEmail}
               style={{
                 width: 280,
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.secondary,
                 color: 'white',
                 borderRadius: 8,
                 padding: 12,
@@ -274,12 +276,12 @@ export default function StudentRegister() {
             />
             <TextInput
               placeholder="Password"
-              placeholderTextColor="Colors.textLight"
+              placeholderTextColor={Colors.textLight}
               value={password}
               onChangeText={setPassword}
               style={{
                 width: 280,
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.secondary,
                 color: 'white',
                 borderRadius: 8,
                 padding: 12,
@@ -291,14 +293,21 @@ export default function StudentRegister() {
             <TouchableOpacity
               onPress={handleRegister}
               style={{
-                backgroundColor: 'Colors.secondary',
+                backgroundColor: Colors.white,
                 paddingVertical: 14,
                 paddingHorizontal: 40,
-                borderRadius: 8,
+                borderRadius: 25,
                 marginBottom: 24,
+                elevation: 4,
+                shadowColor: Colors.shadow,
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.18,
+                shadowRadius: 5,
+                borderWidth: 2,
+                borderColor: Colors.primary,
               }}
             >
-              <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>Register</Text>
+              <Text style={{ color: Colors.primary, fontSize: 18, fontWeight: 'bold', fontFamily: 'Roboto' }}>Register</Text>
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>

@@ -2,17 +2,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-    Alert,
-    ImageBackground,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { Colors } from '../constants/Colors';
 import { supabase } from '../lib/supabase';
 
 export default function PeerListenerRegister() {
@@ -211,11 +212,18 @@ export default function PeerListenerRegister() {
   };
 
   return (
-    <ImageBackground
-      source={null} // Removed the image source
-      style={{ flex: 1, backgroundColor: '#D8BFD8' }} // Set light purple background
-      resizeMode="cover"
-    >
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <Svg
+        height="100%"
+        width="100%"
+        style={{ position: 'absolute', top: '20%' }}
+        viewBox="0 0 100 100"
+      >
+        <Path
+          d="M0,20 C30,40 70,0 100,20 L100,100 L0,100 Z"
+          fill="#D8BFD8"
+        />
+      </Svg>
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -376,7 +384,7 @@ export default function PeerListenerRegister() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </ImageBackground>
+    </View>
   );
 }
 
@@ -393,25 +401,35 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 15,
-    backgroundColor: 'rgba(136, 216, 192, 0.9)',
+    backgroundColor: 'transparent',
   },
   backButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: Colors.white,
     paddingVertical: 8,
     paddingHorizontal: 15,
     borderRadius: 20,
     marginRight: 15,
+    elevation: 4,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   backButtonText: {
-    color: '#2d5a3d',
+    color: Colors.primary,
     fontSize: 16,
     fontWeight: 'bold',
   },
   headerTitle: {
-    color: '#2d5a3d',
+    color: Colors.white,
     fontSize: 20,
     fontWeight: 'bold',
     flex: 1,
+    textShadowColor: Colors.black,
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 3,
   },
   scrollView: {
     flex: 1,
@@ -423,22 +441,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 20,
     padding: 25,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 10,
+    marginTop: 20,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#2d5a3d',
+    color: Colors.primary,
     textAlign: 'center',
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6b7c93',
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: 25,
     lineHeight: 22,
@@ -446,11 +465,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2d5a3d',
+    color: Colors.primary,
     marginTop: 20,
     marginBottom: 15,
     borderBottomWidth: 2,
-    borderBottomColor: '#88d8c0',
+    borderBottomColor: Colors.accent,
     paddingBottom: 5,
   },
   inputContainer: {
@@ -459,37 +478,39 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2d5a3d',
+    color: Colors.primary,
     marginBottom: 8,
   },
   input: {
     borderWidth: 2,
-    borderColor: '#88d8c0',
+    borderColor: Colors.accent,
     borderRadius: 12,
     paddingHorizontal: 15,
     paddingVertical: 12,
     fontSize: 16,
-    backgroundColor: '#f9f9f9',
-    color: '#333',
+    backgroundColor: Colors.white,
+    color: Colors.text,
   },
   textArea: {
     height: 80,
     textAlignVertical: 'top',
   },
   registerButton: {
-    backgroundColor: '#88d8c0',
+    backgroundColor: Colors.white,
     paddingVertical: 16,
-    borderRadius: 15,
+    borderRadius: 25,
     alignItems: 'center',
     marginTop: 20,
-    elevation: 3,
-    shadowColor: '#b2dfdb',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    elevation: 4,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   registerButtonText: {
-    color: '#2d5a3d',
+    color: Colors.primary,
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -501,11 +522,11 @@ const styles = StyleSheet.create({
   },
   loginText: {
     fontSize: 16,
-    color: '#6b7c93',
+    color: Colors.textSecondary,
   },
   loginLink: {
     fontSize: 16,
-    color: '#88d8c0',
+    color: Colors.primary,
     fontWeight: 'bold',
     textDecorationLine: 'underline',
   },
@@ -513,20 +534,20 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 15,
     padding: 15,
-    backgroundColor: 'rgba(136, 216, 192, 0.1)',
+    backgroundColor: 'rgba(186, 104, 200, 0.1)',
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#88d8c0',
+    borderLeftColor: Colors.primary,
   },
   infoTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#2d5a3d',
+    color: Colors.primary,
     marginBottom: 8,
   },
   infoText: {
     fontSize: 14,
-    color: '#4a6b5a',
+    color: Colors.textSecondary,
     lineHeight: 20,
   },
 });

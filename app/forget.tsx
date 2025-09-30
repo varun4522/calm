@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -357,7 +357,7 @@ export default function ChangePassword() {
     }
   };
 
-  async function updatePassword(userType, identifier, oldPassword, newPassword) {
+  async function updatePassword(userType: string, identifier: any, oldPassword: any, newPassword: any) {
     try {
       // Verify old password and update based on user type
       let userData: any = null;
@@ -431,7 +431,7 @@ export default function ChangePassword() {
       Alert.alert('Success', 'Password updated successfully');
     } catch (error) {
       console.error('Error updating password:', error);
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error instanceof Error ? error.message : 'An unexpected error occurred');
     }
   }
 

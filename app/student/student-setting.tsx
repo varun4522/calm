@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
 
 const profilePics = [
@@ -34,9 +35,6 @@ export default function StudentSetting() {
   const [isLoading, setIsLoading] = useState(true);
   const [studentRegNo, setStudentRegNo] = useState(params.registration || '');
 
-  // Animation value for profile picture
-  const profileAnim = useRef(new Animated.Value(0)).current;
-
   // App usage stats state
   const [appUsageStats, setAppUsageStats] = useState({
     totalTimeSpent: 0, // in seconds
@@ -46,33 +44,6 @@ export default function StudentSetting() {
   });
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current; // Initial value for opacity: 0
-
-  // Start profile picture animation when loaded
-  useEffect(() => {
-    if (!isLoading) {
-      Animated.sequence([
-        Animated.timing(profileAnim, {
-          toValue: 1,
-          duration: 1000, // slower initial pop-in
-          useNativeDriver: true
-        }),
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(profileAnim, {
-              toValue: 1.05,
-              duration: 3000, // slow scale up
-              useNativeDriver: true
-            }),
-            Animated.timing(profileAnim, {
-              toValue: 1,
-              duration: 3000, // slow scale down
-              useNativeDriver: true
-            })
-          ])
-        )
-      ]).start();
-    }
-  }, [isLoading, profileAnim]);
 
   // Save student data to persistent storage
   const saveStudentDataToPersistentStorage = async (regNo: string, data: any) => {
@@ -278,7 +249,7 @@ export default function StudentSetting() {
   if (isLoading) {
     return (
       <LinearGradient
-        colors={['#f0f8ff', '#e6f3ff', '#ddeeff']}
+        colors={[Colors.background, Colors.backgroundLight, Colors.accentLight]}
         style={styles.container}
       >
         <View style={styles.loadingContainer}>
@@ -290,7 +261,7 @@ export default function StudentSetting() {
 
   return (
     <LinearGradient
-      colors={['#f0f8ff', '#e6f3ff', '#ddeeff']}
+      colors={[Colors.background, Colors.backgroundLight, Colors.accentLight]}
       style={styles.container}
     >
       {/* Header */}
@@ -313,17 +284,14 @@ export default function StudentSetting() {
       >
         <View style={styles.settingContainer}>
         <Animated.View style={[styles.profilePicContainer, { opacity: fadeAnim }]}>
-          <Animated.View style={{
-            transform: [
-              { scale: profileAnim }
-            ],
-            shadowColor: "#3b82f6",
+          <View style={{
+            shadowColor: Colors.shadow,
             shadowOffset: { width: 0, height: 0 },
             shadowOpacity: 0.3,
             shadowRadius: 10,
           }}>
             <Image source={profilePics[selectedProfilePic]} style={styles.profilePic} />
-          </Animated.View>
+          </View>
         </Animated.View>
         <Text style={styles.welcomeText}>Welcome, {studentName}!</Text>
 
@@ -334,13 +302,13 @@ export default function StudentSetting() {
         {/* Student Information */}
         <View style={styles.infoBox}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="person-circle" size={24} color="#7b1fa2" />
+            <Ionicons name="person-circle" size={24} color={Colors.primary} />
             <Text style={styles.sectionTitle}>Student Information</Text>
           </View>
 
           <View style={styles.infoRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="person-outline" size={22} color="#4caf50" />
+              <Ionicons name="person-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Full Name</Text>
@@ -351,7 +319,7 @@ export default function StudentSetting() {
           {studentUsername && (
             <View style={styles.infoRow}>
               <View style={styles.statIcon}>
-                <Ionicons name="at-outline" size={22} color="#4caf50" />
+                <Ionicons name="at-outline" size={22} color={Colors.primary} />
               </View>
               <View style={styles.statContent}>
                 <Text style={styles.infoLabel}>Username</Text>
@@ -362,7 +330,7 @@ export default function StudentSetting() {
 
           <View style={styles.infoRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="id-card-outline" size={22} color="#4caf50" />
+              <Ionicons name="id-card-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Registration Number</Text>
@@ -372,7 +340,7 @@ export default function StudentSetting() {
 
           <View style={styles.infoRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="mail-outline" size={22} color="#4caf50" />
+              <Ionicons name="mail-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Email</Text>
@@ -382,7 +350,7 @@ export default function StudentSetting() {
 
           <View style={styles.infoRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="school-outline" size={22} color="#4caf50" />
+              <Ionicons name="school-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Course</Text>
@@ -392,7 +360,7 @@ export default function StudentSetting() {
 
           <View style={styles.infoRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="call-outline" size={22} color="#4caf50" />
+              <Ionicons name="call-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Phone</Text>
@@ -404,13 +372,13 @@ export default function StudentSetting() {
         {/* App Usage Stats */}
         <View style={styles.infoBox}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="bar-chart" size={24} color="#7b1fa2" />
+            <Ionicons name="bar-chart" size={24} color={Colors.primary} />
             <Text style={styles.sectionTitle}>App Usage Statistics</Text>
           </View>
 
           <View style={styles.statRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="time-outline" size={22} color="#4caf50" />
+              <Ionicons name="time-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.statLabel}>Total Time Spent</Text>
@@ -422,7 +390,7 @@ export default function StudentSetting() {
 
           <View style={styles.statRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="refresh-circle-outline" size={22} color="#4caf50" />
+              <Ionicons name="refresh-circle-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.statLabel}>Sessions</Text>
@@ -432,7 +400,7 @@ export default function StudentSetting() {
 
           <View style={styles.statRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="calendar-outline" size={22} color="#4caf50" />
+              <Ionicons name="calendar-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.statLabel}>Last Active</Text>
@@ -444,7 +412,7 @@ export default function StudentSetting() {
 
           <View style={styles.statRow}>
             <View style={styles.statIcon}>
-              <Ionicons name="apps-outline" size={22} color="#4caf50" />
+              <Ionicons name="apps-outline" size={22} color={Colors.primary} />
             </View>
             <View style={styles.statContent}>
               <Text style={styles.statLabel}>Last Tab Used</Text>
@@ -496,7 +464,7 @@ export default function StudentSetting() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f8ff', // Light blue background like home
+    backgroundColor: Colors.background, // Light purple background
   },
   scrollView: {
     flex: 1,
@@ -512,10 +480,10 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)', // Softer white with transparency
+    backgroundColor: Colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#e1f5fe',
-    shadowColor: "#81c784",
+    borderBottomColor: Colors.border,
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -527,9 +495,11 @@ const styles = StyleSheet.create({
   backButton: {
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: '#a8e6cf', // Soft mint green
+    backgroundColor: Colors.white,
     borderRadius: 10,
-    shadowColor: "#81c784",
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -539,12 +509,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   backButtonText: {
-    color: '#2e7d32',
+    color: Colors.primary,
     fontSize: 16,
     fontWeight: 'bold',
   },
   headerTitle: {
-    color: '#424242',
+    color: Colors.text,
     fontSize: 24,
     fontWeight: 'bold',
     flex: 1,
@@ -571,8 +541,8 @@ const styles = StyleSheet.create({
     height: 130,
     marginBottom: 16,
     borderWidth: 4,
-    borderColor: '#ffb3e6', // Soft pink border
-    shadowColor: "#f8bbd9",
+    borderColor: Colors.accent,
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 6,
@@ -594,7 +564,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   welcomeText: {
-    color: '#7b1fa2', // Soft purple
+    color: Colors.primary,
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 16,
@@ -603,12 +573,14 @@ const styles = StyleSheet.create({
     textShadowRadius: 1,
   },
   editPhotoBtn: {
-    backgroundColor: '#c8e6c9', // Light mint green
+    backgroundColor: Colors.white,
     borderRadius: 20,
     paddingVertical: 10,
     paddingHorizontal: 20,
     marginBottom: 30,
-    shadowColor: "#81c784",
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -618,17 +590,17 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   editPhotoText: {
-    color: '#2e7d32',
+    color: Colors.primary,
     fontSize: 14,
     fontWeight: '600',
   },
   infoBox: {
-    backgroundColor: '#f3e5f5', // Light lavender
+    backgroundColor: Colors.white,
     borderRadius: 16,
     padding: 20,
     width: '100%',
     marginBottom: 20,
-    shadowColor: "#ce93d8",
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 3,
@@ -637,15 +609,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4.65,
     elevation: 6,
     borderWidth: 1,
-    borderColor: '#e1bee7',
+    borderColor: Colors.border,
   },
   infoLabel: {
-    color: '#6a4c93', // Soft purple
+    color: Colors.textSecondary,
     fontSize: 14,
     fontWeight: '500',
   },
   infoValue: {
-    color: '#424242',
+    color: Colors.text,
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -653,10 +625,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e1bee7',
+    borderBottomColor: Colors.border,
   },
   logoutBtn: {
-    backgroundColor: '#ffab91', // Soft peach
+    backgroundColor: Colors.white,
     borderRadius: 25,
     paddingVertical: 12,
     paddingHorizontal: 40,
@@ -664,7 +636,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: "#ff8a65",
+    borderWidth: 2,
+    borderColor: Colors.error,
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -674,27 +648,27 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   logoutText: {
-    color: '#d84315',
+    color: Colors.error,
     fontWeight: 'bold',
     fontSize: 16,
     letterSpacing: 1,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(240, 248, 255, 0.9)',
+    backgroundColor: Colors.primaryOverlay,
     justifyContent: 'center',
     alignItems: 'center',
   },
   choosePicModalContent: {
-    backgroundColor: '#fce4ec', // Light pink
+    backgroundColor: Colors.white,
     borderRadius: 20,
     padding: 24,
     alignItems: 'center',
     width: 340,
     maxHeight: '80%',
     borderWidth: 1,
-    borderColor: '#f8bbd9',
-    shadowColor: "#f8bbd9",
+    borderColor: Colors.border,
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 0,
@@ -704,7 +678,7 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   modalTitle: {
-    color: '#7b1fa2', // Soft purple
+    color: Colors.primary,
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 20,
@@ -728,10 +702,10 @@ const styles = StyleSheet.create({
     height: 65,
     borderRadius: 32.5,
     borderWidth: 2,
-    borderColor: '#e1bee7',
+    borderColor: Colors.border,
     marginHorizontal: 8,
     resizeMode: 'cover',
-    shadowColor: "#ce93d8",
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -741,16 +715,18 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   selectedPicOption: {
-    borderColor: '#7b1fa2',
+    borderColor: Colors.primary,
     borderWidth: 3,
   },
   closePicModalBtn: {
     marginTop: 24,
-    backgroundColor: '#e8eaf6', // Light indigo
+    backgroundColor: Colors.white,
     borderRadius: 16,
     paddingVertical: 10,
     paddingHorizontal: 26,
-    shadowColor: "#9fa8da",
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -760,7 +736,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   closePicModalText: {
-    color: '#3f51b5',
+    color: Colors.primary,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -768,7 +744,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginLeft: 8,
-    color: '#7b1fa2',
+    color: Colors.primary,
     textShadowColor: 'rgba(0, 0, 0, 0.1)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 1,
@@ -779,16 +755,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e1bee7',
+    borderBottomColor: Colors.border,
   },
   statLabel: {
-    color: '#6a4c93',
+    color: Colors.textSecondary,
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 2,
   },
   statValue: {
-    color: '#424242',
+    color: Colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -798,7 +774,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: '#424242',
+    color: Colors.text,
     fontSize: 18,
     fontWeight: '500',
   },
@@ -811,7 +787,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(174, 213, 129, 0.25)', // Light green tint
+    backgroundColor: Colors.backgroundLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,

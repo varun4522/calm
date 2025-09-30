@@ -2,17 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { AdminPrompt } from '../../lib/aiChatStorage';
+import { AdminPrompt, getCurrentUser } from '../../lib/aiChatStorage';
 import { supabase } from '../../lib/supabase';
 
 interface Message {
@@ -44,13 +44,28 @@ const AI = () => {
   const [isServerOnline, setIsServerOnline] = useState(false);
   const [isLoadingPrompts, setIsLoadingPrompts] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadCustomPrompts();
-    loadAdminPrompts();
-    loadChatHistory();
+    initUserAndData();
     checkServerStatus();
   }, []);
+  const initUserAndData = async () => {
+    try {
+      const user = await getCurrentUser();
+      const uid = user?.id || 'anonymous';
+      setCurrentUserId(uid);
+      await loadCustomPrompts();
+      await loadAdminPrompts();
+      await loadChatHistoryForUser(uid);
+    } catch (e) {
+      console.error('Error initializing AI screen:', e);
+      await loadCustomPrompts();
+      await loadAdminPrompts();
+      await loadChatHistoryForUser('anonymous');
+    }
+  };
+
 
   // Scroll to bottom when new messages are added
   useEffect(() => {
@@ -129,9 +144,20 @@ const AI = () => {
     }
   };
 
-  const loadChatHistory = async () => {
+  const loadChatHistoryForUser = async (uid: string) => {
     try {
-      const stored = await AsyncStorage.getItem('chatHistory');
+      // Per-user history key
+      const key = `chatHistory_${uid}`;
+      let stored = await AsyncStorage.getItem(key);
+      // Migrate old shared key if exists and no per-user yet
+      if (!stored) {
+        const legacy = await AsyncStorage.getItem('chatHistory');
+        if (legacy) {
+          await AsyncStorage.setItem(key, legacy);
+          await AsyncStorage.removeItem('chatHistory');
+          stored = legacy;
+        }
+      }
       if (stored) {
         const history = JSON.parse(stored);
         setMessages(history.map((msg: any) => ({
@@ -146,7 +172,8 @@ const AI = () => {
 
   const saveChatHistory = async (messagesToSave: Message[]) => {
     try {
-      await AsyncStorage.setItem('chatHistory', JSON.stringify(messagesToSave));
+      const uid = currentUserId || 'anonymous';
+      await AsyncStorage.setItem(`chatHistory_${uid}`, JSON.stringify(messagesToSave));
     } catch (error) {
       console.error('Error saving chat history:', error);
     }
@@ -244,7 +271,7 @@ const AI = () => {
           },
           body: JSON.stringify({
             message: messageText,
-            user_id: 'student'
+            user_id: currentUserId || 'anonymous'
           }),
         });
 
@@ -329,7 +356,8 @@ const AI = () => {
       isUser: false,
       timestamp: new Date()
     }]);
-    await AsyncStorage.removeItem('chatHistory');
+    const uid = currentUserId || 'anonymous';
+    await AsyncStorage.removeItem(`chatHistory_${uid}`);
   };
 
   return (

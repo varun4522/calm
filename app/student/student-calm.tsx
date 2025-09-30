@@ -79,11 +79,10 @@ export default function StudentCalm() {
       try {
         console.log('Loading experts from database...');
         const { data: expertData, error } = await supabase
-          .from('experts')  // Using 'experts' table name (plural) - the correct table name
+          .from('experts')  // Using 'expert' table name (singular) - the correct table name
           .select('*')
           .eq('is_active', true)
-          .eq('is_verified', true)
-          .order('name');
+          .order('user_name');
 
         if (error) {
           console.error('Error loading experts from "experts" table:', error);
@@ -92,7 +91,7 @@ export default function StudentCalm() {
           // If table doesn't exist or has issues, try 'expert' (singular) as fallback
           try {
             const { data: fallbackData, error: fallbackError } = await supabase
-              .from('expert')
+              .from('experts')
               .select('*')
               .order('user_name');
 
@@ -129,7 +128,7 @@ export default function StudentCalm() {
           // Transform data to match expected format
           const transformedExperts = expertData.map(expert => ({
             id: expert.id?.toString() || expert.registration_number,
-            name: expert.name,
+            name: expert.user_name || 'Unknown Expert',
             registration_number: expert.registration_number,
             specialization: expert.specialist || expert.specialization || 'Mental Health Expert',
             experience: expert.experience_years ? `${expert.experience_years}+ years` : expert.experience || '5+ years',
@@ -166,7 +165,7 @@ export default function StudentCalm() {
           .from('peer_listeners')
           .select('*')
           .eq('status', 'approved') // Only show approved peer listeners
-          .order('name');
+          .order('user_name');
 
         if (error) {
           console.error('Error loading peer listeners:', error);
@@ -272,7 +271,7 @@ export default function StudentCalm() {
       const { data: sessions, error } = await supabase
         .from('book_request')
         .select('expert_id, session_date, session_time')
-        .eq('status', 'confirmed'); // Only confirmed bookings count as unavailable
+        .eq('status', 'approved'); // Only approved bookings count as unavailable
 
       if (error) {
         console.error('Error loading booked sessions:', error);
@@ -355,8 +354,10 @@ export default function StudentCalm() {
           student_reg: studentInfo.registration || 'Unknown',
           student_email: studentInfo.email || '',
           student_course: studentInfo.course || '',
+          user_name: studentInfo.username || studentInfo.name || 'Student',
+          registration_number: studentInfo.registration || 'Unknown',
+          book_title: 'Session Booking',
           expert_id: selectedPsychologist,
-          expert_reg: expert?.registration_number || selectedPsychologist,
           expert_registration: expert?.registration_number || selectedPsychologist,
           expert_name: expert?.name || 'Unknown Expert',
           session_date: selectedDate,
@@ -367,13 +368,13 @@ export default function StudentCalm() {
 
         console.log('Attempting to book session with data:', sessionRequestData);
 
-        // Guard: prevent multiple active sessions (pending or confirmed)
+        // Guard: prevent multiple active sessions (pending or approved)
         try {
           const { data: activeSessions, error: activeError } = await supabase
             .from('book_request')
             .select('id,status,expert_id,expert_name,session_date,session_time')
             .eq('student_reg', studentInfo.registration)
-            .in('status', ['pending', 'confirmed'])
+            .in('status', ['pending', 'approved'])
             .limit(1);
 
           if (activeError) {
@@ -393,22 +394,6 @@ export default function StudentCalm() {
           console.warn('Active session pre-check failed:', e);
         }
 
-        // First test if the book_request table exists
-        const { data: tableTest, error: tableError } = await supabase
-          .from('book_request')
-          .select('count')
-          .limit(1);
-
-        if (tableError) {
-          console.error('Table access error:', tableError);
-          if (tableError.code === '42P01') {
-            Alert.alert('Database Error', 'The booking system is not set up. Please run the database setup script in Supabase.');
-          } else {
-            Alert.alert('Database Error', `Cannot access booking table: ${tableError.message}`);
-          }
-          return;
-        }
-
         // Save to Supabase book_request table
         const { data: supabaseData, error: supabaseError } = await supabase
           .from('book_request')
@@ -423,8 +408,8 @@ export default function StudentCalm() {
           if (supabaseError.code === '42P01') {
             Alert.alert('Database Error', 'The book_request table does not exist. Please check the database setup.');
           } else if (supabaseError.code === '23505') {
-      // Matches partial unique index on (student_reg) WHERE status in ('pending','confirmed')
-      Alert.alert('Booking Conflict', 'You already have an active session (pending or confirmed). Please complete or cancel it before booking another.');
+      // Matches partial unique index on (student_reg) WHERE status in ('pending','approved')
+      Alert.alert('Booking Conflict', 'You already have an active session (pending or approved). Please complete or cancel it before booking another.');
           } else if (supabaseError.code === '42501') {
             Alert.alert('Permission Error', 'Database permission denied. Please check RLS policies.');
           } else {
@@ -540,13 +525,13 @@ export default function StudentCalm() {
 
         console.log('Attempting to book peer listener session with data:', sessionRequestData);
 
-        // Guard: prevent multiple active sessions (pending or confirmed)
+        // Guard: prevent multiple active sessions (pending or approved)
         try {
           const { data: activeSessions, error: activeError } = await supabase
             .from('book_request')
             .select('id,status,expert_id,expert_name,session_date,session_time')
             .eq('student_reg', studentInfo.registration)
-            .in('status', ['pending', 'confirmed'])
+            .in('status', ['pending', 'approved'])
             .limit(1);
 
           if (activeError) {
@@ -580,7 +565,7 @@ export default function StudentCalm() {
           if (supabaseError.code === '42P01') {
             Alert.alert('Database Error', 'The book_request table does not exist. Please check the database setup.');
           } else if (supabaseError.code === '23505') {
-            Alert.alert('Booking Conflict', 'You already have an active session (pending or confirmed). Please complete or cancel it before booking another.');
+            Alert.alert('Booking Conflict', 'You already have an active session (pending or approved). Please complete or cancel it before booking another.');
           } else if (supabaseError.code === '42501') {
             Alert.alert('Permission Error', 'Database permission denied. Please check RLS policies.');
           } else {
@@ -757,37 +742,7 @@ export default function StudentCalm() {
         </TouchableOpacity>
   <Text style={styles.headerTitle}>Student Calm Space</Text>
       </View>
-
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Debug Info */}
-        <View style={styles.debugCard}>
-          <Text style={styles.debugTitle}>Expert Loading Status</Text>
-          <Text style={styles.debugText}>
-            Loading: {loadingExperts ? 'Yes' : 'No'} |
-            Count: {experts.length} |
-            Status: {loadingExperts ? 'Loading...' : experts.length > 0 ? 'Loaded' : 'No experts found'}
-          </Text>
-          <TouchableOpacity
-            style={styles.debugButton}
-            onPress={async () => {
-              setLoadingExperts(true);
-              try {
-                console.log('Manual expert reload triggered');
-                const { data, error } = await supabase.from('experts').select('*');
-                console.log('Expert query result:', { data, error });
-                Alert.alert('Debug Info', `Data: ${data?.length || 0} experts, Error: ${error?.message || 'None'}`);
-              } catch (err) {
-                console.error('Manual reload error:', err);
-                Alert.alert('Debug Error', String(err));
-              } finally {
-                setLoadingExperts(false);
-              }
-            }}
-          >
-            <Text style={styles.debugButtonText}>🔄 Test Expert Loading</Text>
-          </TouchableOpacity>
-        </View>
-
+      <ScrollView contentContainerStyle={styles.contentContainer}>
         {/* Connection Buttons */}
         <View style={styles.connectionCard}>
           <Text style={styles.cardTitle}> Professional Support</Text>

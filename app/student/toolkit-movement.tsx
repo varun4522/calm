@@ -1,3 +1,4 @@
+import { ResizeMode, Video } from 'expo-av';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -13,9 +14,6 @@ export default function ToolkitMovement() {
 
   // Dance and Movement Art State
   const [showDanceArt, setShowDanceArt] = useState(false);
-  const [danceStep, setDanceStep] = useState(0);
-  const [danceTimer, setDanceTimer] = useState(30);
-  const [isDancing, setIsDancing] = useState(false);
 
   // Shake it out steps
   const shakeSteps = [
@@ -23,15 +21,6 @@ export default function ToolkitMovement() {
     { name: 'Shake Your Feet', duration: 10, instruction: 'Now shake your feet! Feel the energy moving!' },
     { name: 'Shake Your Whole Body', duration: 30, instruction: 'Shake everything! Jump, wiggle, be silly! Let it all out!' },
     { name: 'Deep Breath & Stillness', duration: 10, instruction: 'Stop and take three deep breaths. Notice how alive you feel!' }
-  ];
-
-  // Dance and Movement Art steps
-  const danceSteps = [
-    { name: 'Feel the Music', duration: 30, instruction: 'Close your eyes and let the music move through you. There\'s no wrong way to dance!' },
-    { name: 'Express Yourself', duration: 45, instruction: 'Move your body in ways that feel good. Let your emotions flow through movement.' },
-    { name: 'Creative Flow', duration: 60, instruction: 'Imagine you\'re painting with your body. Each movement creates a beautiful stroke of art.' },
-    { name: 'Dance Like Nobody\'s Watching', duration: 45, instruction: 'Be completely free! Dance with wild abandon and joy.' },
-    { name: 'Peaceful Stillness', duration: 30, instruction: 'Slowly come to stillness. Feel the energy and creativity flowing through you.' }
   ];
 
   // Shake timer effect
@@ -54,33 +43,10 @@ export default function ToolkitMovement() {
     return () => clearTimeout(timer);
   }, [isShaking, shakeTimer, shakeStep]);
 
-  // Dance timer effect
-  useEffect(() => {
-    let timer: any;
-    if (isDancing && danceTimer > 0) {
-      timer = setTimeout(() => {
-        setDanceTimer((prev) => prev - 1);
-      }, 1000);
-    } else if (isDancing && danceTimer === 0) {
-      // Move to next dance step
-      if (danceStep < danceSteps.length - 1) {
-        setDanceStep((prev) => prev + 1);
-        setDanceTimer(danceSteps[danceStep + 1]?.duration || 30);
-      } else {
-        setIsDancing(false);
-        Alert.alert('Beautiful!', 'You\'ve created a masterpiece of movement! How do you feel?');
-      }
-    }
-    return () => clearTimeout(timer);
-  }, [isDancing, danceTimer, danceStep]);
-
   const resetStates = () => {
     setShakeStep(0);
     setShakeTimer(10);
     setIsShaking(false);
-    setDanceStep(0);
-    setDanceTimer(30);
-    setIsDancing(false);
   };
 
   return (
@@ -172,49 +138,49 @@ export default function ToolkitMovement() {
       {/* Dance and Movement Art Modal */}
       <Modal visible={showDanceArt} animationType="slide" transparent={true}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 30, width: '90%' }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 30, width: '90%', maxHeight: '80%' }}>
             <Text style={{ fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#2c3e50' }}>Dance and Movement Art</Text>
 
-            <Text style={{ fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 15, color: '#9b59b6' }}>
-              {danceSteps[danceStep]?.name}
-            </Text>
-
-            <Text style={{ fontSize: 16, textAlign: 'center', marginBottom: 20, color: '#2c3e50', lineHeight: 24 }}>
-              {danceSteps[danceStep]?.instruction}
-            </Text>
-
-            {isDancing && (
-              <View style={{ alignItems: 'center', marginBottom: 20 }}>
-                <Text style={{ fontSize: 48, fontWeight: 'bold', color: '#9b59b6' }}>{danceTimer}</Text>
-                <Text style={{ fontSize: 16, color: '#2c3e50' }}>seconds remaining</Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 1</Text>
+                <Video
+                  style={{ width: '100%', height: 200, borderRadius: 10 }}
+                  source={require('../../assets/videos/3 Things  Dilpreet Dhillon feat. Shipra Goyal  Geet Goraya  Desi Crew  Kaptaan - BANG Music (720p, h264).mp4')}
+                  useNativeControls={true}
+                  resizeMode={ResizeMode.CONTAIN}
+                />
               </View>
-            )}
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 2</Text>
+                <Video
+                  style={{ width: '100%', height: 200, borderRadius: 10 }}
+                  source={require('../../assets/videos/Showstopper _ JERRY (Official Music Video).mp4')}
+                  useNativeControls={true}
+                  resizeMode={ResizeMode.CONTAIN}
+                />
+              </View>
+
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 3</Text>
+                <Video
+                  style={{ width: '100%', height: 200, borderRadius: 10 }}
+                  source={require('../../assets/videos/UNTOUCHABLE (OFFICIAL VIDEO) _ TEGI PANNU _ MANNI SANDHU _ LATEST PUNJABI SONGS 2022.mp4')}
+                  useNativeControls={true}
+                  resizeMode={ResizeMode.CONTAIN}
+                />
+              </View>
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 20 }}>
               <TouchableOpacity
                 style={{ backgroundColor: '#95a5a6', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10 }}
                 onPress={() => {
                   setShowDanceArt(false);
-                  setIsDancing(false);
-                  resetStates();
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: 'bold' }}>Close</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={{ backgroundColor: isDancing ? '#e74c3c' : '#2ecc71', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10 }}
-                onPress={() => {
-                  if (isDancing) {
-                    setIsDancing(false);
-                  } else {
-                    setIsDancing(true);
-                    setDanceStep(0);
-                    setDanceTimer(danceSteps[0].duration);
-                  }
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>{isDancing ? 'Stop' : 'Start Dancing!'}</Text>
               </TouchableOpacity>
             </View>
           </View>

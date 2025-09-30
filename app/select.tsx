@@ -1,7 +1,8 @@
 import { useFonts } from 'expo-font';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Animated, Image, ImageBackground, Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { Colors } from '../constants/Colors';
 import { globalStyles } from '../constants/GlobalStyles';
 
@@ -36,16 +37,21 @@ export default function SelectPage() {
     return null; // Wait for fonts to load
   }
 
-  const router = useRouter();
-
   return (
-    <ImageBackground
-      source={undefined} // Removed the image source
-      style={{ flex: 1, backgroundColor: Colors.background }} // Use purple background
-      resizeMode="cover"
-    >
-      {/* Help Button - Top Right */}
-      <View style={{ position: 'absolute', top: 50, right: 20, zIndex: 10 }}>
+    <View style={{ flex: 1 }}>
+  <View style={{ flex: 1, backgroundColor: Colors.background, marginTop: -40 }}>
+        <Svg
+          height="100%"
+          width="100%"
+          style={{ position: 'absolute', top: '20%' }}
+          viewBox="0 0 100 100"
+        >
+          <Path
+            d="M0,20 C30,40 70,0 100,20 L100,100 L0,100 Z"
+            fill="#D8BFD8"
+          />
+        </Svg>
+      <View style={{ position: 'absolute', top: 100, right: 16, zIndex: 100 }}>
         <TouchableOpacity
           style={{
             backgroundColor: Colors.buttonPrimary,
@@ -74,36 +80,57 @@ export default function SelectPage() {
           style={{
             paddingVertical: 16,
             paddingHorizontal: 40,
-            borderRadius: 8,
+            borderRadius: 25,
             marginBottom: 24,
-            backgroundColor: Colors.buttonPrimary,
+            backgroundColor: Colors.white,
+            elevation: 4,
+            shadowColor: Colors.shadow,
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.18,
+            shadowRadius: 5,
+            borderWidth: 2,
+            borderColor: Colors.primary,
           }}
           onPress={() => router.push('/student-login')}
         >
-          <Text style={[globalStyles.button, { color: Colors.white, fontSize: 20, fontWeight: 'bold', fontFamily: 'Tinos' }]}>Student Login</Text>
+          <Text style={[globalStyles.button, { color: Colors.primary, fontSize: 20, fontWeight: 'bold', fontFamily: 'Tinos' }]}>Student Login</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={{
             paddingVertical: 16,
             paddingHorizontal: 40,
-            borderRadius: 8,
+            borderRadius: 25,
             marginBottom: 24,
-            backgroundColor: Colors.buttonPrimary,
+            backgroundColor: Colors.white,
+            elevation: 4,
+            shadowColor: Colors.shadow,
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.18,
+            shadowRadius: 5,
+            borderWidth: 2,
+            borderColor: Colors.primary,
           }}
           onPress={() => setShowExpertModal(true)}
         >
-          <Text style={[globalStyles.button, { color: Colors.white, fontSize: 20, fontWeight: 'bold', fontFamily: 'Tinos' }]}>Expert Login</Text>
+          <Text style={[globalStyles.button, { color: Colors.primary, fontSize: 20, fontWeight: 'bold', fontFamily: 'Tinos' }]}>Expert Login</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={{
             paddingVertical: 16,
             paddingHorizontal: 40,
-            borderRadius: 8,
-            backgroundColor: Colors.buttonPrimary,
+            borderRadius: 25,
+            backgroundColor: Colors.white,
+            elevation: 4,
+            shadowColor: Colors.shadow,
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.18,
+            shadowRadius: 5,
+            borderWidth: 2,
+            borderColor: Colors.primary,
           }}
           onPress={() => router.push('/admin-login')}
         >
-          <Text style={[globalStyles.button, { color: Colors.white, fontSize: 20, fontWeight: 'bold', fontFamily: 'Tinos', padding: 2 }]}>Admin Login</Text>
+          <Text style={[globalStyles.button, { color: Colors.primary, fontSize: 20, fontWeight: 'bold', fontFamily: 'Tinos', padding: 2 }]}>Admin Login</Text>
         </TouchableOpacity>
       </View>
       <Pressable
@@ -154,18 +181,20 @@ export default function SelectPage() {
             {/* Expert Login Button */}
             <TouchableOpacity
               style={{
-                backgroundColor: Colors.secondary,
+                backgroundColor: Colors.white,
                 paddingVertical: 16,
                 paddingHorizontal: 40,
-                borderRadius: 15,
+                borderRadius: 25,
                 marginBottom: 16,
                 width: '100%',
                 alignItems: 'center',
-                elevation: 3,
+                elevation: 4,
                 shadowColor: Colors.shadow,
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.3,
-                shadowRadius: 4
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.18,
+                shadowRadius: 5,
+                borderWidth: 2,
+                borderColor: Colors.primary,
               }}
               onPress={() => {
                 setShowExpertModal(false);
@@ -173,7 +202,7 @@ export default function SelectPage() {
               }}
             >
               <Text style={{
-                color: Colors.white,
+                color: Colors.primary,
                 fontSize: 22,
                 fontWeight: 'bold',
                 fontFamily: 'Tinos'
@@ -181,7 +210,7 @@ export default function SelectPage() {
                 Expert Login
               </Text>
               <Text style={{
-                color: Colors.white,
+                color: Colors.primary,
                 fontSize: 12,
                 marginTop: 4,
                 fontFamily: 'Tinos'
@@ -193,18 +222,20 @@ export default function SelectPage() {
             {/* Peer Listener Login Button */}
             <TouchableOpacity
               style={{
-                backgroundColor: Colors.tertiary,
+                backgroundColor: Colors.white,
                 paddingVertical: 16,
                 paddingHorizontal: 40,
-                borderRadius: 15,
+                borderRadius: 25,
                 marginBottom: 20,
                 width: '100%',
                 alignItems: 'center',
-                elevation: 3,
+                elevation: 4,
                 shadowColor: Colors.shadow,
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.3,
-                shadowRadius: 4
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.18,
+                shadowRadius: 5,
+                borderWidth: 2,
+                borderColor: Colors.primary,
               }}
               onPress={() => {
                 setShowExpertModal(false);
@@ -212,7 +243,7 @@ export default function SelectPage() {
               }}
             >
               <Text style={{
-                color: Colors.white,
+                color: Colors.primary,
                 fontSize: 22,
                 fontWeight: 'bold',
                 fontFamily: 'Tinos'
@@ -220,7 +251,7 @@ export default function SelectPage() {
                 Peer Listener Login
               </Text>
               <Text style={{
-                color: Colors.white,
+                color: Colors.primary,
                 fontSize: 12,
                 marginTop: 4,
                 fontFamily: 'Tinos'
@@ -253,6 +284,7 @@ export default function SelectPage() {
           </View>
         </View>
       </Modal>
-    </ImageBackground>
+      </View>
+    </View>
   );
 }

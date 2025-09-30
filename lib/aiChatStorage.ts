@@ -32,16 +32,23 @@ export interface SupabaseAIChatMessage {
  */
 export const getCurrentUser = async (): Promise<{ id: string; name?: string } | null> => {
   try {
-    const userId = await AsyncStorage.getItem('currentStudentReg');
-    const userData = await AsyncStorage.getItem('currentStudentData');
-
-    if (userId) {
+    // Prefer student if logged in
+    const studentId = await AsyncStorage.getItem('currentStudentReg');
+    const studentDataStr = await AsyncStorage.getItem('currentStudentData');
+    if (studentId) {
       let name = undefined;
-      if (userData) {
-        const parsedData = JSON.parse(userData);
-        name = parsedData.name || parsedData.username;
+      if (studentDataStr) {
+        const parsedData = JSON.parse(studentDataStr);
+        name = parsedData.name || parsedData.username || parsedData.user_name;
       }
-      return { id: userId, name };
+      return { id: studentId, name };
+    }
+
+    // Fallback to expert if logged in
+    const expertId = await AsyncStorage.getItem('currentExpertReg');
+    const expertName = await AsyncStorage.getItem('currentExpertName');
+    if (expertId) {
+      return { id: expertId, name: expertName || 'Expert' };
     }
 
     // Fallback: generate a unique device-based ID if no user is logged in

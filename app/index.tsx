@@ -1,12 +1,12 @@
 import { useFonts } from 'expo-font';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 export default function FrontPage() {
   const router = useRouter();
-  
+
   const [loaded] = useFonts({
     Tinos: require('../assets/fonts/Tinos-Regular.ttf'),
     IrishGrover: require('../assets/fonts/IrishGrover-Regular.ttf'),
@@ -36,19 +36,19 @@ export default function FrontPage() {
           source={require('../assets/images/logo2.png')}
           style={{ width: 250, height: 200, marginTop: 50 }}
         />
-        <Text style={{ 
-          textAlign: 'center', 
-          fontSize: 60, 
-          fontWeight: '600', 
+        <Text style={{
+          textAlign: 'center',
+          fontSize: 60,
+          fontWeight: '600',
           color: '#4F21A2',
           fontFamily: 'Agbalumo',
           letterSpacing: -1,
         }}>
           C.A.L.M
         </Text>
-        <Text style={{ 
-          marginTop: -19, 
-          textAlign: 'center', 
+        <Text style={{
+          marginTop: -19,
+          textAlign: 'center',
           fontSize: 60,
           color: '#4F21A2',
           fontFamily: 'Agbalumo'
@@ -70,10 +70,6 @@ export default function FrontPage() {
           CEAPS, SGT UNIVERSITY{"\n"}
           Cultivating Awareness, Lightness & Movement
         </Text>
-        <Image
-          source={require('../assets/images/loading.gif')}
-          style={{ width: 200, height: 200,marginTop: -50 }}
-        />
       </View>
   );
 }

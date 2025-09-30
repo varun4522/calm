@@ -33,10 +33,10 @@ const messages = [
 ];
 
 const TABS = [
-  { key: 'home', label: 'Home', icon: '🏠' },
-  { key: 'setting', label: 'Setting', icon: '⚙️' },
-  { key: 'mood', label: 'Mood Calender', icon: '😊' },
-  { key: 'sos', label: 'SOS', icon: '🚨' },
+  { key: 'home', icon: '🏠' },
+  { key: 'mood', icon: '😊' },
+  { key: 'sos' , icon: '0️⃣' },
+  { key: 'setting', icon: '⚙️' },
 ];
 
 const MOOD_EMOJIS = [
@@ -784,10 +784,10 @@ export default function StudentHome() {
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%', paddingHorizontal: 0, backgroundColor: Colors.backgroundLight, borderRadius: 20, margin: 10, paddingVertical: 20, borderWidth: 1, borderColor: Colors.border }}>
         {/* Most selected emoji display */}
         <View style={{ marginBottom: 16, alignItems: 'center' }}>
-          <Text style={{ color: Colors.primary, fontSize: 50, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.50)', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4 }}>
+          <Text style={{ color: Colors.text, fontSize: 50, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.50)', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4 }}>
               Mood Calendar
             </Text>
-          <Text style={{ color: Colors.accent, fontSize: 20, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.50)', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4  }}>
+          <Text style={{ color: Colors.primary, fontSize: 20, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.30)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2  }}>
             Most Selected Mood This Month : {mostSelectedEmoji}
           </Text>
         </View>
@@ -808,7 +808,7 @@ export default function StudentHome() {
             <Text style={{ color: Colors.white, fontSize: 20, fontWeight: 'bold' }}>‹</Text>
           </TouchableOpacity>
 
-          <Text style={{ color: Colors.primary, fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 }}>
+          <Text style={{ color: Colors.text, fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 }}>
             {monthNames[currentMonth]} {currentYear}
           </Text>
 
@@ -841,7 +841,7 @@ export default function StudentHome() {
                   {getMoodForDate(day) && (
                     <Text style={{ fontSize: 20 }}>{getMoodForDate(day)}</Text>
                   )}
-                  <Text style={{ color: Colors.primary, fontSize: 10, marginTop: 4, fontWeight: '600' }}>{day}</Text>
+                  <Text style={{ color: Colors.text, fontSize: 10, marginTop: 4, fontWeight: '600' }}>{day}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -902,11 +902,11 @@ export default function StudentHome() {
           <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 20, backgroundColor: Colors.white, borderRadius: 15, padding: 15, borderWidth: 1, borderColor: Colors.border }}>
             <TouchableOpacity
               onPress={() => setShowToolkitPage(false)}
-              style={{ paddingVertical: 8, paddingHorizontal: 16, backgroundColor: Colors.white, borderRadius: 15, marginRight: 15, borderWidth: 2, borderColor: Colors.primary }}
+              style={{ paddingVertical: 8, paddingHorizontal: 16, backgroundColor: Colors.white, borderRadius: 15, marginRight: 15, borderWidth: 2, borderColor: Colors.primary, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 }}
             >
               <Text style={{ color: Colors.primary, fontSize: 10, fontWeight: 'bold' }}>← Back</Text>
             </TouchableOpacity>
-            <Text style={{ color: Colors.primary, fontSize: 15, fontWeight: 'bold', flex: 1, textAlign: 'center', marginRight: 60 }}>Self-help Toolkit</Text>
+            <Text style={{ color: Colors.text, fontSize: 15, fontWeight: 'bold', flex: 1, textAlign: 'center', marginRight: 60 }}>Self-help Toolkit</Text>
           </View>
 
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, paddingHorizontal: 20 }}>
@@ -963,11 +963,11 @@ export default function StudentHome() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ backgroundColor: Colors.white, borderRadius: 25, padding: 30, alignItems: 'center', width: 360, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.accent }}
           >
-            <Text style={{ fontSize: 28, marginBottom: 10, color: Colors.primary, fontWeight: 'bold', textAlign: 'center' }}>🌟 Mood Check-In</Text>
+            <Text style={{ fontSize: 28, marginBottom: 10, color: Colors.text, fontWeight: 'bold', textAlign: 'center' }}>🌟 Mood Check-In</Text>
             <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 25 }}>
               Hi {studentName || studentUsername}! How are you feeling right now?
             </Text>
-            <Text style={{ fontSize: 14, color: Colors.accent, textAlign: 'center', marginBottom: 20, fontWeight: 'bold' }}>
+            <Text style={{ fontSize: 14, color: Colors.primary, textAlign: 'center', marginBottom: 20, fontWeight: 'bold' }}>
               Please select one emoji to continue
             </Text>
 
@@ -975,7 +975,7 @@ export default function StudentHome() {
               {MOOD_EMOJIS.map((mood) => (
                 <TouchableOpacity
                   key={mood.emoji}
-                  style={{ padding: 15, margin: 8, borderRadius: 15, backgroundColor: selectedMood === mood.emoji ? Colors.accent : Colors.backgroundLight, borderWidth: 2, borderColor: selectedMood === mood.emoji ? Colors.primary : Colors.border }}
+                  style={{ padding: 15, margin: 8, borderRadius: 15, backgroundColor: selectedMood === mood.emoji ? Colors.primary : Colors.white, borderWidth: 2, borderColor: selectedMood === mood.emoji ? Colors.white : Colors.primary, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 }}
                   onPress={() => {
                     setSelectedMood(mood.emoji);
                     // Auto-save when emoji is selected
@@ -985,7 +985,7 @@ export default function StudentHome() {
                   }}
                 >
                   <Text style={{ fontSize: 40 }}>{mood.emoji}</Text>
-                  <Text style={{ fontSize: 12, textAlign: 'center', marginTop: 5, color: selectedMood === mood.emoji ? Colors.white : Colors.textSecondary, fontWeight: selectedMood === mood.emoji ? 'bold' : 'normal' }}>{mood.label}</Text>
+                  <Text style={{ fontSize: 12, textAlign: 'center', marginTop: 5, color: selectedMood === mood.emoji ? Colors.white : Colors.primary, fontWeight: selectedMood === mood.emoji ? 'bold' : 'normal' }}>{mood.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -994,7 +994,7 @@ export default function StudentHome() {
       </Modal>
 
       {/* Main Content */}
-      <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 10 }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10 }}>
         {/* Home Tab Content */}
         {activeTab === 'home' && (
           <>
@@ -1002,14 +1002,14 @@ export default function StudentHome() {
             <View style={{ position: 'absolute', top: 40, left: 16, zIndex: 10, backgroundColor: Colors.backgroundLight, borderRadius: 20, padding: 6, borderWidth: 2, borderColor: Colors.primary, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Image source={profilePics[selectedProfilePic]} style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: Colors.accent }} />
-                <Text style={{ color: Colors.text, fontSize: 13, marginLeft: 10, fontWeight: 'bold', textShadowColor: 'rgba(255,255,255,0.25)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>{getGreeting(studentName || studentUsername)}</Text>
+                <Text style={{ color: Colors.text, fontSize: 13, marginLeft: 10, fontWeight: 'bold', textShadowColor: 'rgba(255,255,255,0.8)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>{getGreeting(studentName || studentUsername)}</Text>
               </View>
             </View>
 
             {/* Mood Check-In Button removed as per request */}
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 120, paddingHorizontal: 20 }}>
               {/* 2x3 Matrix Layout */}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => setShowToolkitPage(true)}>
                   <Text style={{ fontSize: 32, marginBottom: 8 }}>🛠️</Text>
                   <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Self-help Toolkit</Text>
@@ -1019,7 +1019,7 @@ export default function StudentHome() {
                   <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>C.A.L.M Companion</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => router.push('./buddy-connect')}>
                   <Text style={{ fontSize: 32, marginBottom: 8 }}>👥</Text>
                   <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Community</Text>
@@ -1029,7 +1029,7 @@ export default function StudentHome() {
                   <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Journal</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-start', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => router.push('./support')}>
                   <Text style={{ fontSize: 32, marginBottom: 8 }}>🤝</Text>
                   <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Support Shelf</Text>
@@ -1047,7 +1047,7 @@ export default function StudentHome() {
         {activeTab === 'setting' && (
           <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 10, backgroundColor: Colors.white, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: Colors.border }}>
             <Image source={profilePics[selectedProfilePic]} style={{ width: 90, height: 90, borderRadius: 45, borderWidth: 4, borderColor: Colors.accent }} />
-            <Text style={{ color: Colors.primary, fontSize: 24, fontWeight: 'bold', marginTop: 15 }}>
+            <Text style={{ color: Colors.text, fontSize: 24, fontWeight: 'bold', marginTop: 15 }}>
               {studentName || studentUsername || 'Student'}
             </Text>
             <Text style={{ color: Colors.textSecondary, fontSize: 16, marginTop: 5 }}>
@@ -1096,7 +1096,7 @@ export default function StudentHome() {
       </View>
 
       {/* Tab Bar */}
-  <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 9, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
+  <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 20, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
         {TABS.map(tab => (
           <TouchableOpacity
             key={tab.key}
@@ -1111,10 +1111,17 @@ export default function StudentHome() {
               }
             }}
           >
-            <View style={{ alignItems: 'center', justifyContent: 'center', width: 48, height: 32, borderRadius: 16, backgroundColor: activeTab === tab.key ? Colors.accentLight : 'transparent' }}>
-              <Text style={{ fontSize: 20, color: activeTab === tab.key ? Colors.primary : Colors.tertiary, textShadowColor: activeTab === tab.key ? Colors.accentLight : 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>{tab.icon}</Text>
+            <View style={{ alignItems: 'center', justifyContent: 'center', width: 48, height: 40, borderRadius: 16, backgroundColor: activeTab === tab.key ? Colors.primary : 'transparent', borderWidth: activeTab === tab.key ? 2 : 0, borderColor: activeTab === tab.key ? Colors.white : 'transparent' }}>
+              {tab.key === 'home' ? (
+                <Image source={require('../../assets/images/home.png')} style={{ width: 35, height: 35 }} />
+              ) : tab.key === 'mood' ? (
+                <Image source={require('../../assets/images/mood calender.png')} style={{ width: 40, height: 40 }} />
+              ) : tab.key === 'setting' ? (
+                <Image source={require('../../assets/images/setting.png')} style={{ width: 35, height: 35 }} />
+              ) : (
+                <Text style={{ fontSize: 20, color: activeTab === tab.key ? Colors.white : Colors.primary, textShadowColor: activeTab === tab.key ? Colors.accentLight : 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>{tab.icon}</Text>
+              )}
             </View>
-            <Text style={{ fontSize: 11, color: activeTab === tab.key ? Colors.primary : Colors.tertiary, fontWeight: activeTab === tab.key ? 'bold' : 'normal', marginTop: 2 }}>{tab.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
