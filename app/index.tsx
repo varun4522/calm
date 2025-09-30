@@ -325,39 +325,60 @@ export default function FrontPage() {
                         // Handle database-based authentication for other user types
                         if (selectedType && selectedType.table) {
                           console.log(`Attempting login for ${selectedUserType} with input: ${loginInput.trim()}`);
-                          
-                          // First, let's check if the user exists at all (for debugging)
-                          const { data: existingUser, error: existError } = await supabase
+
+                          // First, let's check if the user exists at all by registration (for debugging)
+                          const { data: regCheck, error: regError } = await supabase
                             .from(selectedType.table)
                             .select('registration, email')
-                            .or(`registration.eq.${loginInput.trim()},email.eq.${loginInput.trim()}`)
+                            .eq('registration', loginInput.trim())
                             .single();
 
-                          if (existingUser) {
-                            console.log('User found:', existingUser);
-                          } else {
-                            console.log('User not found, error:', existError);
+                          // Also check by email
+                          const { data: emailCheck, error: emailError } = await supabase
+                            .from(selectedType.table)
+                            .select('registration, email')
+                            .eq('email', loginInput.trim())
+                            .single();
+
+                          console.log('Registration check:', regCheck, regError);
+                          console.log('Email check:', emailCheck, emailError);
+
+                          // Step 1: Check if user exists by registration (without password check)
+                          let userExists = regCheck || null;
+                          let loginField = 'registration';
+
+                          // Step 2: If not found by registration, check by email
+                          if (!userExists && emailCheck) {
+                            userExists = emailCheck;
+                            loginField = 'email';
                           }
 
-                          // Try to find user by registration number first
-                          let { data: userData, error: userError } = await supabase
-                            .from(selectedType.table)
-                            .select('*')
-                            .eq('registration', loginInput.trim())
-                            .eq('password', password.trim())
-                            .single();
+                          let userData = null;
+                          let userError = null;
 
-                          // If not found by registration, try by email
-                          if (!userData && userError) {
-                            const { data: emailData, error: emailError } = await supabase
+                          if (userExists) {
+                            // User exists, now check password
+                            const { data: authData, error: authError } = await supabase
                               .from(selectedType.table)
                               .select('*')
-                              .eq('email', loginInput.trim())
+                              .eq(loginField, loginInput.trim())
                               .eq('password', password.trim())
                               .single();
-                            
-                            userData = emailData;
-                            userError = emailError;
+
+                            userData = authData;
+                            userError = authError;
+
+                            if (!userData && !authError) {
+                              // User exists but password is wrong
+                              Alert.alert('Login Failed', 'Incorrect password. Please try again.');
+                              setIsLoading(false);
+                              return;
+                            }
+                          } else {
+                            // User doesn't exist
+                            Alert.alert('Login Failed', `No ${selectedType?.label.toLowerCase()} account found with this registration number or email.`);
+                            setIsLoading(false);
+                            return;
                           }
 
                           if (userData && !userError) {
@@ -393,17 +414,15 @@ export default function FrontPage() {
                             setIsLoading(false);
                             return;
                           } else {
-                            // Log the specific error for debugging
-                            console.log('Authentication failed for:', selectedUserType);
+                            // This shouldn't happen with the new logic, but just in case
+                            console.log('Unexpected authentication failure for:', selectedUserType);
                             console.log('Login input:', loginInput.trim());
                             console.log('Error:', userError);
                             console.log('Table:', selectedType?.table);
+                            Alert.alert('Login Failed', 'An unexpected error occurred. Please try again.');
+                            setIsLoading(false);
                           }
                         }
-
-                        // No match found
-                        Alert.alert('Login Failed', `Invalid ${selectedType?.label.toLowerCase()} credentials. Please check your registration number/email and password.`);
-                        setIsLoading(false);
 
                       } catch (error) {
                         console.error('Login error:', error);
