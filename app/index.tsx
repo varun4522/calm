@@ -165,17 +165,6 @@ export default function FrontPage() {
                 Login
               </Text>
 
-              {/* Login Instructions */}
-              <Text style={{
-                fontSize: 16,
-                color: '#666',
-                marginBottom: 20,
-                fontFamily: 'Tinos',
-                textAlign: 'center'
-              }}>
-                Enter your credentials to login. You will be redirected to the appropriate page based on your account type.
-              </Text>
-
               <Text style={{
                 fontSize: 16,
                 color: '#666',
@@ -266,30 +255,6 @@ export default function FrontPage() {
                       setIsLoading(true);
 
                       try {
-                        const selectedType = userTypes.find(type => type.key === selectedUserType);
-
-                        // Handle admin login (hardcoded credentials)
-                        if (selectedUserType === 'admin') {
-                          if (loginInput.trim() === '241302262' && password.trim() === 'Calmspaces@741') {
-                            await AsyncStorage.setItem('userType', 'admin');
-                            await AsyncStorage.setItem('currentAdminData', JSON.stringify({
-                              registration: '241302262',
-                              role: 'admin'
-                            }));
-                            setLoginModalVisible(false);
-                            setLoginInput('');
-                            setPassword('');
-                            setSelectedUserType('student');
-                            router.push('/admin/admin-home');
-                            setIsLoading(false);
-                            return;
-                          } else {
-                            Alert.alert('Login Failed', 'Invalid admin credentials.');
-                            setIsLoading(false);
-                            return;
-                          }
-                        }
-
                         // Handle database-based authentication using user_requests table
                         console.log(`Attempting login with input: ${loginInput.trim()}`);
 
@@ -303,7 +268,7 @@ export default function FrontPage() {
 
                         if (userData && !userError) {
                           console.log('User found:', userData);
-                          
+
                           // User authentication successful - no need to check selected type since we removed the selector
 
                           // Store user data based on actual user_type from database
@@ -322,6 +287,9 @@ export default function FrontPage() {
                           } else if (userData.user_type === 'Peer Listener') {
                             await AsyncStorage.setItem('currentPeerData', JSON.stringify(userData));
                             await AsyncStorage.setItem('currentPeerReg', userData.registration_number);
+                          } else if (userData.user_type === 'Admin') {
+                            await AsyncStorage.setItem('currentAdminData', JSON.stringify(userData));
+                            await AsyncStorage.setItem('currentAdminReg', userData.registration_number);
                           }
 
                           // Clear form and navigate
