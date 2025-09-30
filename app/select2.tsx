@@ -92,7 +92,7 @@ export default function SelectPage() {
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }}>
         <Image source={require('../assets/images/logo2.png')} style={{ width: 220, height: 170, marginBottom: 12, transform: [{ translateY: -10 }] }} />
         <Text style={[globalStyles.title, { fontSize: 50, color: Colors.white, marginBottom: 40, fontWeight: 'bold', fontFamily: 'Tinos', textShadowColor: Colors.black, textShadowOffset: { width: 3, height: 3 }, textShadowRadius: 3 }]}>
-          Reg
+          Sign up
         </Text>
         <TouchableOpacity
           style={{
@@ -128,7 +128,7 @@ export default function SelectPage() {
             borderWidth: 2,
             borderColor: Colors.primary,
           }}
-          onPress={() => setShowExpertModal(true)}
+          onPress={() => router.push('/peer-listener-register')}
         >
           <Text style={[globalStyles.button, { color: Colors.primary, fontSize: 20, fontWeight: 'bold', fontFamily: 'Tinos' }]}>Peer Register</Text>
         </TouchableOpacity>

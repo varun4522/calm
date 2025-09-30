@@ -51,6 +51,24 @@ export default function SelectPage() {
             fill="#D8BFD8"
           />
         </Svg>
+        <View style={{ position: 'absolute', top: 100, left: 16, zIndex: 100 }}>
+        <TouchableOpacity
+          style={{
+            backgroundColor: Colors.buttonPrimary,
+            paddingVertical: 10,
+            paddingHorizontal: 16,
+            borderRadius: 20,
+            elevation: 4,
+            shadowColor: Colors.shadow,
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.3,
+            shadowRadius: 4,
+          }}
+          onPress={() => router.push('/')}
+        >
+          <Text style={[globalStyles.button, { color: Colors.white, fontSize: 16, fontWeight: 'bold', fontFamily: 'Tinos' }]}>← Back</Text>
+        </TouchableOpacity>
+      </View>
       <View style={{ position: 'absolute', top: 100, right: 16, zIndex: 100 }}>
         <TouchableOpacity
           style={{
