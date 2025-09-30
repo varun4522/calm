@@ -2,7 +2,7 @@ import { useFonts } from 'expo-font';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 
 export default function FrontPage() {
   const router = useRouter();
@@ -14,11 +14,8 @@ export default function FrontPage() {
   });
 
   useEffect(() => {
-    if (loaded) {
-      // Navigate immediately once fonts are loaded (remove 5s timer)
-      router.replace('/select');
-    }
-  }, [loaded, router]);
+    // Fonts loaded, but navigation is now handled by buttons
+  }, [loaded]);
 
   if (!loaded) {
     return (
@@ -68,6 +65,59 @@ export default function FrontPage() {
           CEAPS, SGT UNIVERSITY{"\n"}
           Cultivating Awareness, Lightness & Movement
         </Text>
+
+        {/* Login and Register Buttons */}
+        <View style={{ marginTop: 40, width: '80%', alignItems: 'center' }}>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#4F21A2',
+              paddingVertical: 15,
+              paddingHorizontal: 40,
+              borderRadius: 25,
+              marginBottom: 15,
+              width: '100%',
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 3.84,
+              elevation: 5,
+            }}
+            onPress={() => router.push('/select')}
+          >
+            <Text style={{
+              color: 'white',
+              fontSize: 18,
+              fontWeight: 'bold',
+              fontFamily: 'Tinos'
+            }}>
+              Login
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              borderColor: '#4F21A2',
+              paddingVertical: 15,
+              paddingHorizontal: 40,
+              borderRadius: 25,
+              width: '100%',
+              alignItems: 'center',
+            }}
+            onPress={() => router.push('/select')}
+          >
+            <Text style={{
+              color: '#4F21A2',
+              fontSize: 18,
+              fontWeight: 'bold',
+              fontFamily: 'Tinos'
+            }}>
+              Register
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
   );
 }
