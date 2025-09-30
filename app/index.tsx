@@ -282,8 +282,14 @@ export default function FrontPage() {
                             await AsyncStorage.setItem('currentStudentData', JSON.stringify(userData));
                             await AsyncStorage.setItem('currentStudentReg', userData.registration_number);
                           } else if (userData.user_type === 'Expert') {
-                            await AsyncStorage.setItem('currentExpertData', JSON.stringify(userData));
-                            await AsyncStorage.setItem('currentExpertReg', userData.registration_number);
+                            // Check if this expert account should be treated as admin
+                            if (userData.username === 'admin' || userData.registration_number === 'ADMIN001') {
+                              await AsyncStorage.setItem('currentAdminData', JSON.stringify(userData));
+                              await AsyncStorage.setItem('currentAdminReg', userData.registration_number);
+                            } else {
+                              await AsyncStorage.setItem('currentExpertData', JSON.stringify(userData));
+                              await AsyncStorage.setItem('currentExpertReg', userData.registration_number);
+                            }
                           } else if (userData.user_type === 'Peer Listener') {
                             await AsyncStorage.setItem('currentPeerData', JSON.stringify(userData));
                             await AsyncStorage.setItem('currentPeerReg', userData.registration_number);
@@ -302,7 +308,12 @@ export default function FrontPage() {
                           if (userData.user_type === 'Student') {
                             router.push(`/student/student-home?registration=${userData.registration_number}`);
                           } else if (userData.user_type === 'Expert') {
-                            router.push(`/expert/expert-home?registration=${userData.registration_number}`);
+                            // Check if this expert account should be treated as admin
+                            if (userData.username === 'admin' || userData.registration_number === 'ADMIN001') {
+                              router.push('/admin/admin-home');
+                            } else {
+                              router.push(`/expert/expert-home?registration=${userData.registration_number}`);
+                            }
                           } else if (userData.user_type === 'Peer Listener') {
                             router.push('/peer-listener-login');
                           } else if (userData.user_type === 'Admin') {
