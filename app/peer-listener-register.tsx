@@ -93,7 +93,7 @@ export default function PeerListenerRegister() {
                 onPress: () => {
                   Alert.alert(
                     '👨‍💻 Administrator Instructions',
-                    'To fix this issue, the administrator needs to:\n\n1️⃣ Go to Supabase Dashboard\n2️⃣ Open SQL Editor\n3️⃣ Run this SQL command:\n\nCREATE TABLE IF NOT EXISTS user_requests (\n  id SERIAL PRIMARY KEY,\n  name TEXT NOT NULL,\n  email TEXT UNIQUE NOT NULL,\n  username TEXT UNIQUE NOT NULL,\n  registration TEXT NOT NULL,\n  role TEXT NOT NULL,\n  phone TEXT,\n  course TEXT,\n  year TEXT,\n  dob TEXT,\n  password TEXT NOT NULL,\n  status TEXT DEFAULT \'approved\',\n  created_at TIMESTAMP DEFAULT NOW()\n);',
+                    'To fix this issue, the administrator needs to:\n\n1️⃣ Go to Supabase Dashboard\n2️⃣ Open SQL Editor\n3️⃣ Run this SQL command:\n\nCREATE TABLE IF NOT EXISTS user_requests (\n  id SERIAL PRIMARY KEY,\n  user_name TEXT NOT NULL,\n  email TEXT UNIQUE NOT NULL,\n  username TEXT UNIQUE NOT NULL,\n  registration_number TEXT NOT NULL,\n  user_type TEXT NOT NULL,\n  phone TEXT,\n  course TEXT,\n  year TEXT,\n  dob TEXT,\n  password TEXT NOT NULL,\n  status TEXT DEFAULT \'approved\',\n  created_at TIMESTAMP DEFAULT NOW()\n);',
                     [{ text: 'Got it' }]
                   );
                 }
@@ -128,10 +128,10 @@ export default function PeerListenerRegister() {
         .from('user_requests')
         .insert([
           {
-            name: formData.name.trim(),
+            user_name: formData.name.trim(),
             username: formData.username.trim(),
-            role: 'peer_listener',
-            registration: formData.studentId.trim(),
+            user_type: 'Peer Listener',
+            registration_number: formData.studentId.trim(),
             email: formData.email.trim().toLowerCase(),
             course: formData.course.trim(),
             password: formData.password,

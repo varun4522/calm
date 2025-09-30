@@ -37,7 +37,7 @@ export default function StudentRegister() {
         const { data: existingUser, error: userError } = await supabase
           .from('user_requests')
           .select('*')
-          .or(`registration.eq.${registrationNumber},email.eq.${email},username.eq.${username}`);
+          .or(`registration_number.eq.${registrationNumber},email.eq.${email},username.eq.${username}`);
 
         if (userError) {
           Alert.alert('Error', userError.message);
@@ -53,7 +53,7 @@ export default function StudentRegister() {
         const { data: existingRequest, error: requestError } = await supabase
           .from('user_requests')
           .select('*')
-          .eq('registration', registrationNumber);
+          .eq('registration_number', registrationNumber);
 
         if (requestError) {
           Alert.alert('Error', requestError.message);
@@ -70,10 +70,10 @@ export default function StudentRegister() {
           .from('user_requests')
           .insert([
             {
-              name: name,
+              user_name: name,
               username: username,
-              role: 'student',
-              registration: registrationNumber,
+              user_type: 'Student',
+              registration_number: registrationNumber,
               email: email,
               course: course,
               password: password,
