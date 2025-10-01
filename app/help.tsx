@@ -22,7 +22,6 @@ export default function Help() {
         .insert([
           {
             message: message,
-            sender_type: 'STUDENT',
             created_at: new Date().toISOString(),
           }
         ]);
@@ -56,7 +55,7 @@ export default function Help() {
         <View style={styles.backButtonContainer}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.push('./select')}
+            onPress={() => router.push('./select2')}
           >
             <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>

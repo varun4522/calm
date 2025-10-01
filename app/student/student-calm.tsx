@@ -72,77 +72,43 @@ export default function StudentCalm() {
     loadBookedSessions(); // Load booked sessions when component mounts
   }, [params.registration]);
 
-  // Load expert data from database
+  // Load expert data from user_requests table
   useEffect(() => {
     const loadExperts = async () => {
       setLoadingExperts(true);
       try {
-        console.log('Loading experts from database...');
+        console.log('Loading experts from user_requests table...');
         const { data: expertData, error } = await supabase
-          .from('experts')  // Using 'expert' table name (singular) - the correct table name
+          .from('user_requests')
           .select('*')
-          .eq('is_active', true)
+          .eq('user_type', 'Expert')
+          .eq('status', 'approved')
           .order('user_name');
 
         if (error) {
-          console.error('Error loading experts from "experts" table:', error);
+          console.error('Error loading experts from user_requests table:', error);
           console.error('Error details:', error.message);
-
-          // If table doesn't exist or has issues, try 'expert' (singular) as fallback
-          try {
-            const { data: fallbackData, error: fallbackError } = await supabase
-              .from('experts')
-              .select('*')
-              .order('user_name');
-
-            if (fallbackError) {
-              console.error('Fallback "experts" table also failed:', fallbackError);
-              console.error('Fallback error details:', fallbackError.message);
-              setExperts([]);
-            } else if (fallbackData && fallbackData.length > 0) {
-              const transformedExperts = fallbackData.map(expert => ({
-                id: expert.id?.toString() || expert.registration_number || `expert_${Math.random()}`,
-                name: expert.name || 'Unknown Expert',
-                registration_number: expert.registration_number || expert.id?.toString() || 'N/A',
-                specialization: expert.specialist || expert.specialization || 'Mental Health Expert',
-                experience: expert.experience_years
-                  ? `${expert.experience_years}+ years`
-                  : expert.experience || '5+ years',
-                rating: expert.rating ? expert.rating.toString() : '4.8',
-                email: expert.email || '',
-                phone: expert.phone || '',
-                qualifications: expert.qualifications || '',
-                bio: expert.bio || ''
-              }));
-              setExperts(transformedExperts);
-              console.log('Successfully loaded experts from fallback "experts" table:', transformedExperts.length);
-            } else {
-              console.log('No experts found in fallback table');
-              setExperts([]);
-            }
-          } catch (fallbackErr) {
-            console.error('Fallback query failed with exception:', fallbackErr);
-            setExperts([]);
-          }
+          setExperts([]);
         } else if (expertData && expertData.length > 0) {
           // Transform data to match expected format
           const transformedExperts = expertData.map(expert => ({
-            id: expert.id?.toString() || expert.registration_number,
+            id: expert.id?.toString() || expert.registration_number || `expert_${Math.random()}`,
             name: expert.user_name || 'Unknown Expert',
-            registration_number: expert.registration_number,
-            specialization: expert.specialist || expert.specialization || 'Mental Health Expert',
-            experience: expert.experience_years ? `${expert.experience_years}+ years` : expert.experience || '5+ years',
+            registration_number: expert.registration_number || expert.id?.toString() || 'N/A',
+            specialization: expert.specialization || expert.course || 'Mental Health Expert',
+            experience: expert.experience || '5+ years',
             rating: expert.rating ? expert.rating.toString() : '4.8',
-            email: expert.email,
-            phone: expert.phone,
-            qualifications: expert.qualifications,
-            bio: expert.bio
+            email: expert.email || '',
+            phone: expert.phone || '',
+            qualifications: expert.qualifications || '',
+            bio: expert.bio || `Expert in ${expert.specialization || 'Mental Health'}`,
+            username: expert.username || ''
           }));
           setExperts(transformedExperts);
-          console.log('Successfully loaded experts:', transformedExperts.length);
+          console.log('Successfully loaded experts from user_requests table:', transformedExperts.length);
         } else {
           // No experts in database
-          console.log('No experts found in database');
+          console.log('No experts found in user_requests table');
           setExperts([]);
         }
       } catch (error) {
@@ -156,106 +122,47 @@ export default function StudentCalm() {
     loadExperts();
   }, []);
 
-  // Load peer listeners from database
+  // Load peer listeners from user_requests table
   useEffect(() => {
     const loadPeerListeners = async () => {
       setLoadingPeerListeners(true);
       try {
+        console.log('Loading peer listeners from user_requests table...');
         const { data: peerListenerData, error } = await supabase
-          .from('peer_listeners')
+          .from('user_requests')
           .select('*')
+          .eq('user_type', 'Peer Listener')
           .eq('status', 'approved') // Only show approved peer listeners
           .order('user_name');
 
         if (error) {
-          console.error('Error loading peer listeners:', error);
-          // Fallback to default peer listeners if database fails
-          setPeerListeners([
-            {
-              id: '1',
-              name: 'Sarah Johnson',
-              student_id: 'PL001',
-              course: 'Psychology',
-              year: '3rd Year',
-              rating: '4.8'
-            },
-            {
-              id: '2',
-              name: 'Mike Chen',
-              student_id: 'PL002',
-              course: 'Social Work',
-              year: '4th Year',
-              rating: '4.9'
-            },
-            {
-              id: '3',
-              name: 'Emma Williams',
-              student_id: 'PL003',
-              course: 'Counseling',
-              year: '2nd Year',
-              rating: '4.7'
-            }
-          ]);
+          console.error('Error loading peer listeners from user_requests table:', error);
+          console.error('Error details:', error.message);
+          setPeerListeners([]);
         } else if (peerListenerData && peerListenerData.length > 0) {
-          setPeerListeners(peerListenerData);
+          // Transform data to match expected format
+          const transformedPeerListeners = peerListenerData.map(peerListener => ({
+            id: peerListener.id?.toString() || peerListener.registration_number || `peer_${Math.random()}`,
+            name: peerListener.user_name || 'Unknown Peer Listener',
+            student_id: peerListener.registration_number || peerListener.id?.toString() || 'N/A',
+            course: peerListener.course || 'General Studies',
+            year: peerListener.year || 'Not specified',
+            rating: peerListener.rating ? peerListener.rating.toString() : '4.5',
+            email: peerListener.email || '',
+            phone: peerListener.phone || '',
+            username: peerListener.username || '',
+            bio: peerListener.bio || `${peerListener.course || 'Student'} peer listener ready to help`
+          }));
+          setPeerListeners(transformedPeerListeners);
+          console.log('Successfully loaded peer listeners from user_requests table:', transformedPeerListeners.length);
         } else {
-          // No peer listeners in database, use fallback
-          setPeerListeners([
-            {
-              id: '1',
-              name: 'Sarah Johnson',
-              student_id: 'PL001',
-              course: 'Psychology',
-              year: '3rd Year',
-              rating: '4.8'
-            },
-            {
-              id: '2',
-              name: 'Mike Chen',
-              student_id: 'PL002',
-              course: 'Social Work',
-              year: '4th Year',
-              rating: '4.9'
-            },
-            {
-              id: '3',
-              name: 'Emma Williams',
-              student_id: 'PL003',
-              course: 'Counseling',
-              year: '2nd Year',
-              rating: '4.7'
-            }
-          ]);
+          // No peer listeners in database
+          console.log('No peer listeners found in user_requests table');
+          setPeerListeners([]);
         }
       } catch (error) {
         console.error('Error fetching peer listeners:', error);
-        // Use fallback data on error
-        setPeerListeners([
-          {
-            id: '1',
-            name: 'Sarah Johnson',
-            student_id: 'PL001',
-            course: 'Psychology',
-            year: '3rd Year',
-            rating: '4.8'
-          },
-          {
-            id: '2',
-            name: 'Mike Chen',
-            student_id: 'PL002',
-            course: 'Social Work',
-            year: '4th Year',
-            rating: '4.9'
-          },
-          {
-            id: '3',
-            name: 'Emma Williams',
-            student_id: 'PL003',
-            course: 'Counseling',
-            year: '2nd Year',
-            rating: '4.7'
-          }
-        ]);
+        setPeerListeners([]);
       } finally {
         setLoadingPeerListeners(false);
       }
@@ -805,8 +712,20 @@ export default function StudentCalm() {
                     onPress={() => setSelectedPsychologist(expert.registration_number || expert.id)}
                   >
                     <View style={styles.psychologistInfo}>
-                      <Text style={styles.psychologistName}>{expert.name}</Text>
-                      <Text style={styles.expertId}>Expert ID: {expert.registration_number || expert.id}</Text>
+                      <View style={styles.nameAndChatContainer}>
+                        <View style={styles.nameContainer}>
+                          <Text style={styles.psychologistName}>{expert.name}</Text>
+                          <Text style={styles.expertId}>Expert ID: {expert.registration_number || expert.id}</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.chatButton}
+                          onPress={() => {
+                            router.push(`./chat?expertId=${expert.registration_number || expert.id}&expertName=${expert.name}&userType=expert`);
+                          }}
+                        >
+                          <Text style={styles.chatButtonText}>💬 Chat</Text>
+                        </TouchableOpacity>
+                      </View>
                       <Text style={styles.psychologistSpecialization}>{expert.specialization || 'Mental Health Expert'}</Text>
                       <Text style={styles.psychologistDetails}>
                         Experience: {expert.experience || '5+ years'} | Rating: ⭐ {expert.rating || '4.8'}
@@ -990,8 +909,20 @@ export default function StudentCalm() {
                     onPress={() => setSelectedPeerListener(peerListener.student_id || peerListener.id)}
                   >
                     <View style={styles.psychologistInfo}>
-                      <Text style={styles.psychologistName}>{peerListener.name}</Text>
-                      <Text style={styles.expertId}>Student ID: {peerListener.student_id || peerListener.id}</Text>
+                      <View style={styles.nameAndChatContainer}>
+                        <View style={styles.nameContainer}>
+                          <Text style={styles.psychologistName}>{peerListener.name}</Text>
+                          <Text style={styles.expertId}>Student ID: {peerListener.student_id || peerListener.id}</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.chatButton}
+                          onPress={() => {
+                            router.push(`./chat?peerId=${peerListener.student_id || peerListener.id}&peerName=${peerListener.name}&userType=peer`);
+                          }}
+                        >
+                          <Text style={styles.chatButtonText}>💬 Chat</Text>
+                        </TouchableOpacity>
+                      </View>
                       <Text style={styles.psychologistSpecialization}>{peerListener.course || 'Peer Support'}</Text>
                       <Text style={styles.psychologistDetails}>
                         Year: {peerListener.year || 'N/A'} | Rating: ⭐ {peerListener.rating || '4.8'}
@@ -1548,5 +1479,34 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  nameAndChatContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  nameContainer: {
+    flex: 1,
+    marginRight: 10,
+  },
+  chatButton: {
+    backgroundColor: '#4ecdc4',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  chatButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
 });

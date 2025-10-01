@@ -140,28 +140,35 @@ export default function StudentSetting() {
           // Save to persistent storage for future use
           await saveStudentDataToPersistentStorage(regNo, studentData);
         } else {
-          console.log("No cached data found, fetching from Supabase");
-          // Fallback: Fetch student data from user_requests table in Supabase
+          console.log("No cached data found, fetching from Supabase user_requests table");
+          // Fetch fresh student data from user_requests table in Supabase
           const { data, error } = await supabase
             .from('user_requests')
-            .select('user_name, username, registration_number, email, course, phone')
+            .select('*')
             .eq('registration_number', regNo)
             .eq('user_type', 'Student')
+            .eq('status', 'approved')
             .single();
 
           if (error) {
-            console.error('Error fetching student data:', error);
-            Alert.alert('Error', 'Failed to load student data');
+            console.error('Error fetching student data from user_requests:', error);
+            Alert.alert('Error', 'Failed to load student data from database');
           } else if (data) {
+            console.log('Successfully fetched student data from user_requests table:', data);
             const formattedData = {
-              name: data.user_name,
-              user_name: data.user_name,
+              name: data.name || data.user_name || 'Unknown Student',
+              user_name: data.name || data.user_name || 'Unknown Student',
               username: data.username || '',
-              registration: regNo,
-              registration_number: regNo,
-              email: data.email,
-              course: data.course,
-              phone: data.phone || ''
+              registration: data.registration_number,
+              registration_number: data.registration_number,
+              email: data.email || '',
+              course: data.course || '',
+              phone: data.phone || '',
+              year: data.year || '',
+              user_type: data.user_type,
+              status: data.status,
+              created_at: data.created_at,
+              updated_at: data.updated_at
             };
             setStudentName(formattedData.name);
             setStudentUsername(formattedData.username);
@@ -170,6 +177,9 @@ export default function StudentSetting() {
             setStudentPhone(formattedData.phone);
             // Save fetched data to persistent storage
             await saveStudentDataToPersistentStorage(regNo, formattedData);
+          } else {
+            console.log('No student data found in user_requests table for registration:', regNo);
+            Alert.alert('No Data', 'No student record found in the database');
           }
         }
       } catch (error) {
@@ -208,6 +218,63 @@ export default function StudentSetting() {
     } catch (error) {
       console.error('Error saving profile pic:', error);
       Alert.alert('Error', 'Failed to save profile picture');
+    }
+  };
+
+  // Refresh data from user_requests table
+  const refreshStudentData = async () => {
+    if (!studentRegNo) return;
+
+    setIsLoading(true);
+    try {
+      console.log('Refreshing student data from user_requests table...');
+      const { data, error } = await supabase
+        .from('user_requests')
+        .select('*')
+        .eq('registration_number', studentRegNo)
+        .eq('user_type', 'Student')
+        .eq('status', 'approved')
+        .single();
+
+      if (error) {
+        console.error('Error refreshing student data:', error);
+        Alert.alert('Error', 'Failed to refresh student data');
+      } else if (data) {
+        console.log('Successfully refreshed student data:', data);
+        const formattedData = {
+          name: data.name || data.user_name || 'Unknown Student',
+          user_name: data.name || data.user_name || 'Unknown Student',
+          username: data.username || '',
+          registration: data.registration_number,
+          registration_number: data.registration_number,
+          email: data.email || '',
+          course: data.course || '',
+          phone: data.phone || '',
+          year: data.year || '',
+          user_type: data.user_type,
+          status: data.status,
+          created_at: data.created_at,
+          updated_at: data.updated_at
+        };
+
+        // Update state with fresh data
+        setStudentName(formattedData.name);
+        setStudentUsername(formattedData.username);
+        setStudentEmail(formattedData.email);
+        setStudentCourse(formattedData.course);
+        setStudentPhone(formattedData.phone);
+
+        // Save refreshed data to storage
+        await saveStudentDataToPersistentStorage(studentRegNo, formattedData);
+        Alert.alert('Success', 'Student data refreshed successfully!');
+      } else {
+        Alert.alert('No Data', 'No student record found in the database');
+      }
+    } catch (error) {
+      console.error('Error refreshing student data:', error);
+      Alert.alert('Error', 'An error occurred while refreshing data');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -273,7 +340,13 @@ export default function StudentSetting() {
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity
+          style={styles.refreshButton}
+          onPress={refreshStudentData}
+          disabled={isLoading}
+        >
+          <Ionicons name="refresh" size={20} color={Colors.primary} />
+        </TouchableOpacity>
       </View>
 
       {/* Profile Section with ScrollView */}
@@ -507,6 +580,24 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
+  },
+  refreshButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: Colors.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backButtonText: {
     color: Colors.primary,
@@ -795,5 +886,23 @@ const styles = StyleSheet.create({
   statContent: {
     flex: 1,
     justifyContent: 'center',
+  },
+  dataSourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.backgroundLight,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dataSourceText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6,
+    fontStyle: 'italic',
   },
 });

@@ -1101,6 +1101,7 @@ export default function StudentHome() {
           <TouchableOpacity
             key={tab.key}
             style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
+            activeOpacity={1}
             onPress={() => {
               if (tab.key === 'setting') {
                 router.push(`./student-setting?registration=${studentRegNo}`);
@@ -1111,15 +1112,15 @@ export default function StudentHome() {
               }
             }}
           >
-            <View style={{ alignItems: 'center', justifyContent: 'center', width: 48, height: 40, borderRadius: 16, backgroundColor: activeTab === tab.key ? Colors.primary : 'transparent', borderWidth: activeTab === tab.key ? 2 : 0, borderColor: activeTab === tab.key ? Colors.white : 'transparent' }}>
+            <View style={{ alignItems: 'center', justifyContent: 'center', width: 48, height: 40, borderRadius: 16, backgroundColor: 'transparent', borderWidth: 0, borderColor: 'transparent' }}>
               {tab.key === 'home' ? (
-                <Image source={require('../../assets/images/home.png')} style={{ width: 35, height: 35 }} />
+                <Image source={require('../../assets/images/home.png')} style={{ width: 40, height: 40 }} />
               ) : tab.key === 'mood' ? (
                 <Image source={require('../../assets/images/mood calender.png')} style={{ width: 40, height: 40 }} />
               ) : tab.key === 'setting' ? (
                 <Image source={require('../../assets/images/setting.png')} style={{ width: 35, height: 35 }} />
               ) : (
-                <Text style={{ fontSize: 20, color: activeTab === tab.key ? Colors.white : Colors.primary, textShadowColor: activeTab === tab.key ? Colors.accentLight : 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>{tab.icon}</Text>
+                <Text style={{ fontSize: 20, color: activeTab === tab.key ? '#333' : '#666', textShadowColor: 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>{tab.icon}</Text>
               )}
             </View>
           </TouchableOpacity>
