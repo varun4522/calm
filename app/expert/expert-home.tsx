@@ -142,10 +142,24 @@ export default function ExpertHome() {
     bubbleAnimations.forEach((_, i) => startBubbleLoop(i));
   }, [bubbleAnimations, startBubbleLoop]);
 
+  // Add state for expert data from user_requests table
+  const [expertData, setExpertData] = useState<any>(null);
+  const [expertProfile, setExpertProfile] = useState({
+    specialization: '',
+    experience: '',
+    qualifications: '',
+    bio: '',
+    email: '',
+    phone: '',
+    rating: '0.0'
+  });
+
   useEffect(() => {
     const loadExpertData = async () => {
       try {
         let regNo = params.registration;
+        let expertName = '';
+
         if (!regNo) {
           const storedReg = await AsyncStorage.getItem('currentExpertReg');
           if (storedReg) regNo = storedReg;
@@ -153,9 +167,53 @@ export default function ExpertHome() {
 
         if (regNo) {
           setExpertRegNo(regNo);
+
+          // First, try to get name from AsyncStorage for immediate display
           const storedName = await AsyncStorage.getItem('currentExpertName');
           if (storedName) {
             setExpertName(storedName);
+            expertName = storedName;
+          }
+
+          // Load expert data from user_requests table
+          console.log('Loading expert data from user_requests table for:', regNo);
+          try {
+            const { data: expertUserData, error } = await supabase
+              .from('user_requests')
+              .select('*')
+              .eq('registration_number', regNo)
+              .eq('user_type', 'Expert')
+              .single();
+
+            if (error) {
+              console.error('Error loading expert from user_requests table:', error);
+              // If not found in user_requests, keep using stored name
+            } else if (expertUserData) {
+              console.log('Successfully loaded expert data from user_requests table:', expertUserData);
+              setExpertData(expertUserData);
+
+              // Update expert name if found in database
+              if (expertUserData.user_name) {
+                setExpertName(expertUserData.user_name);
+                expertName = expertUserData.user_name;
+                // Update stored name for future use
+                await AsyncStorage.setItem('currentExpertName', expertUserData.user_name);
+              }
+
+              // Set expert profile data
+              setExpertProfile({
+                specialization: expertUserData.specialization || expertUserData.course || 'Mental Health Expert',
+                experience: expertUserData.experience || '5+ years',
+                qualifications: expertUserData.qualifications || 'Licensed Professional',
+                bio: expertUserData.bio || `Expert specializing in ${expertUserData.specialization || 'Mental Health'}`,
+                email: expertUserData.email || '',
+                phone: expertUserData.phone || '',
+                rating: expertUserData.rating ? expertUserData.rating.toString() : '4.8'
+              });
+            }
+          } catch (dbError) {
+            console.error('Database error loading expert:', dbError);
+            // Continue with stored data
           }
 
           // Load settings-specific data (profile pic)
@@ -165,8 +223,6 @@ export default function ExpertHome() {
           } catch (e) {
             console.warn('Expert profile pic load warning:', e);
           }
-
-          // Initialize mood tracking for expert (next prompt will be set in loadMoodData if missing)
         }
       } catch (error) {
         console.error('Error loading expert data:', error);
@@ -792,7 +848,7 @@ export default function ExpertHome() {
                 onPress={() => setActiveTab('patients')}
               >
                 <Text style={styles.buttonIcon}>👥</Text>
-                <Text style={styles.matrixButtonText}>View Patients</Text>
+                <Text style={styles.matrixButtonText}>View Clients</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.matrixButton}
@@ -918,8 +974,52 @@ export default function ExpertHome() {
             {/* Expert Information */}
             <View style={styles.exInfoBox}>
               <View style={styles.exSectionTitleRow}>
-                <Ionicons name="person-circle" size={24} color={Colors.primary} />
-                <Text style={styles.exSectionTitle}>Expert Information</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="person-circle" size={24} color={Colors.primary} />
+                  <Text style={styles.exSectionTitle}>Expert Information</Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.refreshButton}
+                  onPress={async () => {
+                    // Refresh expert data from user_requests table
+                    if (expertRegNo) {
+                      setLoading(true);
+                      try {
+                        const { data: expertUserData, error } = await supabase
+                          .from('user_requests')
+                          .select('*')
+                          .eq('registration_number', expertRegNo)
+                          .eq('user_type', 'Expert')
+                          .single();
+
+                        if (!error && expertUserData) {
+                          setExpertData(expertUserData);
+                          setExpertName(expertUserData.user_name);
+                          setExpertProfile({
+                            specialization: expertUserData.specialization || expertUserData.course || 'Mental Health Expert',
+                            experience: expertUserData.experience || '5+ years',
+                            qualifications: expertUserData.qualifications || 'Licensed Professional',
+                            bio: expertUserData.bio || `Expert specializing in ${expertUserData.specialization || 'Mental Health'}`,
+                            email: expertUserData.email || '',
+                            phone: expertUserData.phone || '',
+                            rating: expertUserData.rating ? expertUserData.rating.toString() : '4.8'
+                          });
+                          Alert.alert('Success', 'Expert data refreshed from database');
+                        } else {
+                          Alert.alert('Info', 'No updated data found in database');
+                        }
+                      } catch (error) {
+                        console.error('Error refreshing expert data:', error);
+                        Alert.alert('Error', 'Failed to refresh data from database');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }
+                  }}
+                >
+                  <Ionicons name="refresh-outline" size={20} color={Colors.primary} />
+                  <Text style={styles.refreshButtonText}>Refresh</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.exInfoRow}>
@@ -947,9 +1047,78 @@ export default function ExpertHome() {
                   <Ionicons name="briefcase-outline" size={22} color={Colors.primary} />
                 </View>
                 <View style={styles.exStatContent}>
-                  <Text style={styles.exInfoLabel}>Role</Text>
-                  <Text style={styles.exInfoValue}>Mental Health Expert</Text>
+                  <Text style={styles.exInfoLabel}>Specialization</Text>
+                  <Text style={styles.exInfoValue}>{expertProfile.specialization || 'Mental Health Expert'}</Text>
                 </View>
+              </View>
+
+              <View style={styles.exInfoRow}>
+                <View style={styles.exStatIcon}>
+                  <Ionicons name="time-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.exStatContent}>
+                  <Text style={styles.exInfoLabel}>Experience</Text>
+                  <Text style={styles.exInfoValue}>{expertProfile.experience || '5+ years'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.exInfoRow}>
+                <View style={styles.exStatIcon}>
+                  <Ionicons name="mail-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.exStatContent}>
+                  <Text style={styles.exInfoLabel}>Email</Text>
+                  <Text style={styles.exInfoValue}>{expertProfile.email || 'Not available'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.exInfoRow}>
+                <View style={styles.exStatIcon}>
+                  <Ionicons name="call-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.exStatContent}>
+                  <Text style={styles.exInfoLabel}>Phone</Text>
+                  <Text style={styles.exInfoValue}>{expertProfile.phone || 'Not available'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.exInfoRow}>
+                <View style={styles.exStatIcon}>
+                  <Ionicons name="star-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.exStatContent}>
+                  <Text style={styles.exInfoLabel}>Rating</Text>
+                  <Text style={styles.exInfoValue}>{expertProfile.rating || '4.8'} ⭐</Text>
+                </View>
+              </View>
+
+              <View style={styles.exInfoRow}>
+                <View style={styles.exStatIcon}>
+                  <Ionicons name="school-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.exStatContent}>
+                  <Text style={styles.exInfoLabel}>Qualifications</Text>
+                  <Text style={styles.exInfoValue}>{expertProfile.qualifications || 'Licensed Professional'}</Text>
+                </View>
+              </View>
+
+              {/* Bio Section */}
+              {expertProfile.bio && (
+                <View style={styles.exBioSection}>
+                  <View style={styles.exBioHeader}>
+                    <Ionicons name="document-text-outline" size={22} color={Colors.primary} />
+                    <Text style={styles.exBioTitle}>About Me</Text>
+                  </View>
+                  <Text style={styles.exBioText}>{expertProfile.bio}</Text>
+                </View>
+              )}
+
+              {/* Data Source Indicator */}
+              <View style={styles.exDataSourceInfo}>
+                <Ionicons name="server-outline" size={16} color="#666" />
+                <Text style={styles.exDataSourceText}>
+                  Data from: {expertData ? 'Database (user_requests)' : 'Local Storage'}
+                </Text>
               </View>
             </View>
 
@@ -2100,6 +2269,62 @@ const styles = StyleSheet.create({
   exClosePicModalText: {
     color: Colors.primary,
     fontSize: 16,
+    fontWeight: '600',
+  },
+  // Bio and data source styles
+  exBioSection: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  exBioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  exBioTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginLeft: 8,
+  },
+  exBioText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    textAlign: 'justify',
+  },
+  exDataSourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+  },
+  exDataSourceText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 5,
+    fontStyle: 'italic',
+  },
+  // Refresh button styles
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: Colors.accent + '20',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  refreshButtonText: {
+    fontSize: 12,
+    color: Colors.primary,
+    marginLeft: 4,
     fontWeight: '600',
   },
 });
