@@ -82,9 +82,9 @@ const MessageItem = React.memo(({
 
 export default function Chat() {
   const params = useLocalSearchParams();
-  const participantId = params.participantId as string;
-  const participantName = params.participantName as string;
-  const participantType = params.participantType as string;
+  const participantId = (params.expertId || params.peerId || params.participantId) as string;
+  const participantName = (params.expertName || params.peerName || params.participantName) as string;
+  const participantType = (params.userType || params.participantType) as string;
 
   const [studentInfo, setStudentInfo] = useState<StudentInfo>({ registration: '', name: '' });
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
