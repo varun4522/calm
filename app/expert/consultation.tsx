@@ -95,11 +95,11 @@ export default function ConsultationPage() {
                         const exists = prev.some(msg => msg.id === newMessage.id);
                         if (exists) return prev;
                         const updatedMessages = [newMessage, ...prev];
-                        
+
                         // Update grouped conversations
                         const grouped = groupMessagesBySender(updatedMessages);
                         setGroupedConversations(grouped);
-                        
+
                         return updatedMessages;
                     });
                 }
@@ -169,7 +169,7 @@ export default function ConsultationPage() {
     const groupMessagesBySender = (messages: ChatMessage[]): GroupedConversation[] => {
         const grouped = messages.reduce((acc, message) => {
             const senderId = message.sender_id;
-            
+
             if (!acc[senderId]) {
                 acc[senderId] = {
                     sender_id: senderId,
@@ -184,19 +184,19 @@ export default function ConsultationPage() {
                 // Check if this message is more recent
                 const currentTimestamp = new Date(message.created_at);
                 const latestTimestamp = new Date(acc[senderId].latest_timestamp);
-                
+
                 if (currentTimestamp > latestTimestamp) {
                     acc[senderId].latest_message = message.message;
                     acc[senderId].latest_timestamp = message.created_at;
                 }
                 acc[senderId].message_count += 1;
             }
-            
+
             return acc;
         }, {} as Record<string, GroupedConversation>);
 
         // Convert to array and sort by latest timestamp
-        return Object.values(grouped).sort((a, b) => 
+        return Object.values(grouped).sort((a, b) =>
             new Date(b.latest_timestamp).getTime() - new Date(a.latest_timestamp).getTime()
         );
     };
