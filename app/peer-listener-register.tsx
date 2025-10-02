@@ -27,7 +27,6 @@ export default function PeerListenerRegister() {
     studentId: '',
     phone: '',
     course: '',
-    year: '',
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -40,10 +39,10 @@ export default function PeerListenerRegister() {
   }, [router]);
 
   const validateForm = () => {
-    const { name, email, username, password, confirmPassword, studentId, phone, course, year } = formData;
+    const { name, email, username, password, confirmPassword, studentId, phone, course } = formData;
 
     if (!name.trim() || !email.trim() || !username.trim() || !password.trim() ||
-        !studentId.trim() || !phone.trim() || !course.trim() || !year.trim()) {
+        !studentId.trim() || !phone.trim() || !course.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
       return false;
     }
@@ -93,7 +92,7 @@ export default function PeerListenerRegister() {
                 onPress: () => {
                   Alert.alert(
                     '👨‍💻 Administrator Instructions',
-                    'To fix this issue, the administrator needs to:\n\n1️⃣ Go to Supabase Dashboard\n2️⃣ Open SQL Editor\n3️⃣ Run this SQL command:\n\nCREATE TABLE IF NOT EXISTS user_requests (\n  id SERIAL PRIMARY KEY,\n  user_name TEXT NOT NULL,\n  email TEXT UNIQUE NOT NULL,\n  username TEXT UNIQUE NOT NULL,\n  registration_number TEXT NOT NULL,\n  user_type TEXT NOT NULL,\n  phone TEXT,\n  course TEXT,\n  year TEXT,\n  dob TEXT,\n  password TEXT NOT NULL,\n  status TEXT DEFAULT \'approved\',\n  created_at TIMESTAMP DEFAULT NOW()\n);',
+                    'To fix this issue, the administrator needs to:\n\n1️⃣ Go to Supabase Dashboard\n2️⃣ Open SQL Editor\n3️⃣ Run this SQL command:\n\nCREATE TABLE IF NOT EXISTS user_requests (\n  id SERIAL PRIMARY KEY,\n  user_name TEXT NOT NULL,\n  email TEXT UNIQUE NOT NULL,\n  username TEXT UNIQUE NOT NULL,\n  registration_number TEXT NOT NULL,\n  user_type TEXT NOT NULL,\n  phone TEXT,\n  course TEXT,\n  dob TEXT,\n  password TEXT NOT NULL,\n  status TEXT DEFAULT \'approved\',\n  created_at TIMESTAMP DEFAULT NOW()\n);',
                     [{ text: 'Got it' }]
                   );
                 }
@@ -136,7 +135,6 @@ export default function PeerListenerRegister() {
             course: formData.course.trim(),
             password: formData.password,
             phone: formData.phone.trim(),
-            year: formData.year.trim(),
             status: 'approved',
             created_at: new Date().toISOString()
           }
@@ -157,7 +155,7 @@ export default function PeerListenerRegister() {
                 onPress: () => {
                   Alert.alert(
                     '⚡ Quick Database Setup',
-                    'Administrator: Create the table with this SQL:\n\nCREATE TABLE peer_listeners (\n  id SERIAL PRIMARY KEY,\n  name TEXT NOT NULL,\n  email TEXT UNIQUE NOT NULL,\n  username TEXT UNIQUE NOT NULL,\n  student_id TEXT NOT NULL,\n  phone TEXT,\n  course TEXT,\n  year TEXT,\n  status TEXT DEFAULT \'pending\',\n  created_at TIMESTAMP DEFAULT NOW()\n);',
+                    'Administrator: Create the table with this SQL:\n\nCREATE TABLE peer_listeners (\n  id SERIAL PRIMARY KEY,\n  name TEXT NOT NULL,\n  email TEXT UNIQUE NOT NULL,\n  username TEXT UNIQUE NOT NULL,\n  student_id TEXT NOT NULL,\n  phone TEXT,\n  course TEXT,\n  status TEXT DEFAULT \'pending\',\n  created_at TIMESTAMP DEFAULT NOW()\n);',
                     [{ text: 'Copy to Clipboard' }, { text: 'OK' }]
                   );
                 }
@@ -193,17 +191,6 @@ export default function PeerListenerRegister() {
 
       // Store registration data locally for backup
       await AsyncStorage.setItem('pendingPeerListener', JSON.stringify(formData));
-
-      Alert.alert(
-        'Registration Successful!',
-        `Welcome ${formData.name}! Your peer listener account has been created successfully. You can now log in and start helping others.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => router.push('/peer-listener-login')
-          }
-        ]
-      );
 
     } catch (error) {
       console.error('Registration error:', error);
@@ -244,10 +231,6 @@ export default function PeerListenerRegister() {
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
           <View style={styles.formContainer}>
             <View style={styles.formCard}>
-              <Text style={styles.title}>Join as Peer Listener</Text>
-
-              {/* Personal Information */}
-              <Text style={styles.sectionTitle}>Personal Information</Text>
 
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Full Name *</Text>
@@ -328,12 +311,12 @@ export default function PeerListenerRegister() {
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Student ID *</Text>
+                <Text style={styles.inputLabel}>Student Registration no *</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.studentId}
                   onChangeText={(value) => updateFormData('studentId', value)}
-                  placeholder="Enter your student ID"
+                  placeholder="Enter your student registration number"
                   placeholderTextColor="#a8a8a8"
                   editable={!isLoading}
                 />
@@ -351,18 +334,6 @@ export default function PeerListenerRegister() {
                 />
               </View>
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Year of Study *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.year}
-                  onChangeText={(value) => updateFormData('year', value)}
-                  placeholder="e.g., 2nd Year, Final Year"
-                  placeholderTextColor="#a8a8a8"
-                  editable={!isLoading}
-                />
-              </View>
-
               <TouchableOpacity
                 style={[styles.registerButton, { opacity: isLoading ? 0.7 : 1 }]}
                 onPress={handleRegister}
@@ -372,16 +343,6 @@ export default function PeerListenerRegister() {
                   {isLoading ? 'Submitting Application...' : 'Submit Application'}
                 </Text>
               </TouchableOpacity>
-
-              <View style={styles.loginContainer}>
-                <Text style={styles.loginText}>Already registered? </Text>
-                <TouchableOpacity
-                  onPress={() => router.push('/peer-listener-login')}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.loginLink}>Login here</Text>
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
         </ScrollView>
@@ -450,29 +411,12 @@ const styles = StyleSheet.create({
     elevation: 10,
     marginTop: 20,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: Colors.primary,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
   subtitle: {
     fontSize: 16,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: 25,
     lineHeight: 22,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.primary,
-    marginTop: 20,
-    marginBottom: 15,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.accent,
-    paddingBottom: 5,
   },
   inputContainer: {
     marginBottom: 15,
@@ -515,22 +459,6 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  loginContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 15,
-  },
-  loginText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-  },
-  loginLink: {
-    fontSize: 16,
-    color: Colors.primary,
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
   },
   infoContainer: {
     marginTop: 20,

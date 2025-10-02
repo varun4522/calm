@@ -315,7 +315,7 @@ export default function FrontPage() {
                               router.push(`/expert/expert-home?registration=${userData.registration_number}`);
                             }
                           } else if (userData.user_type === 'Peer Listener') {
-                            router.push('/peer-listener-login');
+                            router.push('/'); // Navigate to main page for peer listeners
                           } else if (userData.user_type === 'Admin') {
                             router.push('/admin/admin-home');
                           }

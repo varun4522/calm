@@ -507,7 +507,7 @@ export default function AdminHome() {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-      router.replace('/admin-login'); // Change '/login' to your actual login route
+      router.replace('/'); // Navigate to main login page
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -840,7 +840,7 @@ export default function AdminHome() {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-      router.replace('/admin-login'); // Change '/login' to your actual login route
+      router.replace('/'); // Navigate to main login page
     } catch (error) {
       console.error('Logout error:', error);
     }
