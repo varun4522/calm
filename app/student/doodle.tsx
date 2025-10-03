@@ -1,8 +1,9 @@
+import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-view';
 import Slider from '@react-native-community/slider';
 import { Canvas, Path } from '@shopify/react-native-skia';
 import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Dimensions, Modal, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
@@ -10,20 +11,20 @@ const { width, height } = Dimensions.get('window');
 
 export default function EnhancedDoodle() {
   const [paths, setPaths] = useState<{ d: string; color: string; strokeWidth: number }[]>([]);
+  const [redoStack, setRedoStack] = useState<{ d: string; color: string; strokeWidth: number }[]>([]);
+  const [zoomLevel, setZoomLevel] = useState(1);
+
   const [currentPath, setCurrentPath] = useState<string>('');
   const [currentColor, setCurrentColor] = useState<string>('#222');
   const [brushSize, setBrushSize] = useState<number>(5);
   const [eraserSize, setEraserSize] = useState<number>(10);
   const [isEraser, setIsEraser] = useState<boolean>(false);
   const [drawing, setDrawing] = useState(false);
-  const [zoomScale, setZoomScale] = useState(1);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [customColor, setCustomColor] = useState('#FF0000');
   const [hue, setHue] = useState(0);
   const [saturation, setSaturation] = useState(100);
   const [lightness, setLightness] = useState(50);
-  const [showLongPressZoom, setShowLongPressZoom] = useState(false);
-  const [longPressPosition, setLongPressPosition] = useState({ x: 0, y: 0 });
   const canvasRef = useRef<View>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const router = useRouter();
@@ -35,34 +36,64 @@ export default function EnhancedDoodle() {
   const CANVAS_HEIGHT = height * 0.55; // Increased from 0.5 to 0.85 for more drawing space
 
   const handleTouchStart = (e: any) => {
+  // 👇 only start drawing if exactly one finger
+  if (e.nativeEvent.touches.length === 1) {
     const { locationX, locationY } = e.nativeEvent;
     setCurrentPath(`M${locationX},${locationY}`);
     setDrawing(true);
-  };
+  } else {
+    setDrawing(false); // disable drawing for multi-touch
+  }
+};
 
   const handleTouchMove = (e: any) => {
     if (!drawing) return;
+    if (e.nativeEvent.touches.length !== 1) return; // ignore if multi-touch
     const { locationX, locationY } = e.nativeEvent;
     setCurrentPath((prev) => prev + ` L${locationX},${locationY}`);
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: any) => {
+    if (!drawing) return;
+
+    // If it was a single finger drawing
     if (currentPath) {
-      setPaths((prev) => [...prev, {
-        d: currentPath,
-        color: isEraser ? '#fff' : currentColor,
-        strokeWidth: isEraser ? eraserSize : brushSize
-      }]);
-      setCurrentPath('');
+      setPaths((prev) => [
+        ...prev,
+        {
+          d: currentPath,
+          color: isEraser ? "#fff" : currentColor,
+          strokeWidth: isEraser ? eraserSize : brushSize,
+        },
+      ]);
+      setCurrentPath("");
+      setRedoStack([]);
     }
     setDrawing(false);
   };
 
-  const handleLongPress = (e: any) => {
-    const { locationX, locationY } = e.nativeEvent;
-    setLongPressPosition({ x: locationX, y: locationY });
-    setShowLongPressZoom(true);
+  const handleUndo = () => {
+    if (paths.length > 0) {
+      const newPaths = [...paths];
+      const popped = newPaths.pop(); // remove last stroke
+      if (popped) {
+        setRedoStack((prev) => [...prev, popped]);
+      }
+      setPaths(newPaths);
+    }
   };
+
+  const handleRedo = () => {
+    if (redoStack.length > 0) {
+      const newRedoStack = [...redoStack];
+      const restored = newRedoStack.pop();
+      if (restored) {
+        setPaths((prev) => [...prev, restored]);
+      }
+      setRedoStack(newRedoStack);
+    }
+  };
+
 
   const handleClear = () => {
     setPaths([]);
@@ -78,39 +109,6 @@ export default function EnhancedDoodle() {
     setIsEraser(!isEraser);
   };
 
-  const handleZoomIn = () => {
-    if (zoomScale < 3) {
-      const newScale = Math.min(zoomScale + 0.5, 3);
-      setZoomScale(newScale);
-      if (scrollViewRef.current) {
-        scrollViewRef.current.setNativeProps({ zoomScale: newScale });
-      }
-    }
-    setShowLongPressZoom(false);
-  };
-
-  const handleZoomOut = () => {
-    if (zoomScale > 1) {
-      const newScale = Math.max(zoomScale - 0.5, 1);
-      setZoomScale(newScale);
-      if (scrollViewRef.current) {
-        scrollViewRef.current.setNativeProps({ zoomScale: newScale });
-      }
-    }
-    setShowLongPressZoom(false);
-  };
-
-  const resetZoom = () => {
-    setZoomScale(1);
-    if (scrollViewRef.current) {
-      scrollViewRef.current.setNativeProps({ zoomScale: 1 });
-    }
-  };
-
-  const handleZoomChange = (scale: number) => {
-    setZoomScale(scale);
-  };
-
   // Color picker functions
   // Optimized HSL to Hex conversion with memoization
   const hslToHex = useCallback((h: number, s: number, l: number) => {
@@ -123,11 +121,6 @@ export default function EnhancedDoodle() {
     };
     return `#${f(0)}${f(8)}${f(4)}`;
   }, []);
-
-  // Memoized custom color calculation to prevent unnecessary re-renders
-  const calculatedCustomColor = useMemo(() => {
-    return hslToHex(hue, saturation, lightness);
-  }, [hue, saturation, lightness, hslToHex]);
 
   const hexToHsl = useCallback((hex: string) => {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -327,6 +320,17 @@ export default function EnhancedDoodle() {
             thumbTintColor="#4A90E2"
           />
         </View>
+
+        {/* Zoom Controls */}
+<View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+  <Text style={{ color: '#6B46C1', fontSize: 14, width: 80, fontWeight: '600' }}>
+    Zoom:
+  </Text>
+  <Text style={{ color: '#8B5CF6', fontSize: 14, fontWeight: 'bold', width: 40 }}>
+    {zoomLevel.toFixed(1)}x
+  </Text>
+</View>
+
       </View>
 
       {/* Enhanced Canvas Area with Two-Finger Zoom */}
@@ -345,14 +349,9 @@ export default function EnhancedDoodle() {
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
           pinchGestureEnabled={true}
-          scrollEnabled={true}
+          scrollEnabled={false}
           centerContent={true}
-          onMomentumScrollEnd={(event) => {
-            const currentZoom = event.nativeEvent.zoomScale;
-            if (currentZoom) {
-              setZoomScale(currentZoom);
-            }
-          }}
+
         >
           <View
             ref={canvasRef}
@@ -371,28 +370,37 @@ export default function EnhancedDoodle() {
               borderColor: '#CCCCCC',
             }}
           >
-            <TouchableWithoutFeedback
-              onLongPress={handleLongPress}
-              delayLongPress={500}
-            >
-              <View style={{ width: '100%', height: '100%' }}>
+            <TouchableWithoutFeedback>
+              <View style={{ width: '100%', height: '100%', }}>
+                <ReactNativeZoomableView
+                  maxZoom={5.5}
+                  minZoom={1}
+                  zoomStep={0.5}
+                  initialZoom={1}
+                  bindToBorders={true}
+                  panEnabled={false}
+                  style={{flex: 1, display: 'flex',  width: "100%"}}
+                  onZoomAfter={(event, gestureState, zoomableViewEventObject) => {
+                    setZoomLevel(zoomableViewEventObject.zoomLevel);
+                  }}
+                >
                 <Canvas
-                  style={{ width: '100%', height: '100%' }}
+                  style={{ width: '100%', height: '100%', }}
                   onTouchStart={handleTouchStart}
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
                 >
-              {paths.map((p, i) => (
-                <Path
-                  key={i}
-                  path={p.d}
-                  color={p.color}
-                  style="stroke"
-                  strokeWidth={p.strokeWidth}
-                  strokeCap="round"
-                  strokeJoin="round"
-                />
-              ))}
+                  {paths.map((p, i) => (
+                    <Path
+                      key={i}
+                      path={p.d}
+                      color={p.color}
+                      style="stroke"
+                      strokeWidth={p.strokeWidth}
+                      strokeCap="round"
+                      strokeJoin="round"
+                    />
+                  ))}
                   {currentPath ? (
                     <Path
                       path={currentPath}
@@ -404,6 +412,7 @@ export default function EnhancedDoodle() {
                     />
                   ) : null}
                 </Canvas>
+                </ReactNativeZoomableView>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -456,6 +465,32 @@ export default function EnhancedDoodle() {
         >
           <Text style={{ color: '#059669', fontSize: 16, fontWeight: 'bold' }}>💾 Save</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleUndo}
+          disabled={paths.length === 0}
+          style={{
+            backgroundColor: paths.length === 0 ? "#E5E7EB" : "#FDE68A",
+            paddingVertical: 12,
+            paddingHorizontal: 24,
+            borderRadius: 12,
+          }}
+        >
+          <Text style={{ color: "#B45309", fontSize: 16, fontWeight: "bold" }}>↩️ Undo</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleRedo}
+          disabled={redoStack.length === 0}
+          style={{
+            backgroundColor: redoStack.length === 0 ? "#E5E7EB" : "#BFDBFE",
+            paddingVertical: 12,
+            paddingHorizontal: 24,
+            borderRadius: 12,
+          }}
+        >
+          <Text style={{ color: "#1D4ED8", fontSize: 16, fontWeight: "bold" }}>↪️ Redo</Text>
+        </TouchableOpacity>
+
       </View>
 
       {/* VS Code Style Color Picker Modal */}
@@ -532,7 +567,7 @@ export default function EnhancedDoodle() {
                 minimumValue={0}
                 maximumValue={360}
                 value={hue}
-                onValueChange={(value) => {
+                onSlidingComplete={(value) => {
                   const newHue = Math.round(value);
                   setHue(newHue);
                   setCustomColor(hslToHex(newHue, saturation, lightness));
@@ -554,7 +589,7 @@ export default function EnhancedDoodle() {
                 minimumValue={0}
                 maximumValue={100}
                 value={saturation}
-                onValueChange={(value) => {
+                onSlidingComplete={(value) => {
                   const newSaturation = Math.round(value);
                   setSaturation(newSaturation);
                   setCustomColor(hslToHex(hue, newSaturation, lightness));
@@ -576,7 +611,7 @@ export default function EnhancedDoodle() {
                 minimumValue={0}
                 maximumValue={100}
                 value={lightness}
-                onValueChange={(value) => {
+                onSlidingComplete={(value) => {
                   const newLightness = Math.round(value);
                   setLightness(newLightness);
                   setCustomColor(hslToHex(hue, saturation, newLightness));
@@ -658,115 +693,6 @@ export default function EnhancedDoodle() {
         </View>
       </Modal>
 
-      {/* Long Press Zoom Menu */}
-      {showLongPressZoom && (
-        <View style={{
-          position: 'absolute',
-          left: Math.min(longPressPosition.x, width - 160),
-          top: Math.min(longPressPosition.y + 200, height - 200),
-          backgroundColor: '#fff',
-          borderRadius: 12,
-          padding: 8,
-          elevation: 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 6,
-          borderWidth: 2,
-          borderColor: '#CCCCCC',
-          zIndex: 1000,
-        }}>
-          <TouchableOpacity
-            onPress={handleZoomIn}
-            disabled={zoomScale >= 3}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              backgroundColor: zoomScale >= 3 ? '#EEEEEE' : '#4A90E2',
-              borderRadius: 8,
-              marginBottom: 4,
-              opacity: zoomScale >= 3 ? 0.5 : 1,
-            }}
-          >
-            <Text style={{
-              color: zoomScale >= 3 ? '#AAAAAA' : '#FFFFFF',
-              fontSize: 16,
-              fontWeight: 'bold',
-              marginRight: 8
-            }}>
-              🔍+
-            </Text>
-            <Text style={{
-              color: zoomScale >= 3 ? '#AAAAAA' : '#FFFFFF',
-              fontSize: 14,
-              fontWeight: '600'
-            }}>
-              Zoom In
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleZoomOut}
-            disabled={zoomScale <= 1}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              backgroundColor: zoomScale <= 1 ? '#EEEEEE' : '#4A90E2',
-              borderRadius: 8,
-              marginBottom: 4,
-              opacity: zoomScale <= 1 ? 0.5 : 1,
-            }}
-          >
-            <Text style={{
-              color: zoomScale <= 1 ? '#AAAAAA' : '#FFFFFF',
-              fontSize: 16,
-              fontWeight: 'bold',
-              marginRight: 8
-            }}>
-              🔍-
-            </Text>
-            <Text style={{
-              color: zoomScale <= 1 ? '#AAAAAA' : '#FFFFFF',
-              fontSize: 14,
-              fontWeight: '600'
-            }}>
-              Zoom Out
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setShowLongPressZoom(false)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              backgroundColor: '#FCA5A5',
-              borderRadius: 8,
-            }}
-          >
-            <Text style={{
-              color: '#DC2626',
-              fontSize: 16,
-              fontWeight: 'bold',
-              marginRight: 8
-            }}>
-              ✕
-            </Text>
-            <Text style={{
-              color: '#DC2626',
-              fontSize: 14,
-              fontWeight: '600'
-            }}>
-              Close
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
     </View>
   );
 }
