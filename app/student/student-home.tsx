@@ -1,8 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '../../constants/Colors';
+import { supabase } from '../../lib/supabase';
 
 const profilePics = [
   require('../../assets/images/profile/pic1.png'),
@@ -145,6 +147,16 @@ export default function StudentHome() {
   const [currentPromptInfo, setCurrentPromptInfo] = useState<{timeLabel: string, scheduleKey: string} | null>(null);
   const [nextMoodPromptTime, setNextMoodPromptTime] = useState<Date | null>(null);
 
+  // Notification states
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [hasNewNotification, setHasNewNotification] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const bellAnimation = React.useRef(new Animated.Value(0)).current;
+  const toastAnimation = React.useRef(new Animated.Value(0)).current;
+
   // Dynamic mood prompt schedule (6 times a day with equal intervals)
   // Each prompt is 4 hours apart from the first login time
   const generateMoodPromptTimes = (firstLoginTime: Date): { time: Date, label: string, intervalNumber: number }[] => {
@@ -272,6 +284,173 @@ export default function StudentHome() {
 
     loadMoodHistory();
   }, [studentRegNo]);
+
+  // Notification functions
+  const loadNotifications = async () => {
+    try {
+      let regNo = studentRegNo;
+      if (!regNo) {
+        const storedReg = await AsyncStorage.getItem('currentStudentReg');
+        if (storedReg) regNo = storedReg;
+      }
+
+      if (!regNo) return;
+
+      // Load notifications where student is the recipient or recipient_type is 'student' or 'all'
+      const { data: notificationsData, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .or(`recipient_id.eq.${regNo},recipient_type.eq.student,recipient_type.eq.all`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Error loading notifications:', error);
+        return;
+      }
+
+      if (notificationsData) {
+        setNotifications(notificationsData);
+        const unread = notificationsData.filter(n => !n.is_read).length;
+        setUnreadCount(unread);
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  };
+
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notificationId);
+
+      if (error) {
+        console.error('Error marking notification as read:', error);
+        return;
+      }
+
+      // Update local state
+      setNotifications(prev =>
+        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+
+
+
+
+  // Load notifications on component mount and when focused
+  useEffect(() => {
+    loadNotifications();
+
+    // Set up real-time subscription for notifications
+    const notificationSubscription = supabase
+      .channel('notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications'
+        },
+        (payload) => {
+          console.log('🔔 Notification change detected:', payload);
+
+          // Check if this notification is for current student
+          const isForCurrentStudent = async () => {
+            let regNo = studentRegNo;
+            if (!regNo) {
+              const storedReg = await AsyncStorage.getItem('currentStudentReg');
+              if (storedReg) regNo = storedReg;
+            }
+
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const notification = payload.new;
+              const isRelevant =
+                notification.recipient_id === regNo ||
+                notification.recipient_type === 'student' ||
+                notification.recipient_type === 'all';
+
+              if (isRelevant) {
+                // Trigger bell animation for new notification
+                setHasNewNotification(true);
+
+                // Show toast notification
+                setToastMessage(notification.title || 'New notification received!');
+                setShowToast(true);
+
+                // Start bell shake animation
+                Animated.sequence([
+                  Animated.timing(bellAnimation, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: true,
+                  }),
+                  Animated.timing(bellAnimation, {
+                    toValue: -1,
+                    duration: 200,
+                    useNativeDriver: true,
+                  }),
+                  Animated.timing(bellAnimation, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: true,
+                  }),
+                  Animated.timing(bellAnimation, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                  })
+                ]).start();
+
+                // Start toast animation
+                Animated.sequence([
+                  Animated.timing(toastAnimation, {
+                    toValue: 1,
+                    duration: 300,
+                    useNativeDriver: true,
+                  }),
+                  Animated.delay(2500),
+                  Animated.timing(toastAnimation, {
+                    toValue: 0,
+                    duration: 300,
+                    useNativeDriver: true,
+                  })
+                ]).start();
+
+                // Reset animation flags after 3 seconds
+                setTimeout(() => {
+                  setHasNewNotification(false);
+                  setShowToast(false);
+                }, 3000);
+              }
+            }
+          };
+
+          isForCurrentStudent();
+          // Reload notifications when any change occurs
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(notificationSubscription);
+    };
+  }, [studentRegNo]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadNotifications();
+    }, [])
+  );
 
   // Load profile picture when screen comes into focus (for instant updates from settings)
   useFocusEffect(
@@ -883,9 +1062,40 @@ export default function StudentHome() {
           })}
         </View>
       )}
-      {/* AI Floating Button - Only show on Home tab */}
+      {/* Floating Action Buttons - Only show on Home tab */}
       {activeTab === 'home' && (
-        <View style={{ position: 'absolute', top: 42, right: 20, zIndex: 20 }}>
+        <View style={{ position: 'absolute', top: 42, right: 20, zIndex: 20, flexDirection: 'row', alignItems: 'center' }}>
+          {/* Notification Bell */}
+          <TouchableOpacity
+            style={{ width: 40, height: 40, borderRadius: 22, backgroundColor: hasNewNotification ? '#ffeb3b' : Colors.white, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 5, borderWidth: 2, borderColor: hasNewNotification ? '#ff9800' : Colors.primary, marginRight: 10 }}
+            onPress={() => setShowNotificationModal(true)}
+          >
+            <Animated.View
+              style={{
+                transform: [{
+                  rotate: bellAnimation.interpolate({
+                    inputRange: [-1, 1],
+                    outputRange: ['-15deg', '15deg']
+                  })
+                }]
+              }}
+            >
+              <Ionicons
+                name={hasNewNotification ? "notifications" : "notifications"}
+                size={20}
+                color={hasNewNotification ? '#ff5722' : Colors.primary}
+              />
+            </Animated.View>
+            {unreadCount > 0 && (
+              <View style={{ position: 'absolute', top: -2, right: -2, backgroundColor: hasNewNotification ? '#ff5722' : 'red', borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* AI Button */}
           <TouchableOpacity
             style={{ width: 40, height: 40, borderRadius: 22, backgroundColor: Colors.white, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 5, borderWidth: 2, borderColor: Colors.primary }}
             onPress={() => router.push('./ai')}
@@ -893,6 +1103,56 @@ export default function StudentHome() {
             <Text style={{ fontSize: 22, color: Colors.primary }}>🤖</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {/* Toast Notification */}
+      {showToast && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 100,
+            left: 20,
+            right: 20,
+            backgroundColor: Colors.primary,
+            borderRadius: 15,
+            padding: 15,
+            flexDirection: 'row',
+            alignItems: 'center',
+            zIndex: 1000,
+            elevation: 10,
+            shadowColor: Colors.shadow,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            transform: [
+              {
+                translateY: toastAnimation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-100, 0]
+                })
+              }
+            ],
+            opacity: toastAnimation
+          }}
+        >
+          <Ionicons name="notifications" size={20} color={Colors.white} style={{ marginRight: 10 }} />
+          <Text style={{ color: Colors.white, fontSize: 14, fontWeight: 'bold', flex: 1 }}>
+            {toastMessage}
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setShowToast(false);
+              Animated.timing(toastAnimation, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+              }).start();
+            }}
+            style={{ padding: 5 }}
+          >
+            <Ionicons name="close" size={16} color={Colors.white} />
+          </TouchableOpacity>
+        </Animated.View>
       )}
 
       {/* Toolkit Page Modal */}
@@ -990,6 +1250,78 @@ export default function StudentHome() {
               ))}
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* Notification Modal */}
+      <Modal visible={showNotificationModal} animationType="slide" transparent={true}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={{ backgroundColor: Colors.white, borderRadius: 20, padding: 20, width: '90%', maxHeight: '80%', shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10 }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold', color: Colors.text }}>🔔 Notifications</Text>
+              <TouchableOpacity
+                onPress={() => setShowNotificationModal(false)}
+                style={{ padding: 8, borderRadius: 20, backgroundColor: Colors.background }}
+              >
+                <Ionicons name="close" size={24} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+
+
+            {/* Notifications List */}
+            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+              {notifications.length === 0 ? (
+                <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 48, marginBottom: 15 }}>📭</Text>
+                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: Colors.text, marginBottom: 8 }}>No Notifications</Text>
+                  <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 }}>You&apos;re all caught up! No new notifications at the moment.</Text>
+                </View>
+              ) : (
+                notifications.map((notification) => (
+                  <View key={notification.id} style={{
+                    backgroundColor: !notification.is_read ? Colors.accent + '10' : Colors.white,
+                    borderRadius: 12,
+                    padding: 15,
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    borderColor: !notification.is_read ? Colors.primary : Colors.border,
+                    shadowColor: Colors.shadow,
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 3,
+                    elevation: 2
+                  }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: Colors.text, marginBottom: 5 }}>{notification.title}</Text>
+                        <Text style={{ fontSize: 14, color: Colors.textSecondary, lineHeight: 20, marginBottom: 8 }}>{notification.message}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.textSecondary }}>
+                          {new Date(notification.created_at).toLocaleDateString()} {new Date(notification.created_at).toLocaleTimeString()}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                        {!notification.is_read && (
+                          <TouchableOpacity
+                            style={{ backgroundColor: Colors.primary, borderRadius: 15, padding: 8 }}
+                            onPress={() => markNotificationAsRead(notification.id)}
+                          >
+                            <Ionicons name="checkmark" size={16} color={Colors.white} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                    {notification.priority === 'high' && (
+                      <View style={{ backgroundColor: '#ff4444', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, alignSelf: 'flex-start', marginTop: 8 }}>
+                        <Text style={{ color: Colors.white, fontSize: 10, fontWeight: 'bold' }}>High Priority</Text>
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
 

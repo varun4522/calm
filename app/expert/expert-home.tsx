@@ -1264,21 +1264,6 @@ export default function ExpertHome() {
               {/* Notification Actions */}
               <View style={{ marginBottom: 20 }}>
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-                  <TouchableOpacity
-                    style={[styles.notificationActionButton, { backgroundColor: Colors.primary }]}
-                    onPress={() => {
-                      setNotificationForm({
-                        title: '',
-                        message: '',
-                        recipient_type: 'all',
-                        notification_type: 'general',
-                        priority: 'medium'
-                      });
-                    }}
-                  >
-                    <Ionicons name="add" size={16} color={Colors.white} />
-                    <Text style={[styles.notificationActionText, { color: Colors.white }]}>Send New</Text>
-                  </TouchableOpacity>
 
                   {unreadCount > 0 && (
                     <TouchableOpacity
