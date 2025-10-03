@@ -1,19 +1,12 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Colors } from '../../constants/Colors';
 
 export default function SupportPage() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ registration: string }>();
-  const studentRegNo = params.registration;
 
   return (
     <View style={styles.container}>
-      {/* Background Image */}
-      <Image
-        source={undefined}
-        style={styles.backgroundImage}
-      />
-
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -24,45 +17,25 @@ export default function SupportPage() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Support Shelf</Text>
       </View>
-
       {/* Support Content */}
       <View style={styles.content}>
-        <Text style={styles.subtitle}>Choose your colorful support tool:</Text>
 
-        {/* Support Tools Grid */}
-        <View style={styles.supportGrid}>
-          <TouchableOpacity
-            style={[styles.supportButton, { backgroundColor: '#2ecc71' }]}
-            onPress={() => Linking.openURL('https://sgtuniversity.knimbus.com/user#/')}
-          >
-            <Text style={styles.supportButtonIcon}>📚</Text>
-            <Text style={styles.supportButtonText}>E-Library</Text>
+        {/* Support Tools Grid - 2x2 Layout */}
+        <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
+          <TouchableOpacity style={styles.supportButton} onPress={() => Linking.openURL('https://sgtuniversity.knimbus.com/user#/')}>
+            <Image source={require('../../assets/images/elibrary.png')} style={styles.supportButtonIcon} />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.supportButton, { backgroundColor: '#e74c3c' }]}
-            onPress={() => router.push('./emergency')}
-          >
-            <Text style={styles.supportButtonIcon}>🆘</Text>
-            <Text style={styles.supportButtonText}>Crisis Support</Text>
+          <TouchableOpacity style={styles.supportButton} onPress={() => router.push('./emergency')}>
+            <Image source={require('../../assets/images/sos.png')} style={styles.supportButtonIcon} />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.supportButton, { backgroundColor: '#f39c12' }]}
-            onPress={() => router.push('./learning')}
-          >
-            <Text style={styles.supportButtonIcon}>📖</Text>
-            <Text style={styles.supportButtonText}>Learning Support</Text>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
+          <TouchableOpacity style={styles.supportButton} onPress={() => router.push('./learning')}>
+            <Image source={require('../../assets/images/learning support.png')} style={styles.supportButtonIcon} />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.supportButton, { backgroundColor: '#8e44ad' }]}
-            onPress={() => router.push('./mood-playlists')}
-          >
-            <Text style={styles.supportButtonIcon}>🎵</Text>
-            <Text style={styles.supportButtonText}>Mood Playlists</Text>
+          <TouchableOpacity style={styles.supportButton} onPress={() => router.push('./mood-playlists')}>
+            <Image source={require('../../assets/images/mood playlist.png')} style={styles.supportButtonIcon} />
           </TouchableOpacity>
-
         </View>
       </View>
     </View>
@@ -72,16 +45,7 @@ export default function SupportPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f8ff',
-  },
-  backgroundImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: 220,
-    resizeMode: 'cover',
-    opacity: 0.25,
+    backgroundColor: Colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -89,33 +53,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: Colors.white,
     borderBottomLeftRadius: 25,
     borderBottomRightRadius: 25,
     margin: 10,
     marginTop: 30,
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   backButton: {
-    backgroundColor: '#e74c3c',
+    backgroundColor: Colors.primary,
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 15,
     marginRight: 15,
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
   backButtonText: {
-    color: '#ffffff',
+    color: Colors.white,
     fontSize: 16,
     fontWeight: 'bold',
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#2c3e50',
+    color: Colors.text,
     flex: 1,
     textAlign: 'center',
     marginRight: 60,
@@ -124,18 +92,8 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  title: {
-    color: '#2c3e50',
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
   subtitle: {
-    color: '#7f8c8d',
+    color: Colors.textSecondary,
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 30,
@@ -143,34 +101,36 @@ const styles = StyleSheet.create({
   supportGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 10,
   },
   supportButton: {
-    width: '48%',
-    height: 140,
-    borderRadius: 20,
+    width: '45%',
+    height: 120,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    elevation: 4,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    marginHorizontal: 10,
+    marginVertical: 8,
+    backgroundColor: Colors.white,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   supportButtonIcon: {
-    fontSize: 36,
+    width: 90,
+    height: 90,
     marginBottom: 8,
   },
   supportButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
+    color: Colors.primary,
+    fontSize: 14,
     fontWeight: 'bold',
     textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.2)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
   },
   infoSection: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',

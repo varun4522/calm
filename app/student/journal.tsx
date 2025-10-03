@@ -297,7 +297,7 @@ Goals for tomorrow..."
             shadowRadius: 4,
           }}
         >
-          <Text style={{ fontSize: 24 }}>✏️</Text>
+          <Text style={{ fontSize: 15 }}>Doodle</Text>
         </TouchableOpacity>
 
         {/* 3 Minute Gratitude Button */}
@@ -320,7 +320,7 @@ Goals for tomorrow..."
             shadowRadius: 4,
           }}
         >
-          <Text style={{ fontSize: 24 }}>🤔</Text>
+          <Text style={{ fontSize: 15 }}>Gratitude</Text>
         </TouchableOpacity>
       </View>
 

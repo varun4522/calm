@@ -34,14 +34,6 @@ export default function StudentSetting() {
   const [studentPhone, setStudentPhone] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [studentRegNo, setStudentRegNo] = useState(params.registration || '');
-
-  // App usage stats state
-  const [appUsageStats, setAppUsageStats] = useState({
-    totalTimeSpent: 0, // in seconds
-    lastSessionTime: '',
-    sessionCount: 0,
-    lastTab: 'home'
-  });
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current; // Initial value for opacity: 0
 
@@ -57,32 +49,6 @@ export default function StudentSetting() {
       console.error('Error saving student data to persistent storage:', error);
     }
   };
-
-  // Update app usage stats
-  const updateAppUsageStats = async () => {
-    if (studentRegNo) {
-      try {
-        const currentTime = new Date().toISOString();
-        const updatedStats = {
-          ...appUsageStats,
-          sessionCount: appUsageStats.sessionCount + 1,
-          lastSessionTime: currentTime,
-          lastTab: 'settings'
-        };
-        setAppUsageStats(updatedStats);
-        await AsyncStorage.setItem(`appUsageStats_${studentRegNo}`, JSON.stringify(updatedStats));
-      } catch (error) {
-        console.error('Error updating app usage stats:', error);
-      }
-    }
-  };
-
-  // Update usage stats when component mounts
-  useEffect(() => {
-    if (!isLoading && studentRegNo) {
-      updateAppUsageStats();
-    }
-  }, [isLoading, studentRegNo]);
 
   // Load all user data using the registration number from params
   useEffect(() => {
@@ -103,18 +69,14 @@ export default function StudentSetting() {
       try {
         console.log(`Loading data for student: ${regNo}`);
         // Batch load from AsyncStorage - check persistent data first
-        const [picIdx, appUsage, persistentData, sessionData] = await Promise.all([
+        const [picIdx, persistentData, sessionData] = await Promise.all([
           AsyncStorage.getItem(`profilePic_${regNo}`),
-          AsyncStorage.getItem(`appUsageStats_${regNo}`),
           AsyncStorage.getItem(`persistentStudentData_${regNo}`),
           AsyncStorage.getItem('currentStudentData')
         ]);
 
         if (picIdx !== null) {
           setSelectedProfilePic(parseInt(picIdx, 10));
-        }
-        if (appUsage !== null) {
-          setAppUsageStats(JSON.parse(appUsage));
         }
 
         // Use persistent data first, then session data, then fetch from Supabase
@@ -281,16 +243,6 @@ export default function StudentSetting() {
   // Handle logout
   const handleLogout = async () => {
     try {
-      // Save current usage stats before logout
-      if (studentRegNo) {
-        const currentStats = {
-          ...appUsageStats,
-          lastSessionTime: new Date().toISOString(),
-          lastTab: 'settings'
-        };
-        await AsyncStorage.setItem(`appUsageStats_${studentRegNo}`, JSON.stringify(currentStats));
-      }
-
       // Only clear current session data, keep persistent data for future logins
       await AsyncStorage.removeItem('currentStudentReg');
       await AsyncStorage.removeItem('currentStudentData');
@@ -438,58 +390,6 @@ export default function StudentSetting() {
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Phone</Text>
               <Text style={styles.infoValue}>{studentPhone || 'Not provided'}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* App Usage Stats */}
-        <View style={styles.infoBox}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons name="bar-chart" size={24} color={Colors.primary} />
-            <Text style={styles.sectionTitle}>App Usage Statistics</Text>
-          </View>
-
-          <View style={styles.statRow}>
-            <View style={styles.statIcon}>
-              <Ionicons name="time-outline" size={22} color={Colors.primary} />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statLabel}>Total Time Spent</Text>
-              <Text style={styles.statValue}>
-                {Math.floor(appUsageStats.totalTimeSpent / 3600)} hrs {Math.floor((appUsageStats.totalTimeSpent % 3600) / 60)} mins
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.statRow}>
-            <View style={styles.statIcon}>
-              <Ionicons name="refresh-circle-outline" size={22} color={Colors.primary} />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statLabel}>Sessions</Text>
-              <Text style={styles.statValue}>{appUsageStats.sessionCount}</Text>
-            </View>
-          </View>
-
-          <View style={styles.statRow}>
-            <View style={styles.statIcon}>
-              <Ionicons name="calendar-outline" size={22} color={Colors.primary} />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statLabel}>Last Active</Text>
-              <Text style={styles.statValue}>
-                {appUsageStats.lastSessionTime ? new Date(appUsageStats.lastSessionTime).toLocaleString() : 'Not available'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.statRow}>
-            <View style={styles.statIcon}>
-              <Ionicons name="apps-outline" size={22} color={Colors.primary} />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statLabel}>Last Tab Used</Text>
-              <Text style={styles.statValue}>{appUsageStats.lastTab}</Text>
             </View>
           </View>
         </View>

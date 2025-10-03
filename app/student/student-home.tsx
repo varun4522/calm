@@ -288,13 +288,18 @@ export default function StudentHome() {
   // Notification functions
   const loadNotifications = async () => {
     try {
-      let regNo = studentRegNo;
+      // Try to get registration number from state first, then params, then AsyncStorage
+      let regNo = studentReg || studentRegNo;
       if (!regNo) {
         const storedReg = await AsyncStorage.getItem('currentStudentReg');
         if (storedReg) regNo = storedReg;
       }
 
-      if (!regNo) return;
+      // Don't proceed if regNo is still undefined/null/empty or has invalid string values
+      if (!regNo || regNo === 'undefined' || regNo === 'null') {
+        console.log('⚠️ No valid student registration number available, skipping notification load');
+        return;
+      }
 
       // Load notifications where student is the recipient or recipient_type is 'student' or 'all'
       const { data: notificationsData, error } = await supabase
@@ -364,10 +369,16 @@ export default function StudentHome() {
 
           // Check if this notification is for current student
           const isForCurrentStudent = async () => {
-            let regNo = studentRegNo;
+            // Try to get registration number from state first, then params, then AsyncStorage
+            let regNo = studentReg || studentRegNo;
             if (!regNo) {
               const storedReg = await AsyncStorage.getItem('currentStudentReg');
               if (storedReg) regNo = storedReg;
+            }
+
+            // Skip if no valid registration number
+            if (!regNo || regNo === 'undefined' || regNo === 'null') {
+              return;
             }
 
             if (payload.eventType === 'INSERT' && payload.new) {
@@ -444,7 +455,7 @@ export default function StudentHome() {
     return () => {
       supabase.removeChannel(notificationSubscription);
     };
-  }, [studentRegNo]);
+  }, [studentRegNo, studentReg]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1343,32 +1354,26 @@ export default function StudentHome() {
               {/* 2x3 Matrix Layout */}
               <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => setShowToolkitPage(true)}>
-                  <Text style={{ fontSize: 32, marginBottom: 8 }}>🛠️</Text>
-                  <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Self-help Toolkit</Text>
+                  <Image source={require('../../assets/images/self help tool kit.png')} style={{ width: 60, height: 60, marginBottom: 8 }} />
                 </TouchableOpacity>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => router.push('./student-calm')}>
-                  <Text style={{ fontSize: 32, marginBottom: 8 }}>🧘</Text>
-                  <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>C.A.L.M Companion</Text>
+                  <Image source={require('../../assets/images/calmcampanion.png')} style={{ width: 60, height: 60, marginBottom: 8 }} />
                 </TouchableOpacity>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => router.push('./buddy-connect')}>
-                  <Text style={{ fontSize: 32, marginBottom: 8 }}>👥</Text>
-                  <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Community</Text>
+                  <Image source={require('../../assets/images/community.png')} style={{ width: 60, height: 60, marginBottom: 8 }} />
                 </TouchableOpacity>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => router.push('./journal')}>
-                  <Text style={{ fontSize: 32, marginBottom: 8 }}>📓</Text>
-                  <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Journal</Text>
+                  <Image source={require('../../assets/images/journal.png')} style={{ width: 60, height: 60, marginBottom: 8 }} />
                 </TouchableOpacity>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => router.push('./support')}>
-                  <Text style={{ fontSize: 32, marginBottom: 8 }}>🤝</Text>
-                  <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Support Shelf</Text>
+                  <Image source={require('../../assets/images/supportself.png')} style={{ width: 60, height: 60, marginBottom: 8 }} />
                 </TouchableOpacity>
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => router.push(`./message?registration=${studentRegNo}`)}>
-                  <Text style={{ fontSize: 32, marginBottom: 8 }}>💬</Text>
-                  <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Messages</Text>
+                  <Image source={require('../../assets/images/message.png')} style={{ width: 60, height: 60, marginBottom: 8 }} />
                 </TouchableOpacity>
               </View>
             </View>
