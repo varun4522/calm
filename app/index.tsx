@@ -59,26 +59,11 @@ export default function FrontPage() {
         <Text style={{
           marginTop: -19,
           textAlign: 'center',
-          fontSize: 60,
+          fontSize:60,
           color: '#4F21A2',
           fontFamily: 'Agbalumo'
         }}>
-          Companion
-        </Text>
-        <Text
-          style={{
-            marginTop: 15,
-            fontSize: 20,
-            fontWeight: 'bold',
-            color: '#4F21A2',
-            textAlign: 'center',
-            fontFamily: 'Tinos'
-          }}
-        >
-          Powered By{"\n"}
-          C.A.L.M Spaces{"\n"}
-          CEAPS, SGT UNIVERSITY{"\n"}
-          Cultivating Awareness, Lightness & Movement
+          Spaces
         </Text>
 
         {/* Login and Register Buttons */}
