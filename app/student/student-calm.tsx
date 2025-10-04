@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
 
 export default function StudentCalm() {
@@ -586,57 +587,55 @@ export default function StudentCalm() {
   );
 
   // Render time slot with booking status
-  const renderTimeSlot = (time: string) => {
-    const isSelected = selectedTime === time;
-    const isBooked = selectedPsychologist && selectedDate ?
-      isSessionBooked(selectedPsychologist, selectedDate, time) : false;
+  // const renderTimeSlot = (time: string) => {
+  //   const isSelected = selectedTime === time;
+  //   const isBooked = selectedPsychologist && selectedDate ?
+  //     isSessionBooked(selectedPsychologist, selectedDate, time) : false;
 
-    return (
-      <TouchableOpacity
-        key={time}
-        style={[
-          styles.timeSlot,
-          isSelected && styles.selectedTimeSlot,
-          isBooked && styles.bookedTimeSlot,
-        ]}
-        onPress={() => {
-          if (isBooked) {
-            Alert.alert(
-              'Session Unavailable',
-              'This time slot is already booked. Please select a different time.',
-              [{ text: 'OK' }]
-            );
-          } else {
-            setSelectedTime(time);
-          }
-        }}
-        disabled={isBooked}
-      >
-        <View style={styles.timeSlotContent}>
-          <Text style={[
-            styles.timeText,
-            isSelected && styles.selectedTimeText,
-            isBooked && styles.bookedTimeText,
-          ]}>
-            {time}
-          </Text>
-          <View style={[
-            styles.statusDot,
-            isBooked && styles.bookedStatusDot,
-            { backgroundColor: isBooked ? '#CE93D8' : (isSelected ? '#8E24AA' : '#4A148C') }
-          ]} />
-          {isBooked && (
-            <Text style={styles.bookedIndicatorText}>❌</Text>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  //   return (
+  //     <TouchableOpacity
+  //       key={time}
+  //       style={[
+  //         styles.timeSlot,
+  //         isSelected && styles.selectedTimeSlot,
+  //         isBooked && styles.bookedTimeSlot,
+  //       ]}
+  //       onPress={() => {
+  //         if (isBooked) {
+  //           Alert.alert(
+  //             'Session Unavailable',
+  //             'This time slot is already booked. Please select a different time.',
+  //             [{ text: 'OK' }]
+  //           );
+  //         } else {
+  //           setSelectedTime(time);
+  //         }
+  //       }}
+  //       disabled={isBooked}
+  //     >
+  //       <View style={styles.timeSlotContent}>
+  //         <Text style={[
+  //           styles.timeText,
+  //           isSelected && styles.selectedTimeText,
+  //           isBooked && styles.bookedTimeText,
+  //         ]}>
+  //           {time}
+  //         </Text>
+  //         <View style={[
+  //           styles.statusDot,
+  //           isBooked && styles.bookedStatusDot,
+  //           { backgroundColor: isBooked ? '#CE93D8' : (isSelected ? '#8E24AA' : '#4A148C') }
+  //         ]} />
+  //         {isBooked && (
+  //           <Text style={styles.bookedIndicatorText}>❌</Text>
+  //         )}
+  //       </View>
+  //     </TouchableOpacity>
+  //   );
+  // };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.gradientBackground} />
-
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -645,29 +644,31 @@ export default function StudentCalm() {
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-  <Text style={styles.headerTitle}>Student Calm Space</Text>
+        <Text style={styles.headerTitle}>Student Calm Space</Text>
       </View>
-      <ScrollView contentContainerStyle={styles.contentContainer}>
-        {/* Connection Buttons */}
-        <View style={styles.connectionCard}>
-          <Text style={styles.cardTitle}> Professional Support</Text>
-          <Text style={styles.cardSubtitle}>Connect with mental health professionals</Text>
 
-          <View style={styles.connectionButtons}>
+      <ScrollView contentContainerStyle={styles.contentContainer}>
+        {/* Professional Support Card */}
+        <View style={{ backgroundColor: Colors.white, borderRadius: 25, padding: 25, margin: 20, elevation: 8, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, borderWidth: 2, borderColor: Colors.primary }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: Colors.primary, textAlign: 'center', marginBottom: 8 }}>Professional Support</Text>
+          <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 20, fontStyle: 'italic' }}>Connect with mental health professionals</Text>
+
+          {/* Connection Buttons in 2x1 layout */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
             <TouchableOpacity
-              style={styles.connectionButton}
+              style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }}
               onPress={() => setShowPsychologistModal(true)}
             >
-              <Text style={styles.connectionIcon}>👩‍⚕️</Text>
-              <Text style={styles.connectionButtonText}>Connect with{'\n'}Psychologist</Text>
+              <Image source={require('../../assets/images/psychologist.png')} style={{ width: 50, height: 50, marginBottom: 8, resizeMode: 'contain' }} />
+              <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Connect with{'\n'}Psychologist</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.connectionButton}
+              style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }}
               onPress={() => setShowPeerListenerModal(true)}
             >
-              <Text style={styles.connectionIcon}>👥</Text>
-              <Text style={styles.connectionButtonText}>Connect with{'\n'}Peer Listener</Text>
+              <Image source={require('../../assets/images/peer listener.png')} style={{ width: 50, height: 50, marginBottom: 8, resizeMode: 'contain' }} />
+              <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Connect with{'\n'}Peer Listener</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1076,28 +1077,28 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: Colors.background,
   },
   backButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: Colors.white,
     paddingVertical: 8,
     paddingHorizontal: 20,
     borderRadius: 25,
     alignSelf: 'flex-start',
     marginBottom: 15,
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
   backButtonText: {
-    color: '#4ecdc4',
+    color: Colors.primary,
     fontSize: 16,
     fontWeight: 'bold',
   },
   headerTitle: {
-    color: '#FFF',
+    color: Colors.text,
     fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -1114,28 +1115,30 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#2C3E50',
+    color: Colors.text,
     textAlign: 'center',
     marginBottom: 8,
   },
   cardSubtitle: {
     fontSize: 16,
-    color: '#7F8C8D',
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: 20,
     fontStyle: 'italic',
   },
   // Connection buttons styles
   connectionCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: Colors.white,
     borderRadius: 20,
     padding: 25,
     marginBottom: 20,
     elevation: 8,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   connectionButtons: {
     flexDirection: 'row',
@@ -1144,22 +1147,30 @@ const styles = StyleSheet.create({
   },
   connectionButton: {
     width: '48%',
-    backgroundColor: '#a8e6cf',
+    backgroundColor: Colors.white,
     borderRadius: 15,
     padding: 20,
     alignItems: 'center',
     elevation: 5,
-    shadowColor: '#e8b4ff',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   connectionIcon: {
-    fontSize: 30,
+    fontSize: 20,
     marginBottom: 8,
   },
+  connectionIconImage: {
+    width: 80,
+    height: 80,
+    marginBottom: 8,
+    resizeMode: 'contain',
+  },
   connectionButtonText: {
-    color: '#FFF',
+    color: Colors.primary,
     fontSize: 14,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -1193,10 +1204,10 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2C3E50',
+    color: Colors.text,
   },
   modalCloseButton: {
-    backgroundColor: '#ffb3ba',
+    backgroundColor: Colors.accent,
     borderRadius: 20,
     width: 30,
     height: 30,
@@ -1204,7 +1215,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCloseText: {
-    color: '#FFF',
+    color: Colors.white,
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -1214,13 +1225,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#2C3E50',
+    color: Colors.text,
     marginBottom: 15,
     marginTop: 10,
   },
   // Psychologist card styles
   psychologistCard: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: Colors.white,
     borderRadius: 15,
     padding: 15,
     marginBottom: 10,
@@ -1231,8 +1242,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   selectedPsychologistCard: {
-    backgroundColor: '#e8f8f5',
-    borderColor: '#4ecdc4',
+    backgroundColor: Colors.accentLight,
+    borderColor: Colors.primary,
   },
   psychologistInfo: {
     flex: 1,
@@ -1240,21 +1251,21 @@ const styles = StyleSheet.create({
   psychologistName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#2C3E50',
+    color: Colors.text,
     marginBottom: 4,
   },
   psychologistSpecialization: {
     fontSize: 14,
-    color: '#7F8C8D',
+    color: Colors.textSecondary,
     marginBottom: 4,
   },
   psychologistDetails: {
     fontSize: 12,
-    color: '#95a5a6',
+    color: Colors.textSecondary,
   },
   expertId: {
     fontSize: 14,
-    color: '#7b1fa2',
+    color: Colors.primary,
     fontWeight: 'bold',
     marginBottom: 4,
   },
@@ -1274,7 +1285,7 @@ const styles = StyleSheet.create({
   },
   selectedIcon: {
     fontSize: 20,
-    color: '#4ecdc4',
+    color: Colors.primary,
     fontWeight: 'bold',
   },
   // Calendar styles
@@ -1285,7 +1296,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   dateButton: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: Colors.white,
     borderRadius: 10,
     padding: 10,
     alignItems: 'center',
@@ -1295,21 +1306,21 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   selectedDateButton: {
-    backgroundColor: '#4ecdc4',
-    borderColor: '#4ecdc4',
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   dayName: {
     fontSize: 12,
-    color: '#7F8C8D',
+    color: Colors.textSecondary,
     fontWeight: 'bold',
   },
   dateText: {
     fontSize: 14,
-    color: '#2C3E50',
+    color: Colors.text,
     marginTop: 2,
   },
   selectedDateText: {
-    color: '#FFF',
+    color: Colors.white,
   },
   // Time slots styles
   timeSlotsContainer: {
@@ -1319,7 +1330,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   timeSlot: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: Colors.white,
     borderRadius: 10,
     padding: 12,
     width: '30%',
@@ -1328,14 +1339,14 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   selectedTimeSlot: {
-    backgroundColor: '#4ecdc4',
-    borderColor: '#4ecdc4',
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   bookedTimeSlot: {
-    backgroundColor: '#ffebee', // Light red background
-    borderColor: '#f44336', // Red border
+    backgroundColor: Colors.accentLight,
+    borderColor: Colors.accent,
     borderWidth: 2,
-    opacity: 0.6, // Make it slightly transparent
+    opacity: 0.6,
   },
   timeSlotContent: {
     flexDirection: 'row',
@@ -1346,13 +1357,13 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#2C3E50',
+    color: Colors.text,
   },
   selectedTimeText: {
-    color: '#FFF',
+    color: Colors.white,
   },
   bookedTimeText: {
-    color: '#e74c3c',
+    color: Colors.accent,
   },
   bookedIndicator: {
     position: 'absolute',
@@ -1380,19 +1391,19 @@ const styles = StyleSheet.create({
   },
   // Book button
   bookButton: {
-    backgroundColor: '#4ecdc4',
+    backgroundColor: Colors.primary,
     borderRadius: 15,
     padding: 15,
     alignItems: 'center',
     marginTop: 20,
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
   bookButtonText: {
-    color: '#FFF',
+    color: Colors.white,
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -1408,7 +1419,7 @@ const styles = StyleSheet.create({
   legendTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#2C3E50',
+    color: Colors.text,
     marginBottom: 10,
   },
   legendRow: {
@@ -1433,12 +1444,12 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 14,
-    color: '#2C3E50',
+    color: Colors.text,
   },
   modalSubtitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#2C3E50',
+    color: Colors.text,
     marginTop: 10,
     marginBottom: 15,
   },
@@ -1489,20 +1500,20 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   chatButton: {
-    backgroundColor: '#4ecdc4',
+    backgroundColor: Colors.primary,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
   },
   chatButtonText: {
-    color: '#FFFFFF',
+    color: Colors.white,
     fontSize: 12,
     fontWeight: 'bold',
     textAlign: 'center',
