@@ -38,7 +38,7 @@ export default function LearningSupport() {
   const [selectedResource, setSelectedResource] = useState<LearningResource | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
 
-  const categories = ['All', 'Study Guides', 'Academic Resources', 'Mental Health', 'Career Support', 'Life Skills'];
+  const categories = ['All', 'remBETTER', 'VIDEOS', 'GUIDES'];
 
   useEffect(() => {
     loadStudentInfo();
@@ -48,7 +48,10 @@ export default function LearningSupport() {
     if (selectedCategory === 'All') {
       setFilteredResources(resources);
     } else {
-      setFilteredResources(resources.filter(resource => resource.category === selectedCategory));
+      // Filter resources by exact category match
+      setFilteredResources(resources.filter(resource => 
+        resource.category && resource.category.toUpperCase() === selectedCategory.toUpperCase()
+      ));
     }
   }, [resources, selectedCategory]);
 
@@ -128,7 +131,7 @@ export default function LearningSupport() {
           description: item.description || 'No description available',
           file_url: item.file_url || item.url || '',
           file_type: item.file_type || item.type || 'unknown',
-          category: item.category || 'Academic Resources'
+          category: item.category || 'BETTER' // Default to BETTER category
         }));
 
         console.log(`Loaded ${mappedResources.length} resources from library table`);
@@ -220,7 +223,6 @@ export default function LearningSupport() {
 
       <View style={styles.resourceMeta}>
         <Text style={styles.resourceMetaText}>📁 {item.category}</Text>
-        <Text style={styles.resourceMetaText}>📄 {item.file_type}</Text>
       </View>
 
       <View style={styles.resourceActions}>
