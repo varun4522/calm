@@ -223,7 +223,7 @@ export default function StudentCalm() {
         .from('book_request')
         .select('*')
         .eq('student_reg', regNo)
-        .order('created_at', { ascending: false });
+        .order('updated_at', { ascending: false });
 
       if (error) {
         console.error('Error loading session history:', error);
