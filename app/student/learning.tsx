@@ -52,6 +52,14 @@ export default function LearningSupport() {
     loadStudentInfo();
   }, []);
 
+  const filterResources = useCallback(() => {
+    if (selectedCategory === 'All') {
+      setFilteredResources(resources);
+    } else {
+      setFilteredResources(resources.filter(resource => resource.category === selectedCategory));
+    }
+  }, [resources, selectedCategory]);
+
   useEffect(() => {
     if (studentInfo.registration) {
       loadResources();
@@ -81,7 +89,7 @@ export default function LearningSupport() {
 
   useEffect(() => {
     filterResources();
-  }, [resources, selectedCategory]);
+  }, [resources, selectedCategory, filterResources]);
 
   const loadStudentInfo = async () => {
     try {
@@ -107,8 +115,7 @@ export default function LearningSupport() {
       // Fetch resources from library table in Supabase
       const { data: libraryData, error } = await supabase
         .from('library')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*');
 
       if (error) {
         if (error.code === '42P01') {
@@ -139,7 +146,7 @@ export default function LearningSupport() {
           download_count: item.download_count || 0,
           file_size: item.file_size || 0
         }));
-        
+
         console.log(`Loaded ${mappedResources.length} resources from library table`);
         setResources(mappedResources);
       }
@@ -149,41 +156,6 @@ export default function LearningSupport() {
       setResources([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const createLearningResourcesTable = async () => {
-    try {
-      // Note: The 'library' table should be created through Supabase dashboard
-      // or migration scripts.
-      console.log('Library table should be created through Supabase dashboard');
-
-      // The library table structure should include:
-      // - id (uuid, primary key)
-      // - title or name (text)
-      // - description (text)
-      // - file_url or url (text)
-      // - file_name or name (text)
-      // - file_type or type (text)
-      // - file_size (bigint)
-      // - uploaded_by or author (text)
-      // - uploaded_by_name or author_name (text)
-      // - uploaded_by_type (text)
-      // - category (text)
-      // - tags (text[])
-      // - download_count (int, default 0)
-      // - created_at or upload_date (timestamp with time zone, default now())
-
-    } catch (error) {
-      console.error('Error with library table:', error);
-    }
-  };
-
-  const filterResources = () => {
-    if (selectedCategory === 'All') {
-      setFilteredResources(resources);
-    } else {
-      setFilteredResources(resources.filter(resource => resource.category === selectedCategory));
     }
   };
 
@@ -224,33 +196,32 @@ export default function LearningSupport() {
 
                 // Open PDF - in a real app you'd use expo-document-picker or similar
                 if (resource.file_url.startsWith('http')) {
-                  await Linking.openURL(resource.file_url);
-                } else {
-                  Alert.alert('Success', 'Resource downloaded successfully!');
-                }
-              } catch (error) {
-                Alert.alert('Error', 'Failed to download resource');
+                await Linking.openURL(resource.file_url);
+              } else {
+                Alert.alert('Success', 'Resource downloaded successfully!');
               }
+            } catch (downloadError) {
+              console.error('Download error:', downloadError);
+              Alert.alert('Error', 'Failed to download resource');
             }
           }
-        ]
-      );
-    } catch (error) {
-      console.error('Download error:', error);
-      Alert.alert('Error', 'Failed to download resource');
-    }
-  };
-
-  const handlePreview = (resource: LearningResource) => {
+        }
+      ]
+    );
+  } catch (error) {
+    console.error('Download error:', error);
+    Alert.alert('Error', 'Failed to download resource');
+  }
+};  const handlePreview = (resource: LearningResource) => {
     setSelectedResource(resource);
     setShowPreviewModal(true);
   };
 
   const updateDownloadCount = async (resourceId: string) => {
     try {
-      // Get current download count first
+      // Get current download count first from library table
       const { data: currentResource } = await supabase
-        .from('learning_resources')
+        .from('library')
         .select('download_count')
         .eq('id', resourceId)
         .single();
@@ -263,14 +234,14 @@ export default function LearningSupport() {
             : resource
         ));
 
-        // Update the database with new count
-        const { error } = await supabase
-          .from('learning_resources')
+        // Update the library table with new count
+        const { error: updateError } = await supabase
+          .from('library')
           .update({ download_count: currentResource.download_count + 1 })
           .eq('id', resourceId);
 
-        if (error) {
-          console.error('Error updating download count:', error);
+        if (updateError) {
+          console.error('Error updating download count:', updateError);
           // Revert local state if database update failed
           setResources(prev => prev.map(resource =>
             resource.id === resourceId
@@ -279,8 +250,8 @@ export default function LearningSupport() {
           ));
         }
       }
-    } catch (error) {
-      console.error('Error updating download count:', error);
+    } catch (err) {
+      console.error('Error updating download count:', err);
     }
   };
 
