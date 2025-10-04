@@ -18,6 +18,7 @@ interface Student {
     registration_number: string;
     email: string;
     course: string;
+    user_type?: string; // Add user_type to distinguish between Student and Peer
 }
 
 interface ChatMessage {
@@ -51,6 +52,7 @@ export default function ConsultationPage() {
     }>();
 
     const [searchText, setSearchText] = useState('');
+    const [searchType, setSearchType] = useState<'all' | 'registration'>('all'); // Add search type state
     const [students, setStudents] = useState<Student[]>([]);
     const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -115,20 +117,6 @@ export default function ConsultationPage() {
         };
     }, [expertInfo.registration]);
 
-    // Filter students based on search text
-    useEffect(() => {
-        if (searchText.trim() === '') {
-            setFilteredStudents(students);
-        } else {
-            const filtered = students.filter(student =>
-                student.registration_number.toLowerCase().includes(searchText.toLowerCase()) ||
-                student.user_name.toLowerCase().includes(searchText.toLowerCase()) ||
-                student.email.toLowerCase().includes(searchText.toLowerCase())
-            );
-            setFilteredStudents(filtered);
-        }
-    }, [searchText, students]);
-
     const loadExpertInfo = async () => {
         try {
             let regNo = params.expertReg;
@@ -151,32 +139,11 @@ export default function ConsultationPage() {
 
     const loadStudents = async () => {
         try {
-            // Since we don't have a separate students table, we'll extract student info from messages
-            // or provide a way to manually add student information
-
-            // Option 1: Extract unique students from messages
-            const uniqueStudents = groupedConversations
-                .filter(conv => conv.sender_type === 'STUDENT')
-                .map(conv => ({
-                    id: conv.sender_id,
-                    user_name: conv.sender_name,
-                    registration_number: conv.sender_id,
-                    email: `${conv.sender_id}@student.edu`, // Mock email
-                    course: 'Not specified' // Default course
-                }));
-
-            // Option 2: If no messages exist, provide empty state
-            if (uniqueStudents.length === 0) {
-                console.log('No students found in messages. Students will appear here after they send messages.');
-                setStudents([]);
-                setFilteredStudents([]);
-                return;
-            }
-
-            setStudents(uniqueStudents);
-            setFilteredStudents(uniqueStudents);
+            // Initially show empty state - students will be loaded only when searched
+            setStudents([]);
+            setFilteredStudents([]);
         } catch (error) {
-            console.error('Error loading students:', error);
+            console.error('Error initializing students:', error);
             setStudents([]);
             setFilteredStudents([]);
         }
@@ -246,44 +213,74 @@ export default function ConsultationPage() {
         }
     };
 
-    const handleSearch = () => {
+    const handleSearch = async () => {
         if (searchText.trim() === '') {
-            Alert.alert('Search', 'Please enter a roll number or name to search');
+            Alert.alert('Search', 'Please enter a search term');
             return;
         }
 
-        const resultCount = filteredStudents.length;
+        try {
+            let query = supabase
+                .from('user_requests')
+                .select('*')
+                .eq('user_type', 'Student');
 
-        // If no results found, offer to start a chat with the entered ID
-        if (resultCount === 0 && searchText.trim().length > 0) {
-            Alert.alert(
-                'Student Not Found',
-                `No student found matching "${searchText}". Would you like to start a chat with this student ID?`,
-                [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                        text: 'Start Chat',
-                        onPress: () => {
-                            // Start chat with manually entered student ID
-                            router.push({
-                                pathname: './expert-chat',
-                                params: {
-                                    studentId: searchText.trim(),
-                                    studentName: `Student ${searchText.trim()}`,
-                                    studentReg: searchText.trim(),
-                                    expertReg: expertInfo.registration,
-                                    expertName: expertInfo.name
-                                }
-                            });
+            // Build search query based on search type
+            if (searchType === 'registration') {
+                // Search only by registration number
+                query = query.ilike('registration_number', `%${searchText.trim()}%`);
+            } else {
+                // Search by registration number, name, or email
+                query = query.or(`registration_number.ilike.%${searchText.trim()}%,user_name.ilike.%${searchText.trim()}%,email.ilike.%${searchText.trim()}%`);
+            }
+
+            const { data: searchResults, error } = await query;
+
+            if (error) {
+                console.error('Error searching students:', error);
+                Alert.alert('Search Error', 'Failed to search for students. Please try again.');
+                return;
+            }
+
+            if (searchResults && searchResults.length > 0) {
+                // Convert search results to Student format
+                const foundStudents: Student[] = searchResults.map(result => ({
+                    id: result.registration_number,
+                    user_name: result.user_name,
+                    registration_number: result.registration_number,
+                    email: result.email || '',
+                    course: result.course || 'Not specified',
+                    user_type: result.user_type
+                }));
+
+                setStudents(foundStudents);
+                setFilteredStudents(foundStudents);
+
+                const studentCount = foundStudents.length;
+                const resultMessage = `Found ${studentCount} student${studentCount !== 1 ? 's' : ''} matching "${searchText}"`;
+
+                Alert.alert('Search Results', resultMessage);
+            } else {
+                // No results found
+                setStudents([]);
+                setFilteredStudents([]);
+
+                const searchField = searchType === 'registration' ? 'registration number' : 'name, email, or registration number';
+                Alert.alert(
+                    'No Students Found',
+                    `No students found with ${searchField} matching "${searchText}". Please check your search term and try again.`,
+                    [
+                        { text: 'OK' },
+                        {
+                            text: 'Clear Search',
+                            onPress: () => setSearchText('')
                         }
-                    }
-                ]
-            );
-        } else {
-            Alert.alert(
-                'Search Results',
-                `Found ${resultCount} student${resultCount !== 1 ? 's' : ''} matching "${searchText}"`
-            );
+                    ]
+                );
+            }
+        } catch (error) {
+            console.error('Error during search:', error);
+            Alert.alert('Search Error', 'An unexpected error occurred. Please try again.');
         }
     };
 
@@ -303,24 +300,45 @@ export default function ConsultationPage() {
         });
     };
 
-    const renderStudentItem = ({ item }: { item: Student }) => (
+    const renderStudentItem = ({ item, index }: { item: Student; index: number }) => (
         <TouchableOpacity
-            style={styles.studentItem}
+            style={styles.userCard}
             onPress={() => selectStudent(item)}
+            activeOpacity={0.7}
         >
-            <View style={styles.studentInfo}>
-                <Text style={styles.studentName}>👨‍🎓 {item.user_name}</Text>
-                <Text style={styles.studentDetails}>
-                    Roll No: {item.registration_number}
-                </Text>
-                <Text style={styles.studentDetails}>
-                    Course: {item.course || 'N/A'}
-                </Text>
-                <Text style={styles.studentDetails}>
-                    Email: {item.email || 'N/A'}
-                </Text>
+            <View style={styles.userCardHeader}>
+                <View style={styles.userIconContainer}>
+                    <Text style={styles.userIcon}>‍🎓</Text>
+                </View>
+                <View style={styles.userCardInfo}>
+                    <Text style={styles.userName}>{item.user_name}</Text>
+                    <View style={styles.userTypeBadgeContainer}>
+                        <Text style={[styles.userTypeBadgeNew, styles.studentBadge]}>
+                            STUDENT
+                        </Text>
+                    </View>
+                </View>
             </View>
-            <Text style={styles.selectButton}>💬 Chat</Text>
+            <View style={styles.userCardBody}>
+                <View style={styles.userDetailRow}>
+                    <Text style={styles.userDetailLabel}>📋 Registration:</Text>
+                    <Text style={styles.userDetailValue}>{item.registration_number}</Text>
+                </View>
+                <View style={styles.userDetailRow}>
+                    <Text style={styles.userDetailLabel}>📚 Course:</Text>
+                    <Text style={styles.userDetailValue}>{item.course || 'Not specified'}</Text>
+                </View>
+                <View style={styles.userDetailRow}>
+                    <Text style={styles.userDetailLabel}>📧 Email:</Text>
+                    <Text style={styles.userDetailValue} numberOfLines={1}>{item.email || 'Not provided'}</Text>
+                </View>
+            </View>
+            <View style={styles.userCardFooter}>
+                <View style={styles.chatButtonContainer}>
+                    <Text style={styles.chatButtonText}>💬 Start Chat</Text>
+                    <Text style={styles.chatButtonArrow}>→</Text>
+                </View>
+            </View>
         </TouchableOpacity>
     );
 
@@ -392,7 +410,7 @@ export default function ConsultationPage() {
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>� Consultation</Text>
                 <Text style={styles.headerSubtitle}>
-                    {activeTab === 'messages' ? 'Recent messages from students' : 'Enter student ID to start a chat'}
+                    {activeTab === 'messages' ? 'Recent messages from students' : 'Enter student ID, name, or email to find students'}
                 </Text>
             </View>
 
@@ -419,11 +437,35 @@ export default function ConsultationPage() {
             {/* Search Section - Only show for students tab */}
             {activeTab === 'students' && (
                 <View style={styles.searchContainer}>
+                    {/* Search Type Selector */}
+                    <View style={styles.searchTypeContainer}>
+                        <TouchableOpacity
+                            style={[styles.searchTypeButton, searchType === 'all' && styles.activeSearchType]}
+                            onPress={() => setSearchType('all')}
+                        >
+                            <Text style={[styles.searchTypeText, searchType === 'all' && styles.activeSearchTypeText]}>
+                                🔍 All Fields
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.searchTypeButton, searchType === 'registration' && styles.activeSearchType]}
+                            onPress={() => setSearchType('registration')}
+                        >
+                            <Text style={[styles.searchTypeText, searchType === 'registration' && styles.activeSearchTypeText]}>
+                                🎓 Reg. Number
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
                     <View style={styles.searchBox}>
                         <Text style={styles.searchIcon}>🔍</Text>
                         <TextInput
                             style={styles.searchInput}
-                            placeholder="Enter student ID or name to chat..."
+                            placeholder={
+                                searchType === 'registration'
+                                    ? "Enter registration number to search..."
+                                    : "Enter student ID, name, or email to chat..."
+                            }
                             placeholderTextColor="#999"
                             value={searchText}
                             onChangeText={setSearchText}
@@ -437,7 +479,11 @@ export default function ConsultationPage() {
                     </View>
                     {searchText.length > 0 && (
                         <TouchableOpacity
-                            onPress={() => setSearchText('')}
+                            onPress={() => {
+                                setSearchText('');
+                                setStudents([]);
+                                setFilteredStudents([]);
+                            }}
                             style={styles.clearSearchButton}
                         >
                             <Text style={styles.clearSearchText}>Clear Search</Text>
@@ -478,25 +524,45 @@ export default function ConsultationPage() {
                                     <Text style={styles.emptyText}>
                                         No students found matching &quot;{searchText}&quot;
                                     </Text>
+                                    <Text style={styles.emptySubtext}>
+                                        Try searching with different keywords or check the search type filter.
+                                    </Text>
                                 </>
                             ) : (
                                 <>
                                     <Text style={styles.emptyIcon}>👨‍🎓</Text>
-                                    <Text style={styles.emptyTitle}>No Students Yet</Text>
+                                    <Text style={styles.emptyTitle}>Search for Students</Text>
                                     <Text style={styles.emptyText}>
-                                        Students will appear here after they send you messages. Check the &quot;Conversations&quot; tab to see any existing messages.
+                                        Enter a student ID, name, or email in the search box above to find and connect with students.
                                     </Text>
+                                    <View style={styles.searchHintContainer}>
+                                        <Text style={styles.searchHintTitle}>💡 Search Tips:</Text>
+                                        <Text style={styles.searchHint}>• Use &quot;All Fields&quot; for broad search</Text>
+                                        <Text style={styles.searchHint}>• Use &quot;Reg. Number&quot; for exact match</Text>
+                                        <Text style={styles.searchHint}>• Partial matches are supported</Text>
+                                    </View>
                                 </>
                             )}
                         </View>
                     ) : (
-                        <FlatList
-                            data={filteredStudents}
-                            renderItem={renderStudentItem}
-                            keyExtractor={(item) => item.id}
-                            showsVerticalScrollIndicator={false}
-                            style={styles.messagesList}
-                        />
+                        <View style={styles.resultsContainer}>
+                            <View style={styles.resultsHeader}>
+                                <Text style={styles.resultsCount}>
+                                    Found {filteredStudents.length} student{filteredStudents.length !== 1 ? 's' : ''}
+                                </Text>
+                                <Text style={styles.resultsSubtext}>
+                                    Showing all matching student records
+                                </Text>
+                            </View>
+                            <FlatList
+                                data={filteredStudents}
+                                renderItem={renderStudentItem}
+                                keyExtractor={(item, index) => `${item.id}-${item.registration_number}-${index}`}
+                                showsVerticalScrollIndicator={false}
+                                contentContainerStyle={styles.userListContainer}
+                                ItemSeparatorComponent={() => <View style={styles.userCardSeparator} />}
+                            />
+                        </View>
                     )
                 )}
             </View>
@@ -507,8 +573,8 @@ export default function ConsultationPage() {
                     {activeTab === 'messages'
                         ? `${messages.length} message${messages.length !== 1 ? 's' : ''} received`
                         : searchText
-                            ? `${filteredStudents.length} students found`
-                            : `${students.length} total students`
+                            ? `${filteredStudents.length} student${filteredStudents.length !== 1 ? 's' : ''} found`
+                            : `Search for students to start chatting`
                     }
                 </Text>
             </View>
@@ -563,6 +629,31 @@ const styles = StyleSheet.create({
         paddingVertical: 15,
         borderBottomWidth: 1,
         borderBottomColor: '#f0f0f0',
+    },
+    searchTypeContainer: {
+        flexDirection: 'row',
+        marginBottom: 10,
+        backgroundColor: '#f8f9fa',
+        borderRadius: 20,
+        padding: 4,
+    },
+    searchTypeButton: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        alignItems: 'center',
+    },
+    activeSearchType: {
+        backgroundColor: '#7b1fa2',
+    },
+    searchTypeText: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: '#666',
+    },
+    activeSearchTypeText: {
+        color: '#ffffff',
     },
     searchBox: {
         flexDirection: 'row',
@@ -736,6 +827,12 @@ const styles = StyleSheet.create({
         color: '#333',
         marginBottom: 4,
     },
+    userTypeBadge: {
+        fontSize: 12,
+        fontWeight: 'normal',
+        color: '#7b1fa2',
+        fontStyle: 'italic',
+    },
     studentDetails: {
         fontSize: 14,
         color: '#666',
@@ -751,6 +848,176 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         textAlign: 'center',
         overflow: 'hidden',
+    },
+    // New User Card Styles
+    resultsContainer: {
+        flex: 1,
+        backgroundColor: '#fafafa',
+    },
+    resultsHeader: {
+        backgroundColor: '#7b1fa2',
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+    },
+    resultsCount: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#ffffff',
+        marginBottom: 4,
+    },
+    resultsSubtext: {
+        fontSize: 13,
+        color: '#e1bee7',
+    },
+    userListContainer: {
+        paddingHorizontal: 15,
+        paddingVertical: 10,
+    },
+    userCard: {
+        backgroundColor: '#ffffff',
+        borderRadius: 12,
+        marginVertical: 6,
+        elevation: 3,
+        shadowColor: '#7b1fa2',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        borderLeftWidth: 4,
+        borderLeftColor: '#7b1fa2',
+        overflow: 'hidden',
+    },
+    userCardSeparator: {
+        height: 4,
+    },
+    userCardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        paddingTop: 15,
+        paddingBottom: 10,
+        backgroundColor: '#f9f5fb',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e1bee7',
+    },
+    userIconContainer: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#7b1fa2',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+    },
+    userIcon: {
+        fontSize: 28,
+    },
+    userCardInfo: {
+        flex: 1,
+    },
+    userName: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 6,
+    },
+    userTypeBadgeContainer: {
+        alignSelf: 'flex-start',
+    },
+    userTypeBadgeNew: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        overflow: 'hidden',
+    },
+    studentBadge: {
+        backgroundColor: '#e1bee7',
+        color: '#6a1b9a',
+    },
+    peerBadge: {
+        backgroundColor: '#b39ddb',
+        color: '#4a148c',
+    },
+    userCardBody: {
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        backgroundColor: '#ffffff',
+    },
+    userDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+        paddingVertical: 4,
+    },
+    userDetailLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#7b1fa2',
+        width: 110,
+    },
+    userDetailValue: {
+        fontSize: 13,
+        color: '#555',
+        flex: 1,
+        fontWeight: '500',
+    },
+    userCardFooter: {
+        backgroundColor: '#f3e5f5',
+        paddingHorizontal: 15,
+        paddingVertical: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#e1bee7',
+    },
+    chatButtonContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#7b1fa2',
+        paddingVertical: 10,
+        borderRadius: 8,
+    },
+    chatButtonText: {
+        color: '#ffffff',
+        fontSize: 15,
+        fontWeight: 'bold',
+        marginRight: 8,
+    },
+    chatButtonArrow: {
+        color: '#ffffff',
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    emptySubtext: {
+        fontSize: 14,
+        color: '#999',
+        textAlign: 'center',
+        marginTop: 10,
+        fontStyle: 'italic',
+    },
+    searchHintContainer: {
+        marginTop: 20,
+        backgroundColor: '#f3e5f5',
+        padding: 15,
+        borderRadius: 10,
+        borderLeftWidth: 3,
+        borderLeftColor: '#7b1fa2',
+    },
+    searchHintTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#7b1fa2',
+        marginBottom: 8,
+    },
+    searchHint: {
+        fontSize: 13,
+        color: '#666',
+        marginBottom: 4,
     },
     // Tab Styles
     tabContainer: {
