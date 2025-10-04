@@ -60,7 +60,7 @@ export default function ExpertHome() {
   const [uploadForm, setUploadForm] = useState({
     title: '',
     description: '',
-    category: 'BETTER',
+    category: 'REMEMBER BETTER',
   });
 
   // Mood tracking states
@@ -88,7 +88,7 @@ export default function ExpertHome() {
   const [sendingNotification, setSendingNotification] = useState(false);
 
   const categories = [
-    'BETTER',
+    'REMEMBER BETTER',
     'VIDEOS',
     'GUIDES'
   ];
@@ -622,14 +622,24 @@ export default function ExpertHome() {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
+          // PDF files
           'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'application/vnd.ms-powerpoint',
-          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-          'text/plain',
+          // Images - Phone, Laptop, Mac compatible
           'image/jpeg',
-          'image/png'
+          'image/jpg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+          'image/heic',
+          'image/heif',
+          'image/*',
+          // Videos - Phone, Laptop, Mac compatible
+          'video/mp4',
+          'video/quicktime', // .mov files (Mac/iPhone)
+          'video/x-msvideo', // .avi
+          'video/webm',
+          'video/x-matroska', // .mkv
+          'video/*'
         ],
         copyToCacheDirectory: true,
         multiple: false,
@@ -638,9 +648,15 @@ export default function ExpertHome() {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
 
-        // Check file size (max 10MB)
-        if (file.size && file.size > 10 * 1024 * 1024) {
-          Alert.alert('File Too Large', 'Please select a file smaller than 10MB.');
+        // Check file size (max 50MB for videos, 10MB for others)
+        const isVideo = file.mimeType?.startsWith('video/');
+        const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+        
+        if (file.size && file.size > maxSize) {
+          Alert.alert(
+            'File Too Large', 
+            `Please select a ${isVideo ? 'video' : 'file'} smaller than ${isVideo ? '50MB' : '10MB'}.`
+          );
           return;
         }
 
@@ -741,7 +757,7 @@ export default function ExpertHome() {
 
   const openUploadModal = () => {
     setSelectedFile(null);
-    setUploadForm({ title: '', description: '', category: 'BETTER' });
+    setUploadForm({ title: '', description: '', category: 'REMEMBERBETTER' });
     setShowUploadModal(true);
   };
 
@@ -1138,11 +1154,11 @@ export default function ExpertHome() {
                     delayPressIn={0}
                   >
                     <Text style={styles.fileUploadIcon}>📄</Text>
-                    <Text style={styles.fileUploadText}>Select File (PDF, DOC, etc.)</Text>
+                    <Text style={styles.fileUploadText}>Select File (Photos, Videos, PDFs)</Text>
                   </TouchableOpacity>
                 )}
                 <Text style={styles.fileUploadHint}>
-                  Supported formats: PDF, DOC, DOCX, PPT, PPTX, TXT, JPG, PNG (Max: 10MB)
+                  Supported: Photos (JPG, PNG, HEIC), Videos (MP4, MOV), PDFs • Max: 10MB (50MB for videos)
                 </Text>
               </View>
             </ScrollView>

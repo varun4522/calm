@@ -17,12 +17,34 @@ export const uploadFile = async (uri: string) => {
     const ext = fileName?.split(".").pop()?.toLowerCase();
 
     let contentType = "application/octet-stream";
+    
+    // PDF files
     if (ext === "pdf") {
         contentType = "application/pdf";
-    } else if (ext === "png") {
+    } 
+    // Image files
+    else if (ext === "png") {
         contentType = "image/png";
     } else if (ext === "jpg" || ext === "jpeg") {
         contentType = "image/jpeg";
+    } else if (ext === "gif") {
+        contentType = "image/gif";
+    } else if (ext === "webp") {
+        contentType = "image/webp";
+    } else if (ext === "heic" || ext === "heif") {
+        contentType = "image/heic";
+    }
+    // Video files
+    else if (ext === "mp4") {
+        contentType = "video/mp4";
+    } else if (ext === "mov") {
+        contentType = "video/quicktime";
+    } else if (ext === "avi") {
+        contentType = "video/x-msvideo";
+    } else if (ext === "webm") {
+        contentType = "video/webm";
+    } else if (ext === "mkv") {
+        contentType = "video/x-matroska";
     }
 
     try {
