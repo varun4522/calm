@@ -350,25 +350,23 @@ export default function StudentCalm() {
 
         console.log('Attempting to book session with data:', sessionRequestData);
 
-        // Guard: prevent multiple active sessions (pending or approved)
+        // Guard: prevent more than 2 active sessions (pending or approved)
         try {
           const { data: activeSessions, error: activeError } = await supabase
             .from('book_request')
             .select('id,status,expert_id,expert_name,session_date,session_time')
             .eq('student_reg', studentInfo.registration)
-            .in('status', ['pending', 'approved'])
-            .limit(1);
+            .in('status', ['pending', 'approved']);
 
           if (activeError) {
             console.error('Active session check error:', activeError);
             // Non-fatal: continue to server which will enforce as well
           }
 
-          if (activeSessions && activeSessions.length > 0) {
-            const s = activeSessions[0];
+          if (activeSessions && activeSessions.length >= 2) {
             Alert.alert(
-              'Active Session Exists',
-              `You already have an active session (${s.status}). Please complete or cancel it before booking another.`
+              'Maximum Sessions Reached',
+              `You already have ${activeSessions.length} active sessions. Please complete or cancel at least one before booking another.\n\nActive Sessions:\n${activeSessions.map((s, i) => `${i + 1}. ${s.expert_name} - ${s.status}`).join('\n')}`
             );
             return;
           }
@@ -390,8 +388,8 @@ export default function StudentCalm() {
           if (supabaseError.code === '42P01') {
             Alert.alert('Database Error', 'The book_request table does not exist. Please check the database setup.');
           } else if (supabaseError.code === '23505') {
-      // Matches partial unique index on (student_reg) WHERE status in ('pending','approved')
-      Alert.alert('Booking Conflict', 'You already have an active session (pending or approved). Please complete or cancel it before booking another.');
+      // Unique constraint violation - student already has maximum sessions
+      Alert.alert('Maximum Sessions Reached', 'You already have 2 active sessions (pending or approved). Please complete or cancel at least one before booking another.');
           } else if (supabaseError.code === '42501') {
             Alert.alert('Permission Error', 'Database permission denied. Please check RLS policies.');
           } else {
@@ -508,25 +506,23 @@ export default function StudentCalm() {
 
         console.log('Attempting to book peer listener session with data:', sessionRequestData);
 
-        // Guard: prevent multiple active sessions (pending or approved)
+        // Guard: prevent more than 2 active sessions (pending or approved)
         try {
           const { data: activeSessions, error: activeError } = await supabase
             .from('book_request')
             .select('id,status,expert_id,expert_name,session_date,session_time')
             .eq('student_reg', studentInfo.registration)
-            .in('status', ['pending', 'approved'])
-            .limit(1);
+            .in('status', ['pending', 'approved']);
 
           if (activeError) {
             console.error('Active session check error:', activeError);
             // Non-fatal: continue to server which will enforce as well
           }
 
-          if (activeSessions && activeSessions.length > 0) {
-            const s = activeSessions[0];
+          if (activeSessions && activeSessions.length >= 2) {
             Alert.alert(
-              'Active Session Exists',
-              `You already have an active session (${s.status}). Please complete or cancel it before booking another.`
+              'Maximum Sessions Reached',
+              `You already have ${activeSessions.length} active sessions. Please complete or cancel at least one before booking another.\n\nActive Sessions:\n${activeSessions.map((s, i) => `${i + 1}. ${s.expert_name} - ${s.status}`).join('\n')}`
             );
             return;
           }
@@ -548,7 +544,7 @@ export default function StudentCalm() {
           if (supabaseError.code === '42P01') {
             Alert.alert('Database Error', 'The book_request table does not exist. Please check the database setup.');
           } else if (supabaseError.code === '23505') {
-            Alert.alert('Booking Conflict', 'You already have an active session (pending or approved). Please complete or cancel it before booking another.');
+            Alert.alert('Maximum Sessions Reached', 'You already have 2 active sessions (pending or approved). Please complete or cancel at least one before booking another.');
           } else if (supabaseError.code === '42501') {
             Alert.alert('Permission Error', 'Database permission denied. Please check RLS policies.');
           } else {
