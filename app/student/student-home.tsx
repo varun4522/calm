@@ -354,7 +354,10 @@ export default function StudentHome() {
 
   // Load notifications on component mount and when focused
   useEffect(() => {
-    loadNotifications();
+    // Only load notifications if we have a valid registration number
+    if (studentReg || studentRegNo) {
+      loadNotifications();
+    }
 
     // Set up real-time subscription for notifications
     const notificationSubscription = supabase
@@ -461,8 +464,11 @@ export default function StudentHome() {
 
   useFocusEffect(
     useCallback(() => {
-      loadNotifications();
-    }, [])
+      // Only load notifications if we have a valid registration number
+      if (studentReg || studentRegNo) {
+        loadNotifications();
+      }
+    }, [studentReg, studentRegNo])
   );
 
   // Load profile picture when screen comes into focus (for instant updates from settings)
