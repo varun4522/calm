@@ -1,6 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
-import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -143,20 +141,13 @@ export default function LearningSupport() {
 
   const handleDownload = async (resource: LearningResource) => {
     try {
-      // Request media library permissions
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant storage permissions to download files.');
-        return;
-      }
-
       Alert.alert(
-        'Download Resource',
-        `Download "${resource.resource_title}" to your device?`,
+        'Open Resource',
+        `Open "${resource.resource_title}"?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Download',
+            text: 'Open',
             onPress: async () => {
               try {
                 setDownloading(true);
@@ -173,38 +164,16 @@ export default function LearningSupport() {
                   fileUrl = data.publicUrl;
                 }
 
-                // Generate file name
-                const fileExtension = resource.file_type.split('/')[1] || 'file';
-                const fileName = `${resource.resource_title.replace(/[^a-z0-9]/gi, '_')}.${fileExtension}`;
-                const fileUri = FileSystem.documentDirectory + fileName;
-
-                // Download the file
-                const downloadResult = await FileSystem.downloadAsync(fileUrl, fileUri);
-
-                if (downloadResult.status === 200) {
-                  // Save to media library (Photos/Videos) or Downloads folder
-                  if (resource.file_type.startsWith('image/') || resource.file_type.startsWith('video/')) {
-                    const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-                    await MediaLibrary.createAlbumAsync('CalmCompanion', asset, false);
-                    Alert.alert(
-                      'Download Complete!',
-                      `${resource.resource_title} has been saved to your ${resource.file_type.startsWith('image/') ? 'Photos' : 'Videos'} in the CalmCompanion album.`,
-                      [{ text: 'OK' }]
-                    );
-                  } else {
-                    // For PDFs and other files
-                    Alert.alert(
-                      'Download Complete!',
-                      `${resource.resource_title} has been saved to your device.\n\nLocation: ${fileUri}`,
-                      [{ text: 'OK' }]
-                    );
-                  }
+                // Open the file URL in browser/viewer
+                const supported = await Linking.canOpenURL(fileUrl);
+                if (supported) {
+                  await Linking.openURL(fileUrl);
                 } else {
-                  Alert.alert('Download Failed', 'Unable to download the file. Please try again.');
+                  Alert.alert('Error', 'Unable to open this file type.');
                 }
               } catch (downloadError) {
-                console.error('Download error:', downloadError);
-                Alert.alert('Download Error', 'Failed to download the file. Please check your internet connection.');
+                console.error('Open error:', downloadError);
+                Alert.alert('Error', 'Failed to open the file. Please try again.');
               } finally {
                 setDownloading(false);
               }
@@ -214,7 +183,7 @@ export default function LearningSupport() {
       );
     } catch (error) {
       console.error('Download error:', error);
-      Alert.alert('Error', 'Failed to download resource');
+      Alert.alert('Error', 'Failed to open resource');
     }
   };
 

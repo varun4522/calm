@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -1198,26 +1197,9 @@ export default function ExpertHome() {
                         const fileExt = fileName.split('.').pop();
                         const filePath = `${expertRegNo}/${Date.now()}.${fileExt}`;
 
-                        let fileData;
-
-                        if (Platform.OS === 'web') {
-                          // Web platform - use fetch with blob
-                          const response = await fetch(fileUri);
-                          fileData = await response.blob();
-                        } else {
-                          // Mobile platform - use FileSystem to read as base64 then convert
-                          const base64 = await FileSystem.readAsStringAsync(fileUri, {
-                            encoding: 'base64',
-                          });
-
-                          // Convert base64 to Uint8Array
-                          const binaryString = atob(base64);
-                          const bytes = new Uint8Array(binaryString.length);
-                          for (let i = 0; i < binaryString.length; i++) {
-                            bytes[i] = binaryString.charCodeAt(i);
-                          }
-                          fileData = bytes;
-                        }
+                        // Use fetch to get file data (works for both web and mobile)
+                        const response = await fetch(fileUri);
+                        const fileData = await response.blob();
 
                         // Upload to Supabase storage
                         const { data, error } = await supabase.storage
