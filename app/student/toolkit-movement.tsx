@@ -146,7 +146,7 @@ export default function ToolkitMovement() {
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 1</Text>
                 <Video
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('../../assets/videos/3 Things  Dilpreet Dhillon feat. Shipra Goyal  Geet Goraya  Desi Crew  Kaptaan - BANG Music (720p, h264).mp4')}
+                  source={require('../../assets/videos/video1.mp4')}
                   useNativeControls={true}
                   resizeMode={ResizeMode.CONTAIN}
                 />
@@ -156,7 +156,7 @@ export default function ToolkitMovement() {
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 2</Text>
                 <Video
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('../../assets/videos/Showstopper _ JERRY (Official Music Video).mp4')}
+                  source={require('../../assets/videos/video2.mp4')}
                   useNativeControls={true}
                   resizeMode={ResizeMode.CONTAIN}
                 />
@@ -166,7 +166,7 @@ export default function ToolkitMovement() {
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 3</Text>
                 <Video
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('../../assets/videos/UNTOUCHABLE (OFFICIAL VIDEO) _ TEGI PANNU _ MANNI SANDHU _ LATEST PUNJABI SONGS 2022.mp4')}
+                  source={require('../../assets/videos/video3.mp4')}
                   useNativeControls={true}
                   resizeMode={ResizeMode.CONTAIN}
                 />

@@ -298,7 +298,7 @@ export default function ToolkitBreathing() {
   const breathingExercises = [
     {
       id: 'box',
-      title: '📦 Box Breathing',
+      title: ' Box Breathing',
       description: 'Inhale for 4, hold for 4, exhale for 4, hold for 4 (perfect for focus)',
       pattern: [
         { label: 'Inhale', duration: 4000 },
@@ -309,7 +309,7 @@ export default function ToolkitBreathing() {
     },
     {
       id: '478',
-      title: '🌙 4-7-8 Breathing',
+      title: ' 4-7-8 Breathing',
       description: 'Inhale for 4, hold for 7, exhale for 8 (great for sleep and relaxation)',
       pattern: [
         { label: 'Inhale', duration: 4000 },
@@ -319,7 +319,7 @@ export default function ToolkitBreathing() {
     },
     {
       id: 'equal',
-      title: '⚖️ Palm Breathing',
+      title: ' Star Breathing',
       description: 'Inhale for 6, exhale for 6 (calming and balancing)',
       pattern: [
         { label: 'Inhale', duration: 6000 },
@@ -341,11 +341,10 @@ export default function ToolkitBreathing() {
       const animateBreathing = () => {
         if (!isMounted || !isRunning) return;
 
-        const currentPhase = exercise.pattern[currentPhaseIndex];
-        setPhase(currentPhase.label);
-
         // 4-7-8 breathing ball animation on perfect triangle
         if (activeExercise === '478') {
+          const currentPhase = exercise.pattern[currentPhaseIndex];
+          setPhase(currentPhase.label);
           let targetX = 0;
           let targetY = 0;
 
@@ -406,54 +405,74 @@ export default function ToolkitBreathing() {
           return;
         }
 
-        // Circle animations for equal breathing (box breathing uses its own components)
+        // Star breathing - ball moves around 5-pointed star
         if (activeExercise === 'equal') {
+          // 5-pointed star coordinates (5 peaks)
+          // Starting from top, going clockwise
+          const starPoints = [
+            { x: 0, y: -80, label: 'Inhale' },       // Top peak (Point 1)
+            { x: 76, y: -25, label: 'Exhale' },      // Right upper peak (Point 2)
+            { x: 47, y: 65, label: 'Inhale' },       // Right lower peak (Point 3)
+            { x: -47, y: 65, label: 'Exhale' },      // Left lower peak (Point 4)
+            { x: -76, y: -25, label: 'Inhale' },     // Left upper peak (Point 5)
+          ];
+
+          const currentStarPoint = starPoints[currentPhaseIndex % starPoints.length];
+          const nextPointIndex = (currentPhaseIndex + 1) % starPoints.length;
+          const targetPoint = starPoints[nextPointIndex];
+
+          // Set initial phase
+          setPhase(currentStarPoint.label);
+
+          // Start ball at first position if this is the first animation
+          if (currentPhaseIndex === 0) {
+            ballX.setValue(starPoints[0].x);
+            ballY.setValue(starPoints[0].y);
+            setPhase(starPoints[0].label);
+          }
+
           // Stop any ongoing animation before starting a new one
           if (currentAnimation) {
             currentAnimation.stop();
           }
 
-          if (currentPhase.label === 'Inhale') {
-            currentAnimation = Animated.timing(size, {
-              toValue: 180,
-              duration: currentPhase.duration,
+          // Use 6 seconds for each movement (matching the pattern duration)
+          const movementDuration = 6000;
+
+          // Animate ball to next peak point
+          currentAnimation = Animated.parallel([
+            Animated.timing(ballX, {
+              toValue: targetPoint.x,
+              duration: movementDuration,
               useNativeDriver: false,
               easing: Easing.inOut(Easing.ease)
-            });
-
-            currentAnimation.start(({ finished }) => {
-              if (!isMounted || !isRunning) return;
-              if (finished) {
-                currentPhaseIndex = (currentPhaseIndex + 1) % exercise.pattern.length;
-                // Clear any existing timeout
-                if (animationTimeout) {
-                  clearTimeout(animationTimeout);
-                }
-                animationTimeout = setTimeout(animateBreathing, 200);
-              }
-            });
-          } else if (currentPhase.label === 'Exhale') {
-            currentAnimation = Animated.timing(size, {
-              toValue: 100,
-              duration: currentPhase.duration,
+            }),
+            Animated.timing(ballY, {
+              toValue: targetPoint.y,
+              duration: movementDuration,
               useNativeDriver: false,
               easing: Easing.inOut(Easing.ease)
-            });
+            })
+          ]);
 
-            currentAnimation.start(({ finished }) => {
-              if (!isMounted || !isRunning) return;
-              if (finished) {
-                currentPhaseIndex = (currentPhaseIndex + 1) % exercise.pattern.length;
-                // Clear any existing timeout
-                if (animationTimeout) {
-                  clearTimeout(animationTimeout);
-                }
-                animationTimeout = setTimeout(animateBreathing, 200);
+          currentAnimation.start(({ finished }) => {
+            if (!isMounted || !isRunning) return;
+            if (finished) {
+              currentPhaseIndex = nextPointIndex;
+              // Clear any existing timeout
+              if (animationTimeout) {
+                clearTimeout(animationTimeout);
               }
-            });
-          }
+              animationTimeout = setTimeout(animateBreathing, 200);
+            }
+          });
+
+          return;
         } else {
           // For box breathing, just cycle through phases without circle animation
+          const currentPhase = exercise.pattern[currentPhaseIndex];
+          setPhase(currentPhase.label);
+
           // Clear any existing timeout
           if (animationTimeout) {
             clearTimeout(animationTimeout);
@@ -593,18 +612,31 @@ export default function ToolkitBreathing() {
               </View>
             )}
 
-            {/* Regular circle for Equal Breathing */}
+            {/* Star shape with moving ball for Star Breathing */}
             {activeExercise === 'equal' && (
-              <Animated.View style={[
-                styles.breathingCircle,
-                {
-                  width: size,
-                  height: size,
-                  borderRadius: Animated.divide(size, 2)
-                }
-              ]}>
-                <Text style={styles.phaseText}>{phase}</Text>
-              </Animated.View>
+              <View style={styles.starContainer}>
+                {/* Static star background */}
+                <View style={styles.starWrapper}>
+                  <Text style={styles.staticStar}>⭐</Text>
+
+                  {/* Animated ball moving around star peaks */}
+                  <Animated.View style={[
+                    styles.starBall,
+                    {
+                      transform: [
+                        { translateX: ballX },
+                        { translateY: ballY }
+                      ]
+                    }
+                  ]} />
+                </View>
+
+                {/* Phase display */}
+                <View style={styles.starPhaseContainer}>
+                  <Text style={styles.starPhaseText}>{phase}</Text>
+                  <Text style={styles.starSubText}>Follow the ball around the star</Text>
+                </View>
+              </View>
             )}
 
             <TouchableOpacity onPress={stopExercise} style={styles.stopButton}>
@@ -985,6 +1017,69 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+  starContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 20,
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  starWrapper: {
+    width: 200,
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  staticStar: {
+    fontSize: 160,
+    textAlign: 'center',
+    color: '#FFD700',
+    textShadowColor: 'rgba(255, 215, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 15,
+  },
+  starBall: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FF6347',
+    borderWidth: 2,
+    borderColor: '#FFF',
+    elevation: 8,
+    shadowColor: '#FF6347',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    zIndex: 10,
+  },
+  breathingStar: {
+    textAlign: 'center',
+    textShadowColor: 'rgba(255, 215, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 20,
+  },
+  starPhaseContainer: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  starPhaseText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: 'white',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
+  starSubText: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
     marginTop: 5,
     fontStyle: 'italic',
   },
