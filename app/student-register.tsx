@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -16,6 +17,7 @@ export default function StudentRegister() {
   const [dob, setDob] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const handleNameChange = useCallback((text: string) => setName(text), []);
   const handleUsernameChange = useCallback((text: string) => setUsername(text), []);
@@ -269,22 +271,39 @@ export default function StudentRegister() {
               keyboardType="email-address"
               autoCapitalize="none"
             />
-            <TextInput
-              placeholder="Password"
-              placeholderTextColor={Colors.textLight}
-              value={password}
-              onChangeText={setPassword}
-              style={{
-                width: 280,
-                backgroundColor: Colors.secondary,
-                color: 'white',
-                borderRadius: 8,
-                padding: 12,
-                marginBottom: 24,
-                fontSize: 16,
-              }}
-              secureTextEntry
-            />
+            <View style={{ position: 'relative', marginBottom: 24, width: 280 }}>
+              <TextInput
+                placeholder="Password"
+                placeholderTextColor={Colors.textLight}
+                value={password}
+                onChangeText={setPassword}
+                style={{
+                  width: 280,
+                  backgroundColor: Colors.secondary,
+                  color: 'white',
+                  borderRadius: 8,
+                  padding: 12,
+                  paddingRight: 45,
+                  fontSize: 16,
+                }}
+                secureTextEntry={!passwordVisible}
+              />
+              <TouchableOpacity
+                onPress={() => setPasswordVisible(!passwordVisible)}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: 12,
+                  padding: 4
+                }}
+              >
+                <Ionicons
+                  name={passwordVisible ? 'eye-off' : 'eye'}
+                  size={24}
+                  color="white"
+                />
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
               onPress={handleRegister}
               style={{

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from 'expo-font';
 import { Image } from 'expo-image';
@@ -11,6 +12,7 @@ export default function FrontPage() {
   const [loginModalVisible, setLoginModalVisible] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedUserType, setSelectedUserType] = useState('student');
 
@@ -182,21 +184,38 @@ export default function FrontPage() {
               }}>
                 Password
               </Text>
-              <TextInput
-                style={{
-                  borderWidth: 2,
-                  borderColor: '#4F21A2',
-                  borderRadius: 10,
-                  padding: 12,
-                  fontSize: 16,
-                  marginBottom: 20,
-                  fontFamily: 'Tinos'
-                }}
-                placeholder="Enter password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={true}
-              />
+              <View style={{ position: 'relative', marginBottom: 20 }}>
+                <TextInput
+                  style={{
+                    borderWidth: 2,
+                    borderColor: '#4F21A2',
+                    borderRadius: 10,
+                    padding: 12,
+                    paddingRight: 45,
+                    fontSize: 16,
+                    fontFamily: 'Tinos'
+                  }}
+                  placeholder="Enter password"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!passwordVisible}
+                />
+                <TouchableOpacity
+                  onPress={() => setPasswordVisible(!passwordVisible)}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: 12,
+                    padding: 4
+                  }}
+                >
+                  <Ionicons
+                    name={passwordVisible ? 'eye-off' : 'eye'}
+                    size={24}
+                    color="#4F21A2"
+                  />
+                </TouchableOpacity>
+              </View>
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <TouchableOpacity

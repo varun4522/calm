@@ -35,7 +35,6 @@ const MOOD_EMOJIS = [
 
 const TABS = [
   { key: 'home', icon: '🏠' },
-  { key: 'connect', icon: '🔗' },
   { key: 'mood', icon: '😊' },
 ];
 
@@ -49,7 +48,7 @@ export default function ExpertHome() {
   const params = useLocalSearchParams<{ registration?: string }>();
   const [expertName, setExpertName] = useState('');
   const [expertRegNo, setExpertRegNo] = useState('');
-  const [activeTab, setActiveTab] = useState<'home' | 'connect' | 'mood'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'mood'>('home');
 
   const [bookedSessions, setBookedSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -985,7 +984,7 @@ export default function ExpertHome() {
                 style={styles.matrixButton}
                 onPress={() => router.push(`./consultation?expertReg=${encodeURIComponent(expertRegNo)}&studentName=General&studentReg=&studentEmail=`)}
               >
-                <Text style={styles.buttonIcon}>💬</Text>
+                <Image source={require('../../assets/images/message.png')} style={{ width: 48, height: 48, marginBottom: 8 }} />
                 <Text style={styles.matrixButtonText}>Consultations</Text>
               </TouchableOpacity>
             </View>
@@ -1051,8 +1050,6 @@ export default function ExpertHome() {
         </ScrollView>
       </View>
     );
-  } else if (activeTab === 'connect') {
-
   }
 
   return (
@@ -1658,15 +1655,6 @@ export default function ExpertHome() {
 
         <TouchableOpacity
           style={{ flex: 1, alignItems: 'center', paddingVertical: 12 }}
-          onPress={() => router.push('./expert-connect')}
-        >
-          <View style={{ alignItems: 'center', justifyContent: 'center', width: 56, height: 40, borderRadius: 20, backgroundColor: 'transparent' }}>
-            <Text style={{ fontSize: 35, color: activeTab === 'connect' ? Colors.primary : Colors.tertiary, textShadowColor: activeTab === 'connect' ? Colors.accentLight : 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>🔗</Text>
-          </View>
-          </TouchableOpacity>
-
-        <TouchableOpacity
-          style={{ flex: 1, alignItems: 'center', paddingVertical: 12 }}
           onPress={() => setActiveTab('mood')}
         >
           <View style={{ alignItems: 'center', justifyContent: 'center', width: 56, height: 40, borderRadius: 20, backgroundColor: 'transparent' }}>
@@ -1938,7 +1926,6 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  // Session styles for Connect tab
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',

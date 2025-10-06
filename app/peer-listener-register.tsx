@@ -1,16 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Colors } from '../constants/Colors';
@@ -28,6 +29,8 @@ export default function PeerListenerRegister() {
     phone: '',
     course: '',
   });
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const updateFormData = useCallback((field: string, value: string) => {
@@ -286,28 +289,62 @@ export default function PeerListenerRegister() {
 
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Password *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.password}
-                  onChangeText={(value) => updateFormData('password', value)}
-                  placeholder="Create a password (min 6 characters)"
-                  placeholderTextColor="#a8a8a8"
-                  secureTextEntry
-                  editable={!isLoading}
-                />
+                <View style={{ position: 'relative' }}>
+                  <TextInput
+                    style={[styles.input, { paddingRight: 45 }]}
+                    value={formData.password}
+                    onChangeText={(value) => updateFormData('password', value)}
+                    placeholder="Create a password (min 6 characters)"
+                    placeholderTextColor="#a8a8a8"
+                    secureTextEntry={!passwordVisible}
+                    editable={!isLoading}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setPasswordVisible(!passwordVisible)}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: 12,
+                      padding: 4
+                    }}
+                  >
+                    <Ionicons
+                      name={passwordVisible ? 'eye-off' : 'eye'}
+                      size={24}
+                      color="#666"
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Confirm Password *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.confirmPassword}
-                  onChangeText={(value) => updateFormData('confirmPassword', value)}
-                  placeholder="Confirm your password"
-                  placeholderTextColor="#a8a8a8"
-                  secureTextEntry
-                  editable={!isLoading}
-                />
+                <View style={{ position: 'relative' }}>
+                  <TextInput
+                    style={[styles.input, { paddingRight: 45 }]}
+                    value={formData.confirmPassword}
+                    onChangeText={(value) => updateFormData('confirmPassword', value)}
+                    placeholder="Confirm your password"
+                    placeholderTextColor="#a8a8a8"
+                    secureTextEntry={!confirmPasswordVisible}
+                    editable={!isLoading}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setConfirmPasswordVisible(!confirmPasswordVisible)}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: 12,
+                      padding: 4
+                    }}
+                  >
+                    <Ionicons
+                      name={confirmPasswordVisible ? 'eye-off' : 'eye'}
+                      size={24}
+                      color="#666"
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.inputContainer}>
