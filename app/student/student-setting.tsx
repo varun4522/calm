@@ -32,6 +32,9 @@ export default function StudentSetting() {
   const [studentCourse, setStudentCourse] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [studentPhone, setStudentPhone] = useState('');
+  const [studentYear, setStudentYear] = useState('');
+  const [studentStatus, setStudentStatus] = useState('');
+  const [accountCreatedAt, setAccountCreatedAt] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [studentRegNo, setStudentRegNo] = useState(params.registration || '');
   const router = useRouter();
@@ -95,6 +98,9 @@ export default function StudentSetting() {
           setStudentEmail(studentData.email || '');
           setStudentCourse(studentData.course || '');
           setStudentPhone(studentData.phone || '');
+          setStudentYear(studentData.year || '');
+          setStudentStatus(studentData.status || '');
+          setAccountCreatedAt(studentData.created_at || '');
           // Ensure registration number is correctly set
           if (studentData.registration_number && !studentData.registration) {
             studentData.registration = studentData.registration_number;
@@ -110,11 +116,11 @@ export default function StudentSetting() {
             .eq('registration_number', regNo)
             .eq('user_type', 'Student')
             .eq('status', 'approved')
-            .single();
+            .maybeSingle();
 
           if (error) {
             console.error('Error fetching student data from user_requests:', error);
-            Alert.alert('Error', 'Failed to load student data from database');
+            Alert.alert('Database Error', `Failed to load student data: ${error.message}`);
           } else if (data) {
             console.log('Successfully fetched student data from user_requests table:', data);
             const formattedData = {
@@ -137,6 +143,9 @@ export default function StudentSetting() {
             setStudentEmail(formattedData.email);
             setStudentCourse(formattedData.course);
             setStudentPhone(formattedData.phone);
+            setStudentYear(formattedData.year);
+            setStudentStatus(formattedData.status);
+            setAccountCreatedAt(formattedData.created_at);
             // Save fetched data to persistent storage
             await saveStudentDataToPersistentStorage(regNo, formattedData);
           } else {
@@ -196,11 +205,11 @@ export default function StudentSetting() {
         .eq('registration_number', studentRegNo)
         .eq('user_type', 'Student')
         .eq('status', 'approved')
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Error refreshing student data:', error);
-        Alert.alert('Error', 'Failed to refresh student data');
+        Alert.alert('Database Error', `Failed to refresh student data: ${error.message}`);
       } else if (data) {
         console.log('Successfully refreshed student data:', data);
         const formattedData = {
@@ -212,19 +221,18 @@ export default function StudentSetting() {
           email: data.email || '',
           course: data.course || '',
           phone: data.phone || '',
-          year: data.year || '',
           user_type: data.user_type,
-          status: data.status,
           created_at: data.created_at,
           updated_at: data.updated_at
         };
 
         // Update state with fresh data
-        setStudentName(formattedData.name);
+        setStudentName(formattedData.user_name);
         setStudentUsername(formattedData.username);
         setStudentEmail(formattedData.email);
         setStudentCourse(formattedData.course);
         setStudentPhone(formattedData.phone);
+        setAccountCreatedAt(formattedData.created_at);
 
         // Save refreshed data to storage
         await saveStudentDataToPersistentStorage(studentRegNo, formattedData);
@@ -392,6 +400,48 @@ export default function StudentSetting() {
               <Text style={styles.infoValue}>{studentPhone || 'Not provided'}</Text>
             </View>
           </View>
+
+          {studentYear && (
+            <View style={styles.infoRow}>
+              <View style={styles.statIcon}>
+                <Ionicons name="calendar-outline" size={22} color={Colors.primary} />
+              </View>
+              <View style={styles.statContent}>
+                <Text style={styles.infoLabel}>Year</Text>
+                <Text style={styles.infoValue}>{studentYear}</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.infoRow}>
+            <View style={styles.statIcon}>
+              <Ionicons name="checkmark-circle-outline" size={22} color={Colors.success} />
+            </View>
+            <View style={styles.statContent}>
+              <Text style={styles.infoLabel}>Account Status</Text>
+              <Text style={[styles.infoValue, styles.statusText]}>
+                {studentStatus ? studentStatus.charAt(0).toUpperCase() + studentStatus.slice(1) : 'Active'}
+              </Text>
+            </View>
+          </View>
+
+          {accountCreatedAt && (
+            <View style={styles.infoRow}>
+              <View style={styles.statIcon}>
+                <Ionicons name="time-outline" size={22} color={Colors.primary} />
+              </View>
+              <View style={styles.statContent}>
+                <Text style={styles.infoLabel}>Member Since</Text>
+                <Text style={styles.infoValue}>
+                  {new Date(accountCreatedAt).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Logout Button */}
@@ -804,5 +854,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 6,
     fontStyle: 'italic',
+  },
+  statusText: {
+    color: '#4caf50',
+    fontWeight: '600',
   },
 });

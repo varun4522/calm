@@ -34,12 +34,16 @@ const messages = [
   { id: '3', sender: 'You', text: 'Ready for the test?' },
 ];
 
-const TABS = [
+// Base tabs for all users
+const BASE_TABS = [
   { key: 'home', icon: '🏠' },
   { key: 'mood', icon: '😊' },
   { key: 'sos' , icon: '0️⃣' },
   { key: 'setting', icon: '⚙️' },
 ];
+
+// Client tab only for peer listeners
+const CLIENT_TAB = { key: 'client', icon: '👥' };
 
 const MOOD_EMOJIS = [
   { emoji: '😄', label: 'Happy' },
@@ -129,6 +133,7 @@ export default function StudentHome() {
   const [studentReg, setStudentReg] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [studentUsername, setStudentUsername] = useState('');
+  const [userType, setUserType] = useState('student'); // Track if user is peer_listener
 
   // App usage statistics tracking per user
   const [appUsageStats, setAppUsageStats] = useState({
@@ -184,6 +189,16 @@ export default function StudentHome() {
 
   const router = useRouter();
 
+  // Dynamic tabs based on user type
+  const TABS = React.useMemo(() => {
+    const tabs = [...BASE_TABS];
+    // Insert Client tab before SOS if user is peer listener
+    if (userType === 'peer_listener') {
+      tabs.splice(2, 0, CLIENT_TAB); // Insert at index 2 (before SOS)
+    }
+    return tabs;
+  }, [userType]);
+
   // Force show mood selection for testing
   const forceShowMoodSelection = () => {
     console.log('🔥 Force showing mood selection modal');
@@ -216,6 +231,13 @@ export default function StudentHome() {
             setStudentCourse(data.course || '');
             setStudentUsername(data.username || '');
             console.log('Student data loaded:', { name: data.name, username: data.username });
+          }
+
+          // Load userType to check if peer listener
+          const storedUserType = await AsyncStorage.getItem('userType');
+          if (storedUserType) {
+            setUserType(storedUserType);
+            console.log('User type loaded:', storedUserType);
           }
 
           // Load app usage stats for this user
@@ -1542,6 +1564,9 @@ export default function StudentHome() {
                 router.push(`./student-setting?registration=${studentRegNo}`);
               } else if (tab.key === 'sos') {
                 router.push('./emergency');
+              } else if (tab.key === 'client') {
+                // Navigate to peer schedule page for peer listeners
+                router.push('./peer_schedule');
               } else {
                 setActiveTab(tab.key);
               }
@@ -1552,6 +1577,8 @@ export default function StudentHome() {
                 <Image source={require('../../assets/images/home.png')} style={{ width: 40, height: 40 }} />
               ) : tab.key === 'mood' ? (
                 <Image source={require('../../assets/images/mood calender.png')} style={{ width: 40, height: 40 }} />
+              ) : tab.key === 'client' ? (
+                <Image source={require('../../assets/images/community.png')} style={{ width: 38, height: 38 }} />
               ) : tab.key === 'sos' ? (
                 <Image source={require('../../assets/images/sos.png')} style={{ width: 35, height: 35 }} />
               ) : tab.key === 'setting' ? (

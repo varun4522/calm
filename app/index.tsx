@@ -268,7 +268,7 @@ export default function FrontPage() {
                           .select('*')
                           .or(`registration_number.eq.${loginInput.trim()},email.eq.${loginInput.trim()}`)
                           .eq('password', password.trim())
-                          .single();
+                          .maybeSingle();
 
                         if (userData && !userError) {
                           console.log('User found:', userData);
@@ -319,7 +319,7 @@ export default function FrontPage() {
                               router.push(`/expert/expert-home?registration=${userData.registration_number}`);
                             }
                           } else if (userData.user_type === 'Peer Listener') {
-                            router.push('/peer/peer-home'); // Navigate to main page for peer listeners
+                            router.push(`/student/student-home?registration=${userData.registration_number}`); // Navigate to student home for peer listeners
                           } else if (userData.user_type === 'Admin') {
                             router.push('/admin/admin-home');
                           }
@@ -328,10 +328,22 @@ export default function FrontPage() {
                           return;
                         } else {
                           // Authentication failed
-                          console.log('Authentication failed');
+                          console.log('Authentication failed - No user found or wrong credentials');
                           console.log('Login input:', loginInput.trim());
-                          console.log('Error:', userError);
-                          Alert.alert('Login Failed', 'Invalid credentials. Please check your registration number/email and password.');
+                          
+                          if (userError && userError.code !== 'PGRST116') {
+                            console.error('Database error:', userError);
+                            Alert.alert(
+                              'Login Error', 
+                              'An error occurred while checking your credentials. Please try again.'
+                            );
+                          } else {
+                            // No user found or wrong password
+                            Alert.alert(
+                              'Login Failed', 
+                              'Invalid registration number/email or password.\n\nPlease check:\n• Registration number or email is correct\n• Password is correct\n• Account has been registered'
+                            );
+                          }
                           setIsLoading(false);
                         }
 
