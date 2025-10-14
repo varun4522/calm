@@ -75,7 +75,7 @@ In the project directory, you can run the following commands:
 ├── app/              # Main application code, structured by routes
 │   ├── admin/
 │   ├── expert/
-│   ├── peer/
+<!-- │   ├── peer/ -->
 │   └── student/
 ├── assets/           # Images, fonts, and other static assets
 ├── components/       # Reusable UI components
