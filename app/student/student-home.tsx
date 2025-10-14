@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
+import PeerScreen from './peer-screen';
 
 const profilePics = [
   require('../../assets/images/profile/pic1.png'),
@@ -34,13 +35,16 @@ const messages = [
   { id: '3', sender: 'You', text: 'Ready for the test?' },
 ];
 
-// Tabs for all users
-const TABS = [
+// Base tabs for all users
+const BASE_TABS = [
   { key: 'home', icon: '🏠' },
   { key: 'mood', icon: '😊' },
-  { key: 'sos' , icon: '0️⃣' },
+  { key: 'sos', icon: '0️⃣' },
   { key: 'setting', icon: '⚙️' },
 ];
+
+// Peer tab (only for peer listeners)
+const PEER_TAB = { key: 'peer', icon: '👥' };
 
 const MOOD_EMOJIS = [
   { emoji: '😄', label: 'Happy' },
@@ -76,15 +80,15 @@ export default function StudentHome() {
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [moodModalVisible, setMoodModalVisible] = useState(false);
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
-  const [moodHistory, setMoodHistory] = useState<{[key: string]: string}>({});
+  const [moodHistory, setMoodHistory] = useState<{ [key: string]: string }>({});
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [selectedProfilePic, setSelectedProfilePic] = useState(0);
   const [showToolkitPage, setShowToolkitPage] = useState(false);
   const [showToolkitPopup, setShowToolkitPopup] = useState(false);
-  const [selectedToolkitItem, setSelectedToolkitItem] = useState<{name: string, description: string, route: string} | null>(null);
-  const [dailyMoodEntries, setDailyMoodEntries] = useState<{[key: string]: {emoji: string, label: string, time: string}[]}>({});
-  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{date: string, emoji: string, label: string, time: string, notes?: string}[]>([]);
+  const [selectedToolkitItem, setSelectedToolkitItem] = useState<{ name: string, description: string, route: string } | null>(null);
+  const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string }[] }>({});
+  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, notes?: string }[]>([]);
 
   // Animated bubble background (home tab only)
   const { height: screenHeight } = Dimensions.get('window');
@@ -130,6 +134,7 @@ export default function StudentHome() {
   const [studentReg, setStudentReg] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [studentUsername, setStudentUsername] = useState('');
+  const [userType, setUserType] = useState('student'); // Track user type for peer visibility
 
   // App usage statistics tracking per user
   const [appUsageStats, setAppUsageStats] = useState({
@@ -145,9 +150,9 @@ export default function StudentHome() {
   const [moodPromptsToday, setMoodPromptsToday] = useState<number>(0);
 
   // State to queue missed prompts
-  const [missedPromptsQueue, setMissedPromptsQueue] = useState<{label: string, scheduleKey: string}[]>([]);
+  const [missedPromptsQueue, setMissedPromptsQueue] = useState<{ label: string, scheduleKey: string }[]>([]);
   // State to track current prompt info
-  const [currentPromptInfo, setCurrentPromptInfo] = useState<{timeLabel: string, scheduleKey: string} | null>(null);
+  const [currentPromptInfo, setCurrentPromptInfo] = useState<{ timeLabel: string, scheduleKey: string } | null>(null);
   const [nextMoodPromptTime, setNextMoodPromptTime] = useState<Date | null>(null);
 
   // Notification states
@@ -185,6 +190,16 @@ export default function StudentHome() {
 
   const router = useRouter();
 
+  // Dynamic tabs based on user type
+  const TABS = React.useMemo(() => {
+    const tabs = [...BASE_TABS];
+    // Add peer tab only if user is a peer listener
+    if (userType === 'peer' || userType === 'peer_listener') {
+      tabs.splice(2, 0, PEER_TAB); // Insert at index 2 (before SOS)
+    }
+    return tabs;
+  }, [userType]);
+
   // Force show mood selection for testing
   const forceShowMoodSelection = () => {
     console.log('🔥 Force showing mood selection modal');
@@ -217,6 +232,13 @@ export default function StudentHome() {
             setStudentCourse(data.course || '');
             setStudentUsername(data.username || '');
             console.log('Student data loaded:', { name: data.name, username: data.username });
+          }
+
+          // Load userType to determine if peer tab should be visible
+          const storedUserType = await AsyncStorage.getItem('userType');
+          if (storedUserType) {
+            setUserType(storedUserType);
+            console.log('User type loaded:', storedUserType);
           }
 
           // Load app usage stats for this user
@@ -597,7 +619,7 @@ export default function StudentHome() {
       }
 
       // Check which prompts should be shown now
-      const missed: {label: string, intervalNumber: number, time: Date}[] = [];
+      const missed: { label: string, intervalNumber: number, time: Date }[] = [];
 
       for (let i = 0; i < schedule.promptTimes.length; i++) {
         const promptInfo = schedule.promptTimes[i];
@@ -972,7 +994,7 @@ export default function StudentHome() {
       })
       .flatMap(([_, entries]) => entries);
 
-    const emojiCounts = currentMonthEntries.reduce((counts: {[key: string]: number}, entry) => {
+    const emojiCounts = currentMonthEntries.reduce((counts: { [key: string]: number }, entry) => {
       counts[entry.emoji] = (counts[entry.emoji] || 0) + 1;
       return counts;
     }, {});
@@ -986,9 +1008,9 @@ export default function StudentHome() {
         {/* Most selected emoji display */}
         <View style={{ marginBottom: 16, alignItems: 'center' }}>
           <Text style={{ color: Colors.text, fontSize: 50, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.50)', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4 }}>
-              Mood Calendar
-            </Text>
-          <Text style={{ color: Colors.primary, fontSize: 20, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.30)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2  }}>
+            Mood Calendar
+          </Text>
+          <Text style={{ color: Colors.primary, fontSize: 20, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.30)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>
             Most Selected Mood This Month : {mostSelectedEmoji}
           </Text>
         </View>
@@ -1529,10 +1551,13 @@ export default function StudentHome() {
         {activeTab === 'mood' && (
           <MoodCalendar />
         )}
+        {activeTab === 'peer' && (
+          <PeerScreen />
+        )}
       </View>
 
       {/* Tab Bar */}
-  <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 20, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 20, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
         {TABS.map(tab => (
           <TouchableOpacity
             key={tab.key}
@@ -1553,6 +1578,8 @@ export default function StudentHome() {
                 <Image source={require('../../assets/images/home.png')} style={{ width: 40, height: 40 }} />
               ) : tab.key === 'mood' ? (
                 <Image source={require('../../assets/images/mood calender.png')} style={{ width: 40, height: 40 }} />
+              ) : tab.key === 'peer' ? (
+                <Image source={require('../../assets/images/community.png')} style={{ width: 38, height: 38 }} />
               ) : tab.key === 'sos' ? (
                 <Image source={require('../../assets/images/sos.png')} style={{ width: 35, height: 35 }} />
               ) : tab.key === 'setting' ? (
