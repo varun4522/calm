@@ -127,7 +127,12 @@ export default function StudentRegister() {
         const { error: insertError } = await supabase
           .from("profiles")
           .insert(user_data);
-        console.log("ISNERTION ERROR" , insertError);
+        console.log("INSERTION ERROR" , insertError);
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
         if (insertError) {
           Toast.show({
             type: 'error',

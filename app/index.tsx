@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFonts } from 'expo-font';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -17,7 +16,7 @@ export default function FrontPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { session } = useAuth();
 
-
+  console.log(session);
   useEffect(() => {
     const redirectUser = async () => {
       if (session && session.user?.id) {
@@ -34,12 +33,6 @@ export default function FrontPage() {
     redirectUser();
   }, [session]);
 
-  const [loaded] = useFonts({
-    Agbalumo: require('../assets/fonts/Agbalumo-Regular.ttf'),
-    Tinos: require('../assets/fonts/Tinos-Regular.ttf'),
-    IrishGrover: require('../assets/fonts/IrishGrover-Regular.ttf'),
-    Roboto: require('../assets/fonts/Roboto.ttf'),
-  });
 
   async function signInWithEmail() {
     setIsLoading(true);
@@ -51,12 +44,6 @@ export default function FrontPage() {
     }
     Toast.show({ type: 'success', text1: 'Login successful', position: 'bottom', visibilityTime: 1500 });
     setIsLoading(false);
-    if (session) {
-      const { data } = await supabase.from('profiles').select('*').eq('id', session?.user.id).single();
-      if ((data.type === 'STUDENT') || (data.type === 'PEER')) router.replace('/student/student-home');
-      else if (data.type === 'EXPERT') router.replace('/expert/expert-home');
-      else router.replace('/admin/admin-home');
-    } else Toast.show({ type: 'info', text1: 'No active session found', position: 'bottom', visibilityTime: 2000 });
   }
 
   return (

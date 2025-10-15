@@ -3,28 +3,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { toByteArray } from 'base64-js';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+  ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform,
+  SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
 } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/providers/AuthProvider';
+import { useProfile } from '@/api/Profile';
+import Toast from 'react-native-toast-message';
+import { useInsertNotification } from '@/api/Notifications';
 
 // Mood tracking constants
 const MOOD_EMOJIS = [
@@ -35,10 +25,6 @@ const MOOD_EMOJIS = [
   { emoji: '😡', label: 'Angry' },
 ];
 
-const TABS = [
-  { key: 'home', icon: '🏠' },
-  { key: 'mood', icon: '😊' },
-];
 
 function getTodayKey() {
   const d = new Date();
@@ -47,13 +33,9 @@ function getTodayKey() {
 
 export default function ExpertHome() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ registration?: string }>();
-  const [expertName, setExpertName] = useState('');
   const [expertRegNo, setExpertRegNo] = useState('');
   const [activeTab, setActiveTab] = useState<'home' | 'mood'>('home');
 
-  const [bookedSessions, setBookedSessions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -65,6 +47,10 @@ export default function ExpertHome() {
     category: 'REMEMBER BETTER',
   });
 
+  const { session } = useAuth();
+  const { data: profile } = useProfile(session?.user.id);
+  const { mutateAsync: insertNotification } = useInsertNotification();
+
   // Animation values for upload progress
   const progressAnim = React.useRef(new Animated.Value(0)).current;
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -73,26 +59,30 @@ export default function ExpertHome() {
   // Mood tracking states
   const [moodModalVisible, setMoodModalVisible] = useState(false);
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
-  const [moodHistory, setMoodHistory] = useState<{[key: string]: string}>({});
+  const [moodHistory, setMoodHistory] = useState<{ [key: string]: string }>({});
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-  const [dailyMoodEntries, setDailyMoodEntries] = useState<{[key: string]: {emoji: string, label: string, time: string}[]}>({});
-  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{date: string, emoji: string, label: string, time: string, notes?: string}[]>([]);
+  const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string }[] }>({});
+  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, notes?: string }[]>([]);
   const [nextMoodPrompt, setNextMoodPrompt] = useState<Date | null>(null);
-  const [currentPromptInfo, setCurrentPromptInfo] = useState<{timeLabel: string, scheduleKey: string} | null>(null);
+  const [currentPromptInfo, setCurrentPromptInfo] = useState<{ timeLabel: string, scheduleKey: string } | null>(null);
 
   // Notification states
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const [sendingNotification, setSendingNotification] = useState(false);
+
   const [notificationForm, setNotificationForm] = useState({
+    sender_id: session?.user.id || '',
+    sender_name: profile?.name || '',
+    sender_type: 'EXPERT', // default since expert is sending it
+    receiver_type: 'STUDENTS', // default audience (can be changed in UI)
     title: '',
     message: '',
-    recipient_type: 'all',
-    notification_type: 'general',
-    priority: 'medium'
+    priority: 'MEDIUM', // default
   });
-  const [sendingNotification, setSendingNotification] = useState(false);
 
   const categories = [
     'REMEMBER BETTER',
@@ -138,87 +128,6 @@ export default function ExpertHome() {
     bubbleAnimations.forEach((_, i) => startBubbleLoop(i));
   }, [bubbleAnimations, startBubbleLoop]);
 
-  // Add state for expert data from user_requests table
-  const [expertData, setExpertData] = useState<any>(null);
-  const [expertProfile, setExpertProfile] = useState({
-    specialization: '',
-    experience: '',
-    qualifications: '',
-    bio: '',
-    email: '',
-    phone: '',
-    rating: '0.0'
-  });
-
-  useEffect(() => {
-    const loadExpertData = async () => {
-      try {
-        let regNo = params.registration;
-        let expertName = '';
-
-        if (!regNo) {
-          const storedReg = await AsyncStorage.getItem('currentExpertReg');
-          if (storedReg) regNo = storedReg;
-        }
-
-        if (regNo) {
-          setExpertRegNo(regNo);
-
-          // First, try to get name from AsyncStorage for immediate display
-          const storedName = await AsyncStorage.getItem('currentExpertName');
-          if (storedName) {
-            setExpertName(storedName);
-            expertName = storedName;
-          }
-
-          // Load expert data from user_requests table
-          console.log('Loading expert data from user_requests table for:', regNo);
-          try {
-            const { data: expertUserData, error } = await supabase
-              .from('user_requests')
-              .select('*')
-              .eq('registration_number', regNo)
-              .eq('user_type', 'Expert')
-              .single();
-
-            if (error) {
-              console.error('Error loading expert from user_requests table:', error);
-              // If not found in user_requests, keep using stored name
-            } else if (expertUserData) {
-              console.log('Successfully loaded expert data from user_requests table:', expertUserData);
-              setExpertData(expertUserData);
-
-              // Update expert name if found in database
-              if (expertUserData.user_name) {
-                setExpertName(expertUserData.user_name);
-                expertName = expertUserData.user_name;
-                // Update stored name for future use
-                await AsyncStorage.setItem('currentExpertName', expertUserData.user_name);
-              }
-
-              // Set expert profile data using only available columns
-              setExpertProfile({
-                specialization: expertUserData.course || 'Mental Health Expert',
-                experience: '5+ years',
-                qualifications: 'Licensed Professional',
-                bio: `Expert specializing in ${expertUserData.course || 'Mental Health'}`,
-                email: expertUserData.email || '',
-                phone: expertUserData.phone || '',
-                rating: '4.8'
-              });
-            }
-          } catch (dbError) {
-            console.error('Database error loading expert:', dbError);
-            // Continue with stored data
-          }
-        }
-      } catch (error) {
-        console.error('Error loading expert data:', error);
-      }
-    };
-
-    loadExpertData();
-  }, [params.registration]);
 
   // Load notifications when expert data is available
   useEffect(() => {
@@ -227,55 +136,6 @@ export default function ExpertHome() {
     }
   }, [expertRegNo]);
 
-  // Save expert persistent/session data
-  const saveExpertDataToPersistentStorage = async (regNo: string, data: any) => {
-    try {
-      await AsyncStorage.setItem(`persistentExpertData_${regNo}`, JSON.stringify(data));
-      await AsyncStorage.setItem('currentExpertData', JSON.stringify(data));
-    } catch (err) {
-      console.error('Error saving expert persistent data:', err);
-    }
-  };
-
-  const loadBookedSessions = async () => {
-    setLoading(true);
-    try {
-      // Get booked sessions from AsyncStorage (in real app, this would be from database)
-      const sessionData = await AsyncStorage.getItem('psychologistSessions');
-      if (sessionData) {
-        const sessions = JSON.parse(sessionData);
-
-        // Filter sessions for current expert based on name
-        const expertSessions = sessions.filter((session: any) =>
-          session.psychologistName === expertName ||
-          session.psychologistId === expertName.toLowerCase().replace(' ', '')
-        );
-
-        setBookedSessions(expertSessions);
-      } else {
-        // No mock data - load real sessions from database
-        console.log('No sessions found for expert:', expertName);
-        setBookedSessions([]);
-      }
-    } catch (error) {
-      console.error('Error loading booked sessions:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-
-  const handleLogout = async () => {
-    try {
-      await AsyncStorage.removeItem('currentExpertReg');
-      await AsyncStorage.removeItem('currentExpertName');
-      router.replace('/');
-    } catch (error) {
-      console.error('Logout error:', error);
-      router.replace('/');
-    }
-  };
 
   // Notification functions
   const loadNotifications = async () => {
@@ -303,67 +163,62 @@ export default function ExpertHome() {
 
   const sendNotification = async () => {
     if (!notificationForm.title.trim() || !notificationForm.message.trim()) {
-      Alert.alert('Error', 'Please fill in both title and message fields.');
+      Toast.show({
+        type: 'error',
+        text1: 'Please fill in both title and message fields.',
+      });
       return;
     }
 
     try {
       setSendingNotification(true);
-
-      // Prepare notification data matching the database schema
       const notificationData = {
-        sender_id: expertRegNo,
-        sender_name: expertName,
-        sender_type: 'expert',
-        recipient_type: notificationForm.recipient_type,
-        recipient_id: notificationForm.recipient_type === 'all' ? null : notificationForm.recipient_type,
+        sender_id: session?.user.id ?? '',
+        sender_name: profile?.name ?? '',
+        sender_type: 'EXPERT' as const,
+        receiver_type: notificationForm.receiver_type.toUpperCase() as
+          | 'STUDENTS'
+          | 'EXPERTS'
+          | 'PEERS'
+          | 'ADMIN'
+          | 'ALL',
         title: notificationForm.title,
         message: notificationForm.message,
-        priority: notificationForm.priority,
-        is_read: false,
-        is_archived: false,
-        metadata: {},
+        priority: notificationForm.priority.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH',
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        read_at: null,
-      };
-
-      const { data, error } = await supabase
-        .from('notifications')
-        .insert([notificationData])
-        .select();
-
-      if (error) {
-        console.error('Notification insert error:', error);
-        throw error;
       }
+      console.log(notificationData);
+      await insertNotification(notificationData);
 
-      Alert.alert('✅ Success', `Notification sent successfully to ${notificationForm.recipient_type === 'all' ? 'all students' : 'selected recipients'}!`);
+      Toast.show({
+        type: 'success',
+        text1: `Notification sent successfully to ${notificationForm.receiver_type === 'ALL' ? 'all students' : 'selected recipients'}.`,
+      });
 
-      // Reset form
       setNotificationForm({
+        sender_id: session?.user.id ?? '',
+        sender_name: profile?.name ?? '',
+        sender_type: 'EXPERT',
+        receiver_type: 'ALL',
         title: '',
         message: '',
-        recipient_type: 'all',
-        notification_type: 'general',
-        priority: 'medium'
+        priority: 'MEDIUM',
       });
-      setShowNotificationModal(false);
 
-      // Reload notifications
+      setShowNotificationModal(false);
       await loadNotifications();
     } catch (error) {
-      console.error('Error sending notification:', error);
-
-      if (error instanceof Error) {
-        Alert.alert('Error', `Failed to send notification: ${error.message}`);
-      } else {
-        Alert.alert('Error', 'Failed to send notification. Please try again.');
-      }
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to send notification.',
+        text2: error instanceof Error ? error.message : 'Please try again.',
+      });
+      console.log(error);
     } finally {
       setSendingNotification(false);
     }
   };
+
 
   const markNotificationAsRead = async (notificationId: string) => {
     try {
@@ -395,40 +250,6 @@ export default function ExpertHome() {
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error marking notification as read:', error);
-    }
-  };
-
-  const markAllNotificationsAsRead = async () => {
-    try {
-      const now = new Date().toISOString();
-
-      const { error } = await supabase
-        .from('notifications')
-        .update({
-          is_read: true,
-          read_at: now,
-          updated_at: now
-        })
-        .or(`recipient_id.eq.${expertRegNo},recipient_type.eq.all,recipient_type.eq.expert`)
-        .eq('is_read', false);
-
-      if (error) {
-        console.error('Error marking all notifications as read:', error);
-        return;
-      }
-
-      // Update local state
-      setNotifications(prev =>
-        prev.map(notification => ({
-          ...notification,
-          is_read: true,
-          read_at: now,
-          updated_at: now
-        }))
-      );
-      setUnreadCount(0);
-    } catch (error) {
-      console.error('Error marking all notifications as read:', error);
     }
   };
 
@@ -885,7 +706,7 @@ export default function ExpertHome() {
       })
       .flatMap(([_, entries]) => entries);
 
-    const emojiCounts = currentMonthEntries.reduce((counts: {[key: string]: number}, entry) => {
+    const emojiCounts = currentMonthEntries.reduce((counts: { [key: string]: number }, entry) => {
       counts[entry.emoji] = (counts[entry.emoji] || 0) + 1;
       return counts;
     }, {});
@@ -1065,7 +886,7 @@ export default function ExpertHome() {
         <ScrollView style={{ flex: 1, width: '100%', paddingHorizontal: 16 }}>
           <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 40 }}>
             <Text style={{ fontSize: 28, fontWeight: 'bold', color: Colors.primary, textAlign: 'center', marginBottom: 8 }}>
-              Welcome, {expertName}
+              Welcome, {profile?.name}
             </Text>
             <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center' }}>
               Expert Dashboard
@@ -1116,7 +937,7 @@ export default function ExpertHome() {
             <Text style={{ fontSize: 20, fontWeight: 'bold', color: Colors.primary, marginBottom: 15, textAlign: 'center' }}>Expert Information</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <Text style={{ fontSize: 16, color: Colors.textSecondary }}>Registration ID:</Text>
-              <Text style={{ fontSize: 16, fontWeight: 'bold', color: Colors.primary }}>{expertRegNo}</Text>
+              <Text style={{ fontSize: 16, fontWeight: 'bold', color: Colors.primary }}>{profile?.registration_number}</Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <Text style={{ fontSize: 16, color: Colors.textSecondary }}>Specialization:</Text>
@@ -1342,7 +1163,7 @@ export default function ExpertHome() {
           >
             <Text style={{ fontSize: 28, marginBottom: 10, color: Colors.text, fontWeight: 'bold', textAlign: 'center' }}>🌟 Expert Mood Check-In</Text>
             <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 25 }}>
-              Hi {expertName}! How are you feeling right now?
+              Hi {profile?.name}! How are you feeling right now?
             </Text>
             <Text style={{ fontSize: 14, color: Colors.primary, textAlign: 'center', marginBottom: 20, fontWeight: 'bold' }}>
               Please select one emoji to continue
@@ -1392,18 +1213,18 @@ export default function ExpertHome() {
             <ScrollView style={styles.modalBody}>
               {/* Notification Actions */}
               <View style={{ marginBottom: 20 }}>
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                {/* <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
 
                   {unreadCount > 0 && (
                     <TouchableOpacity
                       style={[styles.notificationActionButton, { backgroundColor: Colors.backgroundLight }]}
-                      onPress={markAllNotificationsAsRead}
+                      onPress={markNotificationAsRead}
                     >
                       <Ionicons name="checkmark-done" size={16} color={Colors.primary} />
                       <Text style={[styles.notificationActionText, { color: Colors.primary }]}>Mark All Read</Text>
                     </TouchableOpacity>
                   )}
-                </View>
+                </View> */}
 
                 {/* Send Notification Form */}
                 <View style={styles.notificationForm}>
@@ -1438,20 +1259,21 @@ export default function ExpertHome() {
                               'Select Recipients',
                               'Who should receive this notification?',
                               [
-                                { text: 'All Users', onPress: () => setNotificationForm(prev => ({ ...prev, recipient_type: 'all' })) },
-                                { text: 'Students Only', onPress: () => setNotificationForm(prev => ({ ...prev, recipient_type: 'student' })) },
-                                { text: 'Experts Only', onPress: () => setNotificationForm(prev => ({ ...prev, recipient_type: 'expert' })) },
-                                { text: 'Peers Only', onPress: () => setNotificationForm(prev => ({ ...prev, recipient_type: 'peer' })) },
+                                { text: 'All Users', onPress: () => setNotificationForm(prev => ({ ...prev, receiver_type: 'ALL' })) },
+                                { text: 'Students Only', onPress: () => setNotificationForm(prev => ({ ...prev, receiver_type: 'STUDENTS' })) },
+                                { text: 'Experts Only', onPress: () => setNotificationForm(prev => ({ ...prev, receiver_type: 'EXPERTS' })) },
+                                { text: 'Peers Only', onPress: () => setNotificationForm(prev => ({ ...prev, receiver_type: 'PEERS' })) },
                                 { text: 'Cancel', style: 'cancel' }
                               ]
                             );
+
                           }}
                         >
                           <Text style={styles.pickerText}>
-                            {notificationForm.recipient_type === 'all' ? 'All Users' :
-                             notificationForm.recipient_type === 'student' ? 'Students' :
-                             notificationForm.recipient_type === 'expert' ? 'Experts' :
-                             notificationForm.recipient_type === 'peer' ? 'Peers' : 'Select...'}
+                            {notificationForm.receiver_type === 'ALL' ? 'All Users' :
+                            notificationForm.receiver_type === 'STUDENTS' ? 'Students' :
+                            notificationForm.receiver_type === 'EXPERTS' ? 'Experts' :
+                            notificationForm.receiver_type === 'PEERS' ? 'Peers' : 'Select...'}
                           </Text>
                           <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
                         </TouchableOpacity>
@@ -1471,7 +1293,6 @@ export default function ExpertHome() {
                                 { text: 'Low', onPress: () => setNotificationForm(prev => ({ ...prev, priority: 'low' })) },
                                 { text: 'Medium', onPress: () => setNotificationForm(prev => ({ ...prev, priority: 'medium' })) },
                                 { text: 'High', onPress: () => setNotificationForm(prev => ({ ...prev, priority: 'high' })) },
-                                { text: 'Urgent', onPress: () => setNotificationForm(prev => ({ ...prev, priority: 'urgent' })) },
                                 { text: 'Cancel', style: 'cancel' }
                               ]
                             );
@@ -1544,10 +1365,11 @@ export default function ExpertHome() {
                       <View style={styles.notificationFooter}>
                         <View style={[
                           styles.priorityBadge,
-                          { backgroundColor:
-                            notification.priority === 'urgent' ? '#ff4444' :
-                            notification.priority === 'high' ? '#ff8800' :
-                            notification.priority === 'medium' ? '#4CAF50' : '#666666'
+                          {
+                            backgroundColor:
+                              notification.priority === 'high' ? '#ff4444' :
+                                notification.priority === 'medium' ? '#ff8800' :
+                                  notification.priority === 'low' ? '#4CAF50' : '#666666'
                           }
                         ]}>
                           <Text style={styles.priorityBadgeText}>
@@ -1574,13 +1396,13 @@ export default function ExpertHome() {
           onPress={() => setActiveTab('home')}
         >
           <Image
-              source={require('../../assets/images/home.png')}
-              style={{
-                width: 43,
-                height: 43,
-              }}
-            />
-          </TouchableOpacity>
+            source={require('../../assets/images/home.png')}
+            style={{
+              width: 43,
+              height: 43,
+            }}
+          />
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={{ flex: 1, alignItems: 'center', paddingVertical: 12 }}
@@ -1604,7 +1426,7 @@ export default function ExpertHome() {
               }}
             />
           </View>
-          </TouchableOpacity>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -1677,7 +1499,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: Colors.primary,
     marginBottom: 5,
-    textAlign:'center'
+    textAlign: 'center'
   },
   actionSubtitle: {
     fontSize: 12,

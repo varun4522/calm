@@ -3,19 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import {
-    Animated,
-    Image,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
-} from 'react-native';
+import { Animated,Image, Modal, Pressable, ScrollView, StyleSheet,Text,TouchableOpacity, View} from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/providers/AuthProvider';
+import { useProfile } from '@/api/Profile';
+import { handleLogout } from '@/api/OtherMethods';
 
 export default function ExpertSetting() {
   const router = useRouter();
@@ -26,19 +19,19 @@ export default function ExpertSetting() {
 
   // Settings states
   const profilePics = [
-    require('../../assets/images/profile/pic1.png'),
-    require('../../assets/images/profile/pic2.png'),
-    require('../../assets/images/profile/pic3.png'),
-    require('../../assets/images/profile/pic4.png'),
-    require('../../assets/images/profile/pic5.png'),
-    require('../../assets/images/profile/pic6.png'),
-    require('../../assets/images/profile/pic7.png'),
-    require('../../assets/images/profile/pic8.png'),
-    require('../../assets/images/profile/pic9.png'),
-    require('../../assets/images/profile/pic10.png'),
-    require('../../assets/images/profile/pic11.png'),
-    require('../../assets/images/profile/pic12.png'),
-    require('../../assets/images/profile/pic13.png'),
+    require('@/assets/images/profile/pic1.png'),
+    require('@/assets/images/profile/pic2.png'),
+    require('@/assets/images/profile/pic3.png'),
+    require('@/assets/images/profile/pic4.png'),
+    require('@/assets/images/profile/pic5.png'),
+    require('@/assets/images/profile/pic6.png'),
+    require('@/assets/images/profile/pic7.png'),
+    require('@/assets/images/profile/pic8.png'),
+    require('@/assets/images/profile/pic9.png'),
+    require('@/assets/images/profile/pic10.png'),
+    require('@/assets/images/profile/pic11.png'),
+    require('@/assets/images/profile/pic12.png'),
+    require('@/assets/images/profile/pic13.png'),
   ];
   const [selectedProfilePic, setSelectedProfilePic] = useState(0);
   const [choosePicModal, setChoosePicModal] = useState(false);
@@ -49,76 +42,8 @@ export default function ExpertSetting() {
     bio: '',
     email: '',
   });
-
-  useEffect(() => {
-    const loadExpertData = async () => {
-      try {
-        let regNo = params.registration;
-
-        if (!regNo) {
-          const storedReg = await AsyncStorage.getItem('currentExpertReg');
-          if (storedReg) regNo = storedReg;
-        }
-
-        if (regNo) {
-          setExpertRegNo(regNo);
-
-          // First, try to get name from AsyncStorage for immediate display
-          const storedName = await AsyncStorage.getItem('currentExpertName');
-          if (storedName) {
-            setExpertName(storedName);
-          }
-
-          // Load expert data from user_requests table
-          console.log('Loading expert data from user_requests table for:', regNo);
-          try {
-            const { data: expertUserData, error } = await supabase
-              .from('user_requests')
-              .select('*')
-              .eq('registration_number', regNo)
-              .eq('user_type', 'Expert')
-              .single();
-
-            if (error) {
-              console.error('Error loading expert from user_requests table:', error);
-              // If not found in user_requests, keep using stored name
-            } else if (expertUserData) {
-              console.log('Successfully loaded expert data from user_requests table:', expertUserData);
-
-              // Update expert name if found in database
-              if (expertUserData.user_name) {
-                setExpertName(expertUserData.user_name);
-                // Update stored name for future use
-                await AsyncStorage.setItem('currentExpertName', expertUserData.user_name);
-              }
-
-              // Set expert profile data
-              setExpertProfile({
-                bio: expertUserData.bio || `Expert specializing in ${expertUserData.specialization || 'Mental Health'}`,
-                email: expertUserData.email || ''
-              });
-            }
-          } catch (dbError) {
-            console.error('Database error loading expert:', dbError);
-            // Continue with stored data
-          }
-
-          // Load settings-specific data (profile pic)
-          const [picIdx] = await Promise.all([
-            AsyncStorage.getItem(`expertProfilePic_${regNo}`)
-          ]);
-
-          if (picIdx !== null) {
-            setSelectedProfilePic(parseInt(picIdx, 10));
-          }
-        }
-      } catch (error) {
-        console.error('Error loading expert data:', error);
-      }
-    };
-
-    loadExpertData();
-  }, [params.registration]);
+  const {session } = useAuth();
+  const {data: profile} = useProfile(session?.user.id);
 
   // Refresh expert data function
   const refreshExpertData = async () => {
@@ -179,16 +104,6 @@ export default function ExpertSetting() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await AsyncStorage.removeItem('currentExpertReg');
-      await AsyncStorage.removeItem('currentExpertName');
-      router.replace('/');
-    } catch (error) {
-      console.error('Logout error:', error);
-      router.replace('/');
-    }
-  };
 
   return (
     <LinearGradient
@@ -249,7 +164,7 @@ export default function ExpertSetting() {
               </View>
               <View style={styles.statContent}>
                 <Text style={styles.infoLabel}>Full Name</Text>
-                <Text style={styles.infoValue}>{expertName || 'Not available'}</Text>
+                <Text style={styles.infoValue}>{profile?.name}</Text>
               </View>
             </View>
 
@@ -259,7 +174,7 @@ export default function ExpertSetting() {
               </View>
               <View style={styles.statContent}>
                 <Text style={styles.infoLabel}>Registration ID</Text>
-                <Text style={styles.infoValue}>{expertRegNo || 'Not available'}</Text>
+                <Text style={styles.infoValue}>{profile?.registration_number}</Text>
               </View>
             </View>
 
@@ -269,7 +184,7 @@ export default function ExpertSetting() {
               </View>
               <View style={styles.statContent}>
                 <Text style={styles.infoLabel}>Email</Text>
-                <Text style={styles.infoValue}>{expertProfile.email || 'Not available'}</Text>
+                <Text style={styles.infoValue}>{profile?.email}</Text>
               </View>
             </View>
           </View>

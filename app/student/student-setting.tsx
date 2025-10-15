@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/api/Profile';
 import Toast from 'react-native-toast-message';
+import { handleLogout } from '@/api/OtherMethods';
 
 const profilePics = [
   require('@/assets/images/profile/pic1.png'),
@@ -284,28 +285,6 @@ export default function StudentSetting() {
       Alert.alert('Error', 'An error occurred while refreshing data');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Handle logout
-  const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Could not log out',
-        position: 'bottom',
-        visibilityTime: 2000
-      });
-    } else {
-      console.log("Logged out");
-      router.replace("/");
-      Toast.show({
-        type: 'success',
-        text1: 'Log out successful',
-        position: 'bottom',
-        visibilityTime: 1500
-      });
     }
   };
 
