@@ -8,7 +8,7 @@ import { globalStyles } from '@/constants/GlobalStyles';
 export default function TermsPage() {
   const router = useRouter();
   const [fontsLoaded] = useFonts({
-    Tinos: require('../assets/fonts/Tinos-Regular.ttf'),
+    Tinos: require('@/assets/fonts/Tinos-Regular.ttf'),
   });
 
   if (!fontsLoaded) {

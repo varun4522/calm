@@ -2,9 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { useProfile } from '@/api/Profile';
+import { useAuth } from '@/providers/AuthProvider';
 
 const profilePics = [
   require('@/assets/images/profile/pic1.png'),
@@ -85,6 +87,13 @@ export default function StudentHome() {
   const [selectedToolkitItem, setSelectedToolkitItem] = useState<{name: string, description: string, route: string} | null>(null);
   const [dailyMoodEntries, setDailyMoodEntries] = useState<{[key: string]: {emoji: string, label: string, time: string}[]}>({});
   const [detailedMoodEntries, setDetailedMoodEntries] = useState<{date: string, emoji: string, label: string, time: string, notes?: string}[]>([]);
+
+  const {session, loading} = useAuth();
+  const {data:profile, error, isLoading} = useProfile(session?.user.id);
+
+  if (isLoading){
+    return <ActivityIndicator />
+  }
 
   // Animated bubble background (home tab only)
   const { height: screenHeight } = Dimensions.get('window');
@@ -187,7 +196,6 @@ export default function StudentHome() {
 
   // Force show mood selection for testing
   const forceShowMoodSelection = () => {
-    console.log('🔥 Force showing mood selection modal');
     setCurrentPromptInfo({ timeLabel: 'Manual Check-in', scheduleKey: 'manual' });
     setMoodModalVisible(true);
   };
@@ -216,7 +224,6 @@ export default function StudentHome() {
             setStudentEmail(data.email || '');
             setStudentCourse(data.course || '');
             setStudentUsername(data.username || '');
-            console.log('Student data loaded:', { name: data.name, username: data.username });
           }
 
           // Load app usage stats for this user
@@ -233,13 +240,11 @@ export default function StudentHome() {
 
           // Check for mood prompts after login with slight delay
           setTimeout(async () => {
-            console.log('🎯 Checking for mood prompts after login...');
             await checkForMoodPrompt(regNo);
           }, 2000);
 
           // Set up periodic mood prompt checking (every 30 minutes)
           const moodCheckInterval = setInterval(async () => {
-            console.log('⏰ Periodic mood prompt check...');
             await checkForMoodPrompt(regNo);
           }, 30 * 60 * 1000); // 30 minutes
 
@@ -282,9 +287,8 @@ export default function StudentHome() {
         if (detailedStored) setDetailedMoodEntries(JSON.parse(detailedStored));
         else setDetailedMoodEntries([]);
 
-        console.log('📊 Mood data loaded successfully for user:', regNo);
       } catch (error) {
-        console.error('❌ Error loading mood data:', error);
+        console.error('Error loading mood data:', error);
       }
     };
 
@@ -303,7 +307,6 @@ export default function StudentHome() {
 
       // Don't proceed if regNo is still undefined/null/empty or has invalid string values
       if (!regNo || regNo === 'undefined' || regNo === 'null') {
-        console.log('⚠️ No valid student registration number available, skipping notification load');
         return;
       }
 
@@ -373,8 +376,6 @@ export default function StudentHome() {
           table: 'notifications'
         },
         (payload) => {
-          console.log('🔔 Notification change detected:', payload);
-
           // Check if this notification is for current student
           const isForCurrentStudent = async () => {
             // Try to get registration number from state first, then params, then AsyncStorage
@@ -525,13 +526,10 @@ export default function StudentHome() {
 
         lastTabRef.current = normalizedTab;
         setActiveTab(normalizedTab);
-
-        console.log(`Loaded tab state: ${normalizedTab} for user: ${regNo}`);
       } else {
         // Default to home tab if no stats found
         setActiveTab('home');
         lastTabRef.current = 'home';
-        console.log(`No stats found, defaulting to home tab for user: ${regNo}`);
       }
     } catch (error) {
       console.error('Error loading app usage stats:', error);
@@ -561,18 +559,14 @@ export default function StudentHome() {
           count: 0
         };
         await AsyncStorage.setItem(scheduleKey, JSON.stringify(dailySchedule));
-        console.log(`📅 Created new daily mood schedule starting at ${now.toLocaleTimeString()}`);
       } else {
         dailySchedule = JSON.parse(scheduleData);
-        console.log(`📅 Loaded existing mood schedule, completed: ${dailySchedule.count}/6`);
       }
 
       setMoodPromptsToday(dailySchedule.count);
 
       // Check if it's time for any prompts
       checkForMoodPrompt(regNo, dailySchedule);
-
-      console.log(`📅 Mood prompt system initialized for ${regNo}. Today's prompts: ${dailySchedule.count}/6`);
     } catch (error) {
       console.error('Error initializing mood prompt system:', error);
     }
@@ -1371,9 +1365,7 @@ export default function StudentHome() {
                 <Ionicons name="close" size={24} color={Colors.text} />
               </TouchableOpacity>
             </View>
-
-
-
+            
             {/* Notifications List */}
             <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
               {notifications.length === 0 ? (
@@ -1438,7 +1430,7 @@ export default function StudentHome() {
             <View style={{ position: 'absolute', top: 40, left: 16, zIndex: 10, backgroundColor: Colors.backgroundLight, borderRadius: 20, padding: 6, borderWidth: 2, borderColor: Colors.primary, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Image source={profilePics[selectedProfilePic]} style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: Colors.accent }} />
-                <Text style={{ color: Colors.text, fontSize: 13, marginLeft: 10, fontWeight: 'bold', textShadowColor: 'rgba(255,255,255,0.8)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>{getGreeting(studentName || studentUsername)}</Text>
+                <Text style={{ color: Colors.text, fontSize: 13, marginLeft: 10, fontWeight: 'bold', textShadowColor: 'rgba(255,255,255,0.8)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>{getGreeting(profile?.name)}</Text>
               </View>
             </View>
 
@@ -1484,13 +1476,13 @@ export default function StudentHome() {
           <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 10, backgroundColor: Colors.white, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: Colors.border }}>
             <Image source={profilePics[selectedProfilePic]} style={{ width: 90, height: 90, borderRadius: 45, borderWidth: 4, borderColor: Colors.accent }} />
             <Text style={{ color: Colors.text, fontSize: 24, fontWeight: 'bold', marginTop: 15 }}>
-              {studentName || studentUsername || 'Student'}
+              {profile?.name}
             </Text>
             <Text style={{ color: Colors.textSecondary, fontSize: 16, marginTop: 5 }}>
-              {studentCourse || 'Course not specified'}
+              {profile?.course}
             </Text>
             <Text style={{ color: Colors.textSecondary, fontSize: 14, marginTop: 5 }}>
-              Registration: {studentReg || 'Not available'}
+              Registration: {profile?.registration_number}
             </Text>
 
             {/* Profile Picture Selector */}
@@ -1532,7 +1524,7 @@ export default function StudentHome() {
       </View>
 
       {/* Tab Bar */}
-  <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 20, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 20, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
         {TABS.map(tab => (
           <TouchableOpacity
             key={tab.key}

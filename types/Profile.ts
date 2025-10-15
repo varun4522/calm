@@ -1,10 +1,10 @@
 export type Profile = {
-  full_name: string;
+  name: string;
   username: string;
-  group: string;
-  avatar_url?:string;
-  roll_number?: number;
-  professional_title?: string;
-  qualifications?: string;
+  type: string;
+  registration_number: number;
   course?:string;
+  phone_number: number;
+  date_of_birth: string;
+  email: string;
 };

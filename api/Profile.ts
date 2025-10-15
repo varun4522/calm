@@ -1,17 +1,18 @@
 import { supabase } from "@/lib/supabase";
+import { Profile } from "@/types/Profile";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Toast from "react-native-toast-message";
 
 
 export const useProfile = (userId: string | null | undefined) => {
-  return useQuery({
+  return useQuery<Profile>({
     queryKey: ["profile", userId],
     queryFn: async () => {
       if (!userId) return null;
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("full_name, username, group, avatar_url")
+        .select("*")
         .eq("id", userId)
         .single();
 
@@ -26,12 +27,12 @@ export const useSaveProfileChanges = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: { id: string; username: string; full_name: string }) => {
+    mutationFn: async (data: { id: string; username: string; name: string }) => {
       const { error, data: updatedProfile } = await supabase
         .from("profiles")
         .update({
           username: data.username,
-          full_name: data.full_name, 
+          full_name: data.name, 
         })
         .eq("id", data.id)
         .select()
@@ -55,7 +56,7 @@ export const useSaveProfileChanges = () => {
   });
 };
 
-const getAllUsernames = async() => {
+export const getAllUsernames = async() => {
   const { data, error } = await supabase.from("profiles").select("username");
   if (error) {
     return [];
@@ -64,4 +65,12 @@ const getAllUsernames = async() => {
   return usernames;
 };
 
-export default getAllUsernames;
+
+export const getAllRegistrationNumbers = async() => {
+  const { data, error } = await supabase.from("profiles").select("registration_number");
+  if (error) {
+    return [];
+  }
+  const registrationNumbers = data.map((user) => user.registration_number);
+  return registrationNumbers;
+};

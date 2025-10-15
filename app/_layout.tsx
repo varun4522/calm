@@ -6,6 +6,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '@/constants/Colors';
 import '@/constants/GlobalStyles'; // Import global styles to make Tinos font available
 import QueryProvider from '@/providers/QueryProvider';
+import AuthProvider from '@/providers/AuthProvider';
+import toastConfig from '@/components/CustomToast';
+import Toast from 'react-native-toast-message';
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -25,10 +28,13 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
       <QueryProvider>
         <Stack screenOptions={{ headerShown: false }} />
         <StatusBar style="auto" />
+        <Toast config={toastConfig}/>
       </QueryProvider>
+      </AuthProvider>
     </GestureHandlerRootView>
   );
 
