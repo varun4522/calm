@@ -82,13 +82,15 @@ export default function ExpertChatPage() {
         if (!newMessage.trim()) return;
 
         try {
-            if (profile && expertId && studentId) {
+            if (profile && expertId && studentProfile) {
                 const messagePayload = {
                     sender_id: expertId,
-                    receiver_id: studentId,
+                    receiver_id: studentProfile.id,
+                    receiver_name: studentProfile?.name,
                     sender_name: profile?.name,
                     message: newMessage.trim(),
                     sender_type: "EXPERT" as "STUDENT" | "EXPERT" | "PEER" | "ADMIN",
+                    receiver_type: studentProfile.type as "STUDENT" | "EXPERT" | "PEER" | "ADMIN",
                     is_read: false,
                 };
                 console.log(messagePayload);

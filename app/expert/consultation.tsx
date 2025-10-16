@@ -1,16 +1,16 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {    FlatList,    StyleSheet,    Text,    TextInput,    TouchableOpacity,    View} from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
 import { Profile } from '@/types/Profile';
 import { ChatMessage, GroupedConversation } from '@/types/Message';
+import { useMessagesByUserId } from '@/api/Messages';
 
 
 export default function ConsultationPage() {
     const router = useRouter();
-
     const { session } = useAuth();
     const { data: profile } = useProfile(session?.user.id);
 
@@ -19,17 +19,16 @@ export default function ConsultationPage() {
     const [filteredStudents, setFilteredStudents] = useState<Profile[]>([]);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [groupedConversations, setGroupedConversations] = useState<GroupedConversation[]>([]);
-    const [activeTab, setActiveTab] = useState<'students' | 'messages'>('messages'); // Default to messages
-    const [expertInfo, setExpertInfo] = useState({
-        name: '',
-        registration: ''
-    });
+    const [activeTab, setActiveTab] = useState<'students' | 'messages'>('messages');
+    const { data: messagesIncludingExpertId, refetch } = useMessagesByUserId(session?.user.id);
 
     useEffect(() => {
         if (session && profile) {
+            console.log(messagesIncludingExpertId);
             loadMessages();
+            groupingMessagesSender();
         }
-    }, [session , profile]);
+    }, [session, profile]);
 
     // Set up real-time subscription for new messages
     useEffect(() => {
@@ -53,9 +52,6 @@ export default function ConsultationPage() {
                         if (exists) return prev;
                         const updatedMessages = [newMessage, ...prev];
 
-                        // Update grouped conversations
-                        const grouped = groupMessagesBySender(updatedMessages);
-                        setGroupedConversations(grouped);
 
                         return updatedMessages;
                     });
@@ -67,43 +63,53 @@ export default function ConsultationPage() {
             supabase.removeChannel(channel);
         };
     }, [profile]);
+    const groupingMessagesSender = async () => {
+        if (!messagesIncludingExpertId || !profile?.id) return [];
 
+        const conversationMap = new Map<string, GroupedConversation>();
 
-    const groupMessagesBySender = (messages: ChatMessage[]): GroupedConversation[] => {
-        const grouped = messages.reduce((acc, message) => {
-            const senderId = message.sender_id;
+        messagesIncludingExpertId.forEach((item: ChatMessage) => {
+            const otherUserId =
+                item.sender_id === profile.id ? item.receiver_id : item.sender_id;
+            const otherUserName =
+                item.sender_id === profile.id ? item.receiver_name : item.sender_name;
+            const otherUserType =
+                item.sender_id === profile.id ? item.receiver_type : item.sender_type;
 
-            if (!acc[senderId]) {
-                acc[senderId] = {
-                    sender_id: senderId,
-                    sender_name: message.sender_name,
-                    sender_type: message.sender_type,
-                    latest_message: message.message,
-                    latest_timestamp: message.created_at,
+            const existing = conversationMap.get(otherUserId);
+
+            if (!existing) {
+                // First message from/to this user → add entry
+                conversationMap.set(otherUserId, {
+                    sender_id: otherUserId, // this is actually the "other participant" id
+                    sender_name: otherUserName,
+                    sender_type: otherUserType,
+                    latest_message: item.message,
+                    latest_timestamp: item.created_at,
                     message_count: 1,
-                    is_read: message.is_read
-                };
+                    is_read: item.is_read ?? false,
+                });
             } else {
-                // Check if this message is more recent
-                const currentTimestamp = new Date(message.created_at);
-                const latestTimestamp = new Date(acc[senderId].latest_timestamp);
-
-                if (currentTimestamp > latestTimestamp) {
-                    acc[senderId].latest_message = message.message;
-                    acc[senderId].latest_timestamp = message.created_at;
+                // Update if this message is newer
+                if (new Date(item.created_at) > new Date(existing.latest_timestamp)) {
+                    existing.latest_message = item.message;
+                    existing.latest_timestamp = item.created_at;
+                    existing.is_read = item.is_read ?? existing.is_read;
                 }
-                acc[senderId].message_count += 1;
+                existing.message_count += 1;
             }
+        });
 
-            return acc;
-        }, {} as Record<string, GroupedConversation>);
-
-        console.log(groupedConversations)
-        // Convert to array and sort by latest timestamp
-        return Object.values(grouped).sort((a, b) =>
-            new Date(b.latest_timestamp).getTime() - new Date(a.latest_timestamp).getTime()
+        // Convert map to array and sort by latest timestamp descending
+        const groupedArray = Array.from(conversationMap.values()).sort(
+            (a, b) =>
+                new Date(b.latest_timestamp).getTime() -
+                new Date(a.latest_timestamp).getTime()
         );
+
+        setGroupedConversations(groupedArray);
     };
+
 
     const loadMessages = async () => {
         try {
@@ -123,9 +129,7 @@ export default function ConsultationPage() {
                 setGroupedConversations([]);
             } else if (messagesData) {
                 setMessages(messagesData);
-                // Group messages by sender
-                const grouped = groupMessagesBySender(messagesData);
-                setGroupedConversations(grouped);
+                refetch();
             }
         } catch (error) {
             console.error('Error loading messages:', error);
@@ -141,7 +145,7 @@ export default function ConsultationPage() {
             setFilteredStudents([]);
             return;
         }
-        
+
         try {
             let query = supabase.from('profiles').select('*').eq('type', 'STUDENT');
             if (!isNaN(Number(term))) {
@@ -168,10 +172,9 @@ export default function ConsultationPage() {
     };
 
     const selectStudent = (student: Profile) => {
-        // Navigate to dedicated chat page with student information
         router.push({
             pathname: './expert-chat',
-            params: {studentId: student.id}
+            params: { studentId: student.id }
         });
     };
 
@@ -236,15 +239,9 @@ export default function ConsultationPage() {
         <TouchableOpacity
             style={styles.messageListItem}
             onPress={() => {
-                // Navigate to chat with the student
                 router.push({
                     pathname: './expert-chat',
-                    params: {
-                        studentReg: item.sender_id,
-                        studentName: item.sender_name,
-                        expertReg: expertInfo.registration,
-                        expertName: expertInfo.name
-                    }
+                    params: { studentId: item.sender_id, }
                 });
             }}
         >
@@ -317,7 +314,7 @@ export default function ConsultationPage() {
                         <Text style={styles.searchIcon}>🔍</Text>
                         <TextInput
                             style={styles.searchInput}
-                            placeholder={ "Enter student ID, name, or email to chat..."}
+                            placeholder={"Enter student ID, name, or email to chat..."}
                             placeholderTextColor="#999"
                             value={searchText}
                             onChangeText={setSearchText}

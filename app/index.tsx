@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Modal, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { Modal, Text, TextInput, TouchableOpacity, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import Toast from 'react-native-toast-message';
 import { useAuth } from '@/providers/AuthProvider';
@@ -14,7 +14,11 @@ export default function FrontPage() {
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { session } = useAuth();
+  const { session, loading } = useAuth();
+
+  if (session && loading) {
+    return <ActivityIndicator />
+  }  
 
   useEffect(() => {
     const redirectUser = async () => {
