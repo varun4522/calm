@@ -207,6 +207,23 @@ export default function StudentHome() {
     setMoodModalVisible(true);
   };
 
+  // Load userType immediately on mount (before other operations)
+  useEffect(() => {
+    const loadUserTypeImmediately = async () => {
+      try {
+        const storedUserType = await AsyncStorage.getItem('userType');
+        if (storedUserType) {
+          setUserType(storedUserType);
+          console.log('🚀 User type loaded immediately on mount:', storedUserType);
+        }
+      } catch (error) {
+        console.error('Error loading user type immediately:', error);
+      }
+    };
+
+    loadUserTypeImmediately();
+  }, []); // Empty dependency array - runs only once on mount
+
   // Load student data from AsyncStorage or params
   useEffect(() => {
     const loadStudentSession = async () => {
@@ -494,6 +511,25 @@ export default function StudentHome() {
         loadNotifications();
       }
     }, [studentReg, studentRegNo])
+  );
+
+  // Load userType when screen comes into focus to maintain peer tab visibility
+  useFocusEffect(
+    useCallback(() => {
+      const loadUserType = async () => {
+        try {
+          const storedUserType = await AsyncStorage.getItem('userType');
+          if (storedUserType) {
+            setUserType(storedUserType);
+            console.log('✅ User type reloaded on focus:', storedUserType);
+          }
+        } catch (error) {
+          console.error('Error loading user type on focus:', error);
+        }
+      };
+
+      loadUserType();
+    }, [])
   );
 
   // Load profile picture when screen comes into focus (for instant updates from settings)
