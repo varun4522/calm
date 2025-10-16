@@ -146,7 +146,7 @@ export default function ToolkitMovement() {
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 1</Text>
                 <Video
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('../../assets/videos/video1.mp4')}
+                  source={require('@/assets/videos/video1.mp4')}
                   useNativeControls={true}
                   resizeMode={ResizeMode.CONTAIN}
                 />
@@ -156,7 +156,7 @@ export default function ToolkitMovement() {
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 2</Text>
                 <Video
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('../../assets/videos/video2.mp4')}
+                  source={require('@/assets/videos/video2.mp4')}
                   useNativeControls={true}
                   resizeMode={ResizeMode.CONTAIN}
                 />
@@ -166,7 +166,7 @@ export default function ToolkitMovement() {
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 3</Text>
                 <Video
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('../../assets/videos/video3.mp4')}
+                  source={require('@/assets/videos/video3.mp4')}
                   useNativeControls={true}
                   resizeMode={ResizeMode.CONTAIN}
                 />

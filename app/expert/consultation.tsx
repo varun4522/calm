@@ -1,98 +1,48 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-    Alert,
-    FlatList,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
-} from 'react-native';
-import { supabase } from '../../lib/supabase';
+import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { supabase } from '@/lib/supabase';
+import { useProfile } from '@/api/Profile';
+import { useAuth } from '@/providers/AuthProvider';
+import { Profile } from '@/types/Profile';
+import { ChatMessage, GroupedConversation } from '@/types/Message';
+import { useMessagesByUserId } from '@/api/Messages';
 
-interface Student {
-    id: string;
-    user_name: string;
-    registration_number: string;
-    email: string;
-    course: string;
-    user_type?: string; // Add user_type to distinguish between Student and Peer
-}
-
-interface ChatMessage {
-    id: string;
-    sender_id: string;
-    receiver_id: string;
-    sender_name: string;
-    sender_type: 'EXPERT' | 'STUDENT' | 'PEER' | 'ADMIN';
-    message: string;
-    created_at: string;
-    is_read?: boolean;
-}
-
-interface GroupedConversation {
-    sender_id: string;
-    sender_name: string;
-    sender_type: string;
-    latest_message: string;
-    latest_timestamp: string;
-    message_count: number;
-    is_read?: boolean;
-}
 
 export default function ConsultationPage() {
     const router = useRouter();
-    const params = useLocalSearchParams<{
-        studentName?: string;
-        studentReg?: string;
-        studentEmail?: string;
-        expertReg?: string;
-    }>();
+    const { session } = useAuth();
+    const { data: profile } = useProfile(session?.user.id);
 
     const [searchText, setSearchText] = useState('');
-    const [searchType, setSearchType] = useState<'all' | 'registration'>('all'); // Add search type state
-    const [students, setStudents] = useState<Student[]>([]);
-    const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
+    const [students, setStudents] = useState<Profile[]>([]);
+    const [filteredStudents, setFilteredStudents] = useState<Profile[]>([]);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [groupedConversations, setGroupedConversations] = useState<GroupedConversation[]>([]);
-    const [activeTab, setActiveTab] = useState<'students' | 'messages'>('messages'); // Default to messages
-    const [expertInfo, setExpertInfo] = useState({
-        name: '',
-        registration: ''
-    });
+    const [activeTab, setActiveTab] = useState<'students' | 'messages'>('messages');
+    const { data: messagesIncludingExpertId, refetch } = useMessagesByUserId(session?.user.id);
 
-    // Load expert info on component mount
     useEffect(() => {
-        loadExpertInfo();
-    }, []);
-
-    // Load messages when expert info is available
-    useEffect(() => {
-        if (expertInfo.registration) {
+        if (session && profile) {
+            console.log(messagesIncludingExpertId);
             loadMessages();
+            groupingMessagesSender();
         }
-    }, [expertInfo.registration]);
-
-    // Load students after conversations are updated
-    useEffect(() => {
-        loadStudents();
-    }, [groupedConversations]);
+    }, [session, profile]);
 
     // Set up real-time subscription for new messages
     useEffect(() => {
-        if (!expertInfo.registration) return;
+        if (profile?.id) return;
 
         const channel = supabase
-            .channel(`expert_messages_${expertInfo.registration}`)
+            .channel(`expert_messages_${profile?.id}`)
             .on(
                 'postgres_changes',
                 {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'messages',
-                    filter: `receiver_id=eq.${expertInfo.registration}`,
+                    filter: `receiver_id=eq.${profile?.id}`,
                 },
                 (payload) => {
                     console.log('New message received:', payload);
@@ -102,9 +52,6 @@ export default function ConsultationPage() {
                         if (exists) return prev;
                         const updatedMessages = [newMessage, ...prev];
 
-                        // Update grouped conversations
-                        const grouped = groupMessagesBySender(updatedMessages);
-                        setGroupedConversations(grouped);
 
                         return updatedMessages;
                     });
@@ -115,84 +62,64 @@ export default function ConsultationPage() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [expertInfo.registration]);
+    }, [profile]);
+    const groupingMessagesSender = async () => {
+        if (!messagesIncludingExpertId || !profile?.id) return [];
 
-    const loadExpertInfo = async () => {
-        try {
-            let regNo = params.expertReg;
-            if (!regNo) {
-                const storedReg = await AsyncStorage.getItem('currentExpertReg');
-                if (storedReg) regNo = storedReg;
-            }
+        const conversationMap = new Map<string, GroupedConversation>();
 
-            if (regNo) {
-                const storedName = await AsyncStorage.getItem('currentExpertName');
-                setExpertInfo({
-                    name: storedName || 'Expert',
-                    registration: regNo
-                });
-            }
-        } catch (error) {
-            console.error('Error loading expert info:', error);
-        }
-    };
+        messagesIncludingExpertId.forEach((item: ChatMessage) => {
+            const otherUserId =
+                item.sender_id === profile.id ? item.receiver_id : item.sender_id;
+            const otherUserName =
+                item.sender_id === profile.id ? item.receiver_name : item.sender_name;
+            const otherUserType =
+                item.sender_id === profile.id ? item.receiver_type : item.sender_type;
 
-    const loadStudents = async () => {
-        try {
-            // Initially show empty state - students will be loaded only when searched
-            setStudents([]);
-            setFilteredStudents([]);
-        } catch (error) {
-            console.error('Error initializing students:', error);
-            setStudents([]);
-            setFilteredStudents([]);
-        }
-    };
+            const existing = conversationMap.get(otherUserId);
 
-    const groupMessagesBySender = (messages: ChatMessage[]): GroupedConversation[] => {
-        const grouped = messages.reduce((acc, message) => {
-            const senderId = message.sender_id;
-
-            if (!acc[senderId]) {
-                acc[senderId] = {
-                    sender_id: senderId,
-                    sender_name: message.sender_name,
-                    sender_type: message.sender_type,
-                    latest_message: message.message,
-                    latest_timestamp: message.created_at,
+            if (!existing) {
+                // First message from/to this user → add entry
+                conversationMap.set(otherUserId, {
+                    sender_id: otherUserId, // this is actually the "other participant" id
+                    sender_name: otherUserName,
+                    sender_type: otherUserType,
+                    latest_message: item.message,
+                    latest_timestamp: item.created_at,
                     message_count: 1,
-                    is_read: message.is_read
-                };
+                    is_read: item.is_read ?? false,
+                });
             } else {
-                // Check if this message is more recent
-                const currentTimestamp = new Date(message.created_at);
-                const latestTimestamp = new Date(acc[senderId].latest_timestamp);
-
-                if (currentTimestamp > latestTimestamp) {
-                    acc[senderId].latest_message = message.message;
-                    acc[senderId].latest_timestamp = message.created_at;
+                // Update if this message is newer
+                if (new Date(item.created_at) > new Date(existing.latest_timestamp)) {
+                    existing.latest_message = item.message;
+                    existing.latest_timestamp = item.created_at;
+                    existing.is_read = item.is_read ?? existing.is_read;
                 }
-                acc[senderId].message_count += 1;
+                existing.message_count += 1;
             }
+        });
 
-            return acc;
-        }, {} as Record<string, GroupedConversation>);
-
-        // Convert to array and sort by latest timestamp
-        return Object.values(grouped).sort((a, b) =>
-            new Date(b.latest_timestamp).getTime() - new Date(a.latest_timestamp).getTime()
+        // Convert map to array and sort by latest timestamp descending
+        const groupedArray = Array.from(conversationMap.values()).sort(
+            (a, b) =>
+                new Date(b.latest_timestamp).getTime() -
+                new Date(a.latest_timestamp).getTime()
         );
+
+        setGroupedConversations(groupedArray);
     };
+
 
     const loadMessages = async () => {
         try {
-            if (!expertInfo.registration) return;
+            if (!profile?.id) return;
 
             // Load messages where expert is the receiver (messages sent to expert)
             const { data: messagesData, error } = await supabase
                 .from('messages')
                 .select('*')
-                .eq('receiver_id', expertInfo.registration)
+                .eq('receiver_id', profile?.id)
                 .order('created_at', { ascending: false }) // Most recent first
                 .limit(1000); // Limit to last 1000 messages
 
@@ -202,9 +129,7 @@ export default function ConsultationPage() {
                 setGroupedConversations([]);
             } else if (messagesData) {
                 setMessages(messagesData);
-                // Group messages by sender
-                const grouped = groupMessagesBySender(messagesData);
-                setGroupedConversations(grouped);
+                refetch();
             }
         } catch (error) {
             console.error('Error loading messages:', error);
@@ -214,93 +139,46 @@ export default function ConsultationPage() {
     };
 
     const handleSearch = async () => {
-        if (searchText.trim() === '') {
-            Alert.alert('Search', 'Please enter a search term');
+        const term = searchText.trim();
+        if (!term) {
+            setStudents([]);
+            setFilteredStudents([]);
             return;
         }
 
         try {
-            let query = supabase
-                .from('user_requests')
-                .select('*')
-                .eq('user_type', 'Student');
-
-            // Build search query based on search type
-            if (searchType === 'registration') {
-                // Search only by registration number
-                query = query.ilike('registration_number', `%${searchText.trim()}%`);
+            let query = supabase.from('profiles').select('*').eq('type', 'STUDENT');
+            if (!isNaN(Number(term))) {
+                query = query.eq('registration_number', Number(term));
             } else {
-                // Search by registration number, name, or email
-                query = query.or(`registration_number.ilike.%${searchText.trim()}%,user_name.ilike.%${searchText.trim()}%,email.ilike.%${searchText.trim()}%`);
+                query = query.or(`username.ilike.%${term}%,email.ilike.%${term}%`);
             }
-
             const { data: searchResults, error } = await query;
 
             if (error) {
                 console.error('Error searching students:', error);
-                Alert.alert('Search Error', 'Failed to search for students. Please try again.');
+                setStudents([]);
+                setFilteredStudents([]);
                 return;
             }
 
-            if (searchResults && searchResults.length > 0) {
-                // Convert search results to Student format
-                const foundStudents: Student[] = searchResults.map(result => ({
-                    id: result.registration_number,
-                    user_name: result.user_name,
-                    registration_number: result.registration_number,
-                    email: result.email || '',
-                    course: result.course || 'Not specified',
-                    user_type: result.user_type
-                }));
-
-                setStudents(foundStudents);
-                setFilteredStudents(foundStudents);
-
-                const studentCount = foundStudents.length;
-                const resultMessage = `Found ${studentCount} student${studentCount !== 1 ? 's' : ''} matching "${searchText}"`;
-
-                Alert.alert('Search Results', resultMessage);
-            } else {
-                // No results found
-                setStudents([]);
-                setFilteredStudents([]);
-
-                const searchField = searchType === 'registration' ? 'registration number' : 'name, email, or registration number';
-                Alert.alert(
-                    'No Students Found',
-                    `No students found with ${searchField} matching "${searchText}". Please check your search term and try again.`,
-                    [
-                        { text: 'OK' },
-                        {
-                            text: 'Clear Search',
-                            onPress: () => setSearchText('')
-                        }
-                    ]
-                );
-            }
+            setStudents(searchResults ?? []);
+            setFilteredStudents(searchResults ?? []);
         } catch (error) {
             console.error('Error during search:', error);
-            Alert.alert('Search Error', 'An unexpected error occurred. Please try again.');
+            setStudents([]);
+            setFilteredStudents([]);
         }
     };
 
-    const selectStudent = (student: Student) => {
-        // Navigate to dedicated chat page with student information
+    const selectStudent = (student: Profile) => {
         router.push({
             pathname: './expert-chat',
-            params: {
-                studentId: student.id,
-                studentName: student.user_name,
-                studentReg: student.registration_number,
-                studentEmail: student.email,
-                studentCourse: student.course,
-                expertReg: expertInfo.registration,
-                expertName: expertInfo.name
-            }
+            params: { studentId: student.id }
         });
     };
 
-    const renderStudentItem = ({ item, index }: { item: Student; index: number }) => (
+    const renderStudentItem = ({ item, index }: { item: Profile; index: number }) => (
         <TouchableOpacity
             style={styles.userCard}
             onPress={() => selectStudent(item)}
@@ -311,7 +189,7 @@ export default function ConsultationPage() {
                     <Text style={styles.userIcon}>‍🎓</Text>
                 </View>
                 <View style={styles.userCardInfo}>
-                    <Text style={styles.userName}>{item.user_name}</Text>
+                    <Text style={styles.userName}>{item.name}</Text>
                     <View style={styles.userTypeBadgeContainer}>
                         <Text style={[styles.userTypeBadgeNew, styles.studentBadge]}>
                             STUDENT
@@ -361,15 +239,9 @@ export default function ConsultationPage() {
         <TouchableOpacity
             style={styles.messageListItem}
             onPress={() => {
-                // Navigate to chat with the student
                 router.push({
                     pathname: './expert-chat',
-                    params: {
-                        studentReg: item.sender_id,
-                        studentName: item.sender_name,
-                        expertReg: expertInfo.registration,
-                        expertName: expertInfo.name
-                    }
+                    params: { studentId: item.sender_id, }
                 });
             }}
         >
@@ -437,35 +309,12 @@ export default function ConsultationPage() {
             {/* Search Section - Only show for students tab */}
             {activeTab === 'students' && (
                 <View style={styles.searchContainer}>
-                    {/* Search Type Selector */}
-                    <View style={styles.searchTypeContainer}>
-                        <TouchableOpacity
-                            style={[styles.searchTypeButton, searchType === 'all' && styles.activeSearchType]}
-                            onPress={() => setSearchType('all')}
-                        >
-                            <Text style={[styles.searchTypeText, searchType === 'all' && styles.activeSearchTypeText]}>
-                                🔍 All Fields
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.searchTypeButton, searchType === 'registration' && styles.activeSearchType]}
-                            onPress={() => setSearchType('registration')}
-                        >
-                            <Text style={[styles.searchTypeText, searchType === 'registration' && styles.activeSearchTypeText]}>
-                                🎓 Reg. Number
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
 
                     <View style={styles.searchBox}>
                         <Text style={styles.searchIcon}>🔍</Text>
                         <TextInput
                             style={styles.searchInput}
-                            placeholder={
-                                searchType === 'registration'
-                                    ? "Enter registration number to search..."
-                                    : "Enter student ID, name, or email to chat..."
-                            }
+                            placeholder={"Enter student ID, name, or email to chat..."}
                             placeholderTextColor="#999"
                             value={searchText}
                             onChangeText={setSearchText}
@@ -538,7 +387,6 @@ export default function ConsultationPage() {
                                     <View style={styles.searchHintContainer}>
                                         <Text style={styles.searchHintTitle}>💡 Search Tips:</Text>
                                         <Text style={styles.searchHint}>• Use &quot;All Fields&quot; for broad search</Text>
-                                        <Text style={styles.searchHint}>• Use &quot;Reg. Number&quot; for exact match</Text>
                                         <Text style={styles.searchHint}>• Partial matches are supported</Text>
                                     </View>
                                 </>

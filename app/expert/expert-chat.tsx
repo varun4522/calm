@@ -1,264 +1,109 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import {
-    Alert,
-    FlatList,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
-} from 'react-native';
-import { supabase } from '../../lib/supabase';
+import { Alert, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { supabase } from '@/lib/supabase';
+import { ChatMessage } from '@/types/Message';
+import { useProfile } from '@/api/Profile';
+import { useAuth } from '@/providers/AuthProvider';
+import { useChatMessages, useInsertMessage } from '@/api/Messages';
+import { useQueryClient } from '@tanstack/react-query';
 
-interface ChatMessage {
-    id: string;
-    sender_id: string;
-    receiver_id: string;
-    sender_name: string;
-    sender_type: 'EXPERT' | 'STUDENT' | 'PEER' | 'ADMIN';
-    message: string;
-    created_at: string;
-    is_read?: boolean;
-}
 
 export default function ExpertChatPage() {
     const router = useRouter();
-    const params = useLocalSearchParams<{
-        studentId?: string;
-        studentName?: string;
-        studentReg?: string;
-        email?: string;
-        course?: string;
-        expertReg?: string;
-        expertName?: string;
-    }>();
+    const params = useLocalSearchParams<{ studentId?: string; }>();
 
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const queryClient = useQueryClient();
+
+    const { session } = useAuth();
+    const { data: profile } = useProfile(session?.user.id);
+
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(false);
-    const [studentEmail, setStudentEmail] = useState<string>('');
-    const [studentCourse, setStudentCourse] = useState<string>('');
     const flatListRef = useRef<FlatList>(null);
 
-    // Fetch student details from user_requests table
-    useEffect(() => {
-        const fetchStudentDetails = async () => {
-            if (!params.studentReg) return;
+    const { data: studentProfile } = useProfile(params.studentId);
 
-            try {
-                const { data, error } = await supabase
-                    .from('user_requests')
-                    .select('email, course')
-                    .eq('registration_number', params.studentReg)
-                    .single();
+    const expertId = session?.user?.id;
+    const studentId = params.studentId;
 
-                if (error) {
-                    console.error('Error fetching student details:', error);
-                    return;
-                }
-
-                if (data) {
-                    setStudentEmail(data.email || '');
-                    setStudentCourse(data.course || '');
-                }
-            } catch (error) {
-                console.error('Error fetching student details:', error);
-            }
-        };
-
-        fetchStudentDetails();
-    }, [params.studentReg]);
+    const { data: messages = [], isLoading } = useChatMessages(expertId, studentId);
+    const insertMessage = useInsertMessage();
 
     useEffect(() => {
-        loadMessages();
+        if (!expertId || !studentId) return;
 
-        // Set up periodic refresh to ensure messages are always up to date
-        const refreshInterval = setInterval(() => {
-            loadMessages();
-        }, 30000); // Refresh every 30 seconds
-
-        return () => clearInterval(refreshInterval);
-    }, []);
-
-    // Set up real-time subscription for chat messages
-    useEffect(() => {
-        if (!params.expertReg || !params.studentReg) return;
+        const channelName = `expert_chat_${expertId}_${studentId}`;
+        console.log(`📡 Subscribing to channel: ${channelName}`);
 
         const channel = supabase
-            .channel(`expert_chat_${params.expertReg}_${params.studentReg}`)
+            .channel(channelName)
             .on(
                 'postgres_changes',
                 {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'messages',
-                    filter: `or(and(sender_id.eq.${params.expertReg},receiver_id.eq.${params.studentReg}),and(sender_id.eq.${params.studentReg},receiver_id.eq.${params.expertReg}))`,
+                    filter: `or(and(sender_id.eq.${expertId},receiver_id.eq.${studentId}),and(sender_id.eq.${studentId},receiver_id.eq.${expertId}))`,
                 },
                 (payload) => {
-                    console.log('New message received:', payload);
-                    const newMessage = payload.new as ChatMessage;
+                    const newMsg = payload.new as ChatMessage;
+                    console.log('📩 New real-time message:', newMsg);
 
-                    // Prevent duplicate messages
-                    setMessages(prev => {
-                        const exists = prev.some(msg => msg.id === newMessage.id);
-                        if (exists) return prev;
-                        return [...prev, newMessage];
-                    });
+                    // ✅ Update React Query cache instead of using setMessages
+                    queryClient.setQueryData<ChatMessage[]>(
+                        ['chatMessages', expertId, studentId],
+                        (old = []) => {
+                            const exists = old.some(m => m.id === newMsg.id);
+                            if (exists) return old;
+                            return [...old, newMsg];
+                        }
+                    );
 
-                    // Auto-scroll to bottom when new message arrives
+                    // ✅ Auto-scroll to bottom
                     setTimeout(() => {
                         flatListRef.current?.scrollToEnd({ animated: true });
                     }, 100);
                 }
             )
-            .subscribe();
+            .subscribe((status) => {
+                console.log(`Realtime channel status for ${channelName}:`, status);
+            });
 
         return () => {
+            console.log(`❌ Unsubscribing from ${channelName}`);
             supabase.removeChannel(channel);
         };
-    }, [params.expertReg, params.studentReg]);
+    }, [expertId, studentId]);
 
-    const getConversationKey = () => {
-        return `conversation_${params.expertReg}_${params.studentReg}`;
-    };
 
-    const loadMessages = async () => {
-        setLoading(true);
-        try {
-            const expertReg = params.expertReg;
-            const studentReg = params.studentReg;
-
-            if (!expertReg || !studentReg) {
-                console.error('Missing expert or student registration');
-                setMessages([]);
-                return;
-            }
-
-            // Fetch messages between expert and student from Supabase
-            const { data: messages, error } = await supabase
-                .from('messages')
-                .select('*')
-                .or(`and(sender_id.eq.${expertReg},receiver_id.eq.${studentReg}),and(sender_id.eq.${studentReg},receiver_id.eq.${expertReg})`)
-                .order('created_at', { ascending: true });
-
-            if (error) {
-                console.error('Error loading messages:', error);
-                setMessages([]);
-                return;
-            }
-
-            if (messages) {
-                setMessages(prev => {
-                    // Only update if messages have changed
-                    if (JSON.stringify(prev) !== JSON.stringify(messages)) {
-                        // Auto-scroll to bottom after loading new messages
-                        setTimeout(() => {
-                            flatListRef.current?.scrollToEnd({ animated: false });
-                        }, 100);
-                        return messages;
-                    }
-                    return prev;
-                });
-            } else {
-                setMessages([]);
-            }
-        } catch (error) {
-            console.error('Error loading messages:', error);
-            setMessages([]);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const sendMessage = async () => {
-        if (newMessage.trim() === '') {
-            Alert.alert('Error', 'Please enter a message');
-            return;
-        }
-
-        if (!params.expertReg || !params.studentReg) {
-            Alert.alert('Error', 'Missing expert or student information');
-            console.error('Missing params:', params);
-            return;
-        }
-
-        if (!params.expertName) {
-            Alert.alert('Error', 'Missing expert name');
-            console.error('Missing expert name in params:', params);
-            return;
-        }
-
-        const messageData = {
-            sender_id: params.expertReg,
-            receiver_id: params.studentReg,
-            sender_name: params.expertName || 'Expert',
-            sender_type: 'EXPERT' as const,
-            message: newMessage.trim(),
-            created_at: new Date(),
-        };
-
-        console.log('Sending message with data:', messageData);
-        console.log('Params received:', params);
+        if (!newMessage.trim()) return;
 
         try {
-            // First, let's test if we can read from the messages table
-            const { data: testData, error: testError } = await supabase
-                .from('messages')
-                .select('*')
-                .limit(1);
-
-            if (testError) {
-                console.error('Cannot access messages table:', testError);
-                Alert.alert('Error', `Database access error: ${testError.message || JSON.stringify(testError)}`);
-                return;
+            if (profile && expertId && studentProfile) {
+                const messagePayload = {
+                    sender_id: expertId,
+                    receiver_id: studentProfile.id,
+                    receiver_name: studentProfile?.name,
+                    sender_name: profile?.name,
+                    message: newMessage.trim(),
+                    sender_type: "EXPERT" as "STUDENT" | "EXPERT" | "PEER" | "ADMIN",
+                    receiver_type: studentProfile.type as "STUDENT" | "EXPERT" | "PEER" | "ADMIN",
+                    is_read: false,
+                };
+                console.log(messagePayload);
+                await insertMessage.mutateAsync(messagePayload);
             }
 
-            // Try to save to Supabase with better error handling
-            const { data, error } = await supabase
-                .from('messages')
-                .insert([messageData])
-                .select()
-                .single();
-
-            console.log('Supabase response:', { data, error });
-
-            if (error) {
-                console.error('Error sending message:', error);
-
-                // If it's an RLS error, provide more helpful message
-                if (error.code === '42501') {
-                    Alert.alert(
-                        'Database Security Error',
-                        'Row Level Security is blocking this operation. Please check the RLS_FIX_INSTRUCTIONS.md file for how to fix this.',
-                        [
-                            { text: 'OK' }
-                        ]
-                    );
-                } else {
-                    Alert.alert('Error', `Failed to send message: ${error.message || error.details || JSON.stringify(error)}`);
-                }
-                return;
-            }
-
-            // Add to local state for immediate UI update
-            if (data) {
-                setMessages(prev => [...prev, data]);
-                // Auto-scroll to bottom when expert sends message
-                setTimeout(() => {
-                    flatListRef.current?.scrollToEnd({ animated: true });
-                }, 100);
-            }
-
-            setNewMessage('');
+            setNewMessage("");
+            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
         } catch (error: any) {
-            console.error('Error sending message:', error);
-            const errorMessage = error?.message || error?.details || error?.error_description || 'Unknown error occurred';
-            Alert.alert('Error', `Failed to send message: ${errorMessage}`);
+            Alert.alert("Error", error.message);
         }
     };
+
 
     const formatTimestamp = (timestamp: string) => {
         const messageDate = new Date(timestamp);
@@ -306,7 +151,7 @@ export default function ExpertChatPage() {
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>💬 Chat</Text>
                 <Text style={styles.headerSubtitle}>
-                    {params.studentName} ({params.studentReg})
+                    {studentProfile?.name} ({studentProfile?.registration_number})
                 </Text>
             </View>
 
@@ -315,19 +160,19 @@ export default function ExpertChatPage() {
                 <Text style={styles.studentInfoTitle}>Student Information</Text>
                 <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Name:</Text>
-                    <Text style={styles.infoValue}>{params.studentName}</Text>
+                    <Text style={styles.infoValue}>{studentProfile?.name}</Text>
                 </View>
                 <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Registration:</Text>
-                    <Text style={styles.infoValue}>{params.studentReg}</Text>
+                    <Text style={styles.infoValue}>{studentProfile?.registration_number}</Text>
                 </View>
                 <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Course:</Text>
-                    <Text style={styles.infoValue}>{studentCourse || params.course || 'N/A'}</Text>
+                    <Text style={styles.infoValue}>{studentProfile?.course}</Text>
                 </View>
                 <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Email:</Text>
-                    <Text style={styles.infoValue}>{studentEmail || params.email || 'N/A'}</Text>
+                    <Text style={styles.infoValue}>{studentProfile?.email}</Text>
                 </View>
             </View>
 
@@ -342,7 +187,7 @@ export default function ExpertChatPage() {
                         <Text style={styles.emptyIcon}>💬</Text>
                         <Text style={styles.emptyTitle}>Start Conversation</Text>
                         <Text style={styles.emptyText}>
-                            No messages yet with {params.studentName}.
+                            No messages yet with {studentProfile?.name}.
                             Send the first message to start the conversation!
                         </Text>
                     </View>
@@ -381,7 +226,7 @@ export default function ExpertChatPage() {
             {/* Message Count */}
             <View style={styles.footer}>
                 <Text style={styles.footerText}>
-                    {messages.length} message{messages.length !== 1 ? 's' : ''} • Chat with {params.studentName}
+                    {messages.length} message{messages.length !== 1 ? 's' : ''} • Chat with {studentProfile?.name}
                 </Text>
             </View>
         </KeyboardAvoidingView>
@@ -448,7 +293,7 @@ const styles = StyleSheet.create({
     },
     infoRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'space-around',
         alignItems: 'center',
         marginBottom: 8,
     },

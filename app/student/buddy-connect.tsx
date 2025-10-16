@@ -2,27 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, Text, Modal, TextInput, Alert, FlatList, Image, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Colors } from '../../constants/Colors';
-import { supabase } from '../../lib/supabase';
+import { Colors } from '@/constants/Colors';
+import { supabase } from '@/lib/supabase';
 import * as MediaLibrary from 'expo-media-library';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const profilePics = [
-  require('../../assets/images/profile/pic1.png'),
-  require('../../assets/images/profile/pic2.png'),
-  require('../../assets/images/profile/pic3.png'),
-  require('../../assets/images/profile/pic4.png'),
-  require('../../assets/images/profile/pic5.png'),
-  require('../../assets/images/profile/pic6.png'),
-  require('../../assets/images/profile/pic7.png'),
-  require('../../assets/images/profile/pic8.png'),
-  require('../../assets/images/profile/pic9.png'),
-  require('../../assets/images/profile/pic10.png'),
-  require('../../assets/images/profile/pic11.png'),
-  require('../../assets/images/profile/pic12.png'),
-  require('../../assets/images/profile/pic13.png'),
+  require('@/assets/images/profile/pic1.png'),
+  require('@/assets/images/profile/pic2.png'),
+  require('@/assets/images/profile/pic3.png'),
+  require('@/assets/images/profile/pic4.png'),
+  require('@/assets/images/profile/pic5.png'),
+  require('@/assets/images/profile/pic6.png'),
+  require('@/assets/images/profile/pic7.png'),
+  require('@/assets/images/profile/pic8.png'),
+  require('@/assets/images/profile/pic9.png'),
+  require('@/assets/images/profile/pic10.png'),
+  require('@/assets/images/profile/pic11.png'),
+  require('@/assets/images/profile/pic12.png'),
+  require('@/assets/images/profile/pic13.png'),
 ];
 
 export default function BuddyConnect() {

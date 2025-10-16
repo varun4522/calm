@@ -2,13 +2,13 @@
 import { useFonts } from 'expo-font';
 import { useRouter } from 'expo-router';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { Colors } from '../constants/Colors';
-import { globalStyles } from '../constants/GlobalStyles';
+import { Colors } from '@/constants/Colors';
+import { globalStyles } from '@/constants/GlobalStyles';
 
 export default function TermsPage() {
   const router = useRouter();
   const [fontsLoaded] = useFonts({
-    Tinos: require('../assets/fonts/Tinos-Regular.ttf'),
+    Tinos: require('@/assets/fonts/Tinos-Regular.ttf'),
   });
 
   if (!fontsLoaded) {

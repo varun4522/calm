@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { JSX, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { supabase } from '../../lib/supabase'; // Corrected import path
+import { supabase } from '@/lib/supabase'; // Corrected import path
 
 console.log('AdminHome component loaded');
 

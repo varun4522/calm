@@ -20,7 +20,7 @@ import {
   saveAdminPromptToSupabase,
   syncAdminPrompts,
   updateAdminPromptInSupabase
-} from '../../lib/aiChatStorage';
+} from '@/lib/aiChatStorage';
 
 // Using AdminPrompt from aiChatStorage.ts for consistency
 type CustomPrompt = AdminPrompt;

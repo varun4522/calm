@@ -3,8 +3,8 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Animated, Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Colors } from '../constants/Colors';
-import { globalStyles } from '../constants/GlobalStyles';
+import { Colors } from '@/constants/Colors';
+import { globalStyles } from '@/constants/GlobalStyles';
 
 export default function SelectPage() {
   const [fontsLoaded] = useFonts({

@@ -4,23 +4,27 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Colors } from '../../constants/Colors';
-import { supabase } from '../../lib/supabase';
+import { Colors } from '@/constants/Colors';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/providers/AuthProvider';
+import { useProfile } from '@/api/Profile';
+import Toast from 'react-native-toast-message';
+import { handleLogout } from '@/api/OtherMethods';
 
 const profilePics = [
-  require('../../assets/images/profile/pic1.png'),
-  require('../../assets/images/profile/pic2.png'),
-  require('../../assets/images/profile/pic3.png'),
-  require('../../assets/images/profile/pic4.png'),
-  require('../../assets/images/profile/pic5.png'),
-  require('../../assets/images/profile/pic6.png'),
-  require('../../assets/images/profile/pic7.png'),
-  require('../../assets/images/profile/pic8.png'),
-  require('../../assets/images/profile/pic9.png'),
-  require('../../assets/images/profile/pic10.png'),
-  require('../../assets/images/profile/pic11.png'),
-  require('../../assets/images/profile/pic12.png'),
-  require('../../assets/images/profile/pic13.png'),
+  require('@/assets/images/profile/pic1.png'),
+  require('@/assets/images/profile/pic2.png'),
+  require('@/assets/images/profile/pic3.png'),
+  require('@/assets/images/profile/pic4.png'),
+  require('@/assets/images/profile/pic5.png'),
+  require('@/assets/images/profile/pic6.png'),
+  require('@/assets/images/profile/pic7.png'),
+  require('@/assets/images/profile/pic8.png'),
+  require('@/assets/images/profile/pic9.png'),
+  require('@/assets/images/profile/pic10.png'),
+  require('@/assets/images/profile/pic11.png'),
+  require('@/assets/images/profile/pic12.png'),
+  require('@/assets/images/profile/pic13.png'),
 ];
 
 // Helper: Try multiple query variants to find a student in user_requests
@@ -97,6 +101,9 @@ export default function StudentSetting() {
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current; // Initial value for opacity: 0
 
+  const {session, loading} = useAuth();
+  const {data: profile} = useProfile(session?.user.id);
+  
   // Save student data to persistent storage
   const saveStudentDataToPersistentStorage = async (regNo: string, data: any) => {
     try {
@@ -281,22 +288,6 @@ export default function StudentSetting() {
     }
   };
 
-  // Handle logout
-  const handleLogout = async () => {
-    try {
-      // Only clear current session data, keep persistent data for future logins
-      await AsyncStorage.removeItem('currentStudentReg');
-      await AsyncStorage.removeItem('currentStudentData');
-
-      console.log("Logout successful - persistent data preserved");
-      // Navigate back to index screen
-      router.replace('/');
-    } catch (error) {
-      console.error('Error during logout:', error);
-      router.replace('/');
-    }
-  };
-
   // Fade in animation for profile picture
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -359,7 +350,7 @@ export default function StudentSetting() {
             <Image source={profilePics[selectedProfilePic]} style={styles.profilePic} />
           </View>
         </Animated.View>
-        <Text style={styles.welcomeText}>Welcome, {studentName}!</Text>
+        <Text style={styles.welcomeText}>Welcome, {profile?.name}!</Text>
 
         <TouchableOpacity style={styles.editPhotoBtn} onPress={() => setChoosePicModal(true)}>
           <Text style={styles.editPhotoText}>Edit your profile photo</Text>
@@ -378,7 +369,7 @@ export default function StudentSetting() {
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Full Name</Text>
-              <Text style={styles.infoValue}>{studentName || 'Not available'}</Text>
+              <Text style={styles.infoValue}>{profile?.name}</Text>
             </View>
           </View>
 
@@ -389,7 +380,7 @@ export default function StudentSetting() {
               </View>
               <View style={styles.statContent}>
                 <Text style={styles.infoLabel}>Username</Text>
-                <Text style={styles.infoValue}>@{studentUsername}</Text>
+                <Text style={styles.infoValue}>@{profile?.username}</Text>
               </View>
             </View>
           )}
@@ -400,7 +391,7 @@ export default function StudentSetting() {
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Registration Number</Text>
-              <Text style={styles.infoValue}>{studentRegNo || params.registration || 'Not available'}</Text>
+              <Text style={styles.infoValue}>{profile?.registration_number}</Text>
             </View>
           </View>
 
@@ -410,7 +401,7 @@ export default function StudentSetting() {
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{studentEmail || 'Not available'}</Text>
+              <Text style={styles.infoValue}>{profile?.email}</Text>
             </View>
           </View>
 
@@ -420,7 +411,7 @@ export default function StudentSetting() {
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Course</Text>
-              <Text style={styles.infoValue}>{studentCourse || 'Not available'}</Text>
+              <Text style={styles.infoValue}>{profile?.course}</Text>
             </View>
           </View>
 
@@ -430,7 +421,7 @@ export default function StudentSetting() {
             </View>
             <View style={styles.statContent}>
               <Text style={styles.infoLabel}>Phone</Text>
-              <Text style={styles.infoValue}>{studentPhone || 'Not provided'}</Text>
+              <Text style={styles.infoValue}>{profile?.phone_number}</Text>
             </View>
           </View>
 
@@ -446,7 +437,7 @@ export default function StudentSetting() {
             </View>
           )}
 
-          <View style={styles.infoRow}>
+          {/* <View style={styles.infoRow}>
             <View style={styles.statIcon}>
               <Ionicons name="checkmark-circle-outline" size={22} color={Colors.success} />
             </View>
@@ -456,7 +447,7 @@ export default function StudentSetting() {
                 {studentStatus ? studentStatus.charAt(0).toUpperCase() + studentStatus.slice(1) : 'Active'}
               </Text>
             </View>
-          </View>
+          </View> 
 
           {accountCreatedAt && (
             <View style={styles.infoRow}>
@@ -475,6 +466,7 @@ export default function StudentSetting() {
               </View>
             </View>
           )}
+            */}
         </View>
 
         {/* Logout Button */}

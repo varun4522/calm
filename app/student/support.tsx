@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Colors } from '../../constants/Colors';
+import { Colors } from '@/constants/Colors';
 
 export default function SupportPage() {
   const router = useRouter();
@@ -23,21 +23,21 @@ export default function SupportPage() {
         {/* Support Tools Grid - 2x2 Layout */}
         <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
           <TouchableOpacity style={styles.supportButton} onPress={() => Linking.openURL('https://sgtuniversity.knimbus.com/user#/')}>
-            <Image source={require('../../assets/images/elibrary.png')} style={styles.supportButtonIcon} resizeMode="contain" />
+            <Image source={require('@/assets/images/elibrary.png')} style={styles.supportButtonIcon} resizeMode="contain" />
             <Text style={styles.supportButtonText}>E Library</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.supportButton} onPress={() => router.push('./emergency')}>
-            <Image source={require('../../assets/images/sos.png')} style={styles.supportButtonIcon} resizeMode="contain" />
+            <Image source={require('@/assets/images/sos.png')} style={styles.supportButtonIcon} resizeMode="contain" />
             <Text style={styles.supportButtonText}>SOS</Text>
           </TouchableOpacity>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
           <TouchableOpacity style={styles.supportButton} onPress={() => router.push('./learning')}>
-            <Image source={require('../../assets/images/learning support.png')} style={styles.supportButtonIcon} resizeMode="contain" />
+            <Image source={require('@/assets/images/learning support.png')} style={styles.supportButtonIcon} resizeMode="contain" />
             <Text style={styles.supportButtonText}>Learning Support</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.supportButton} onPress={() => router.push('./mood-playlists')}>
-            <Image source={require('../../assets/images/mood playlist.png')} style={styles.supportButtonIcon} resizeMode="contain" />
+            <Image source={require('@/assets/images/mood playlist.png')} style={styles.supportButtonIcon} resizeMode="contain" />
             <Text style={styles.supportButtonText}>Mood Playlist</Text>
           </TouchableOpacity>
         </View>

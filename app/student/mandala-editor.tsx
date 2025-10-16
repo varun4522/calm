@@ -2,9 +2,9 @@ import { useState , useRef } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Alert, Button } from "react-native";
 import * as MediaLibrary from "expo-media-library";
 import Svg, { Path } from "react-native-svg";
-import { mandalaTemplates } from "../../constants/data/mandala-data";
-import { MandalaTemplate } from "../../types/MandalaTemplateType";
-import ColorPickerModal from "../../components/ColorPicker";
+import { mandalaTemplates } from "@/constants/data/mandala-data";
+import { MandalaTemplate } from "@/types/MandalaTemplateType";
+import ColorPickerModal from "@/components/ColorPicker";
 import { captureRef } from "react-native-view-shot";
 
 import { ReactNativeZoomableView } from "@openspacelabs/react-native-zoomable-view";
@@ -13,7 +13,6 @@ const SampleMandala = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<MandalaTemplate | null>(null);
   const [pathColors, setPathColors] = useState<Record<number, string>>({});
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [isGestureActive, setIsGestureActive] = useState(false);
 
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [selectedColor, setSelectedColor] = useState<string>("#FF0000");

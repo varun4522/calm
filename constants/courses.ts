@@ -1,0 +1,22 @@
+
+export const FACULTY = {
+  COMMERCE_MANAGEMENT: 'Faculty of Commerce and Management',
+  HOTEL_TOURISM_MANAGEMENT: 'Faculty of Hotel and Tourism Management',
+  ALLIED_HEALTH_SCIENCES: 'Faculty of Allied Health Sciences',
+  AGRICULTURAL_SCIENCES: 'Faculty of Agricultural Sciences',
+  APPLIED_BASIC_SCIENCES: 'Faculty of Applied and Basic Sciences',
+  DESIGN: 'Faculty of Design',
+  MASS_COMMUNICATIONS_MEDIA: 'Faculty of Mass Communications and Media Technology',
+  BEHAVIOURAL_SCIENCES: 'Faculty of Behavioural Sciences',
+  LAW: 'Faculty of Law',
+  EDUCATION: 'Faculty of Education',
+  DENTAL_SCIENCES: 'Faculty of Dental Sciences',
+  NATUROPATHY_YOGIC: 'Faculty of Naturopathy and Yogic Sciences',
+  INDIAN_MEDICAL_SCIENCES: 'Faculty of Indian Medical Sciences',
+  NURSING: 'Faculty of Nursing',
+  PHARMACY: 'SGT College Of Pharmacy',
+  PHYSIOTHERAPY: 'Faculty of Physiotherapy',
+  MEDICAL_HEALTH_SCIENCES: 'Faculty of Medical Health Sciences',
+  ENGINEERING_TECHNOLOGY: 'Faculty of Engineering Technology',
+  HUMANITIES_LIBERAL_ARTS: 'Faculty of Humanities Social Sciences, and Liberal Arts',
+};

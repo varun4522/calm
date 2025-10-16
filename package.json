@@ -50,6 +50,7 @@
     "expo-media-library": "~17.1.7",
     "expo-notifications": "^0.31.4",
     "expo-router": "~5.1.7",
+    "expo-secure-store": "~14.2.4",
     "expo-splash-screen": "^0.30.9",
     "expo-status-bar": "~2.2.3",
     "expo-video": "~2.2.2",
@@ -64,6 +65,7 @@
     "react-native-screens": "~4.11.1",
     "react-native-svg": "^15.11.2",
     "react-native-toast-message": "^2.3.3",
+    "react-native-url-polyfill": "^3.0.0",
     "react-native-view-shot": "^4.0.3",
     "react-native-web": "~0.20.0"
   },

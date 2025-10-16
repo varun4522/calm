@@ -2,8 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import { Colors } from '../../constants/Colors';
-import { supabase } from '../../lib/supabase';
+import { Colors } from '@/constants/Colors';
+import { supabase } from '@/lib/supabase';
 
 export default function Emergency() {
   const router = useRouter();
