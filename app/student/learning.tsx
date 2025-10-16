@@ -1,55 +1,26 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Image,
-  Linking,
-  Modal,
-  RefreshControl,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native';
+import { useEffect, useState } from 'react';
+import {  ActivityIndicator,  Dimensions,  FlatList,  Image,   Modal,  SafeAreaView,  ScrollView,  StyleSheet,  Text,  TouchableOpacity,  View} from 'react-native';
 import { supabase } from '@/lib/supabase';
-
-interface LearningResource {
-  id: string;
-  resource_title: string;
-  description: string;
-  file_url: string;
-  file_type: string;
-  category: string;
-}
+import { LearningResource } from '@/types/LearningResource';
+import { useAuth } from '@/providers/AuthProvider';
+import { useProfile } from '@/api/Profile';
+import { downloadResource, previewResource, useLibraryResources } from '@/api/Resources';
 
 const { width } = Dimensions.get('window');
 
 export default function LearningSupport() {
   const router = useRouter();
-  const [studentInfo, setStudentInfo] = useState({ registration: '', name: '' });
-  const [resources, setResources] = useState<LearningResource[]>([]);
-  const [filteredResources, setFilteredResources] = useState<LearningResource[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const {session} = useAuth();
+  const {data:profile } = useProfile(session?.user.id);
+  const { data: resources, refetch: refetchResources, isLoading } = useLibraryResources();
+
   const [selectedResource, setSelectedResource] = useState<LearningResource | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    loadStudentInfo();
-  }, []);
-
-  useEffect(() => {
-    if (studentInfo.registration) {
-      loadResources();
-
-      // Set up real-time subscription for new uploads to library table
+    if (profile) {
       const subscription = supabase
         .channel('library_changes')
         .on('postgres_changes',
@@ -61,7 +32,7 @@ export default function LearningSupport() {
           (payload) => {
             console.log('Library resource change detected:', payload);
             // Reload resources when changes occur
-            loadResources();
+            refetchResources();
           }
         )
         .subscribe();
@@ -70,160 +41,8 @@ export default function LearningSupport() {
         subscription.unsubscribe();
       };
     }
-  }, [studentInfo.registration]);
+  }, [profile]);
 
-  const loadStudentInfo = async () => {
-    try {
-      const storedReg = await AsyncStorage.getItem('currentStudentReg');
-      const studentData = await AsyncStorage.getItem('currentStudentData');
-
-      if (storedReg && studentData) {
-        const data = JSON.parse(studentData);
-        setStudentInfo({
-          registration: storedReg,
-          name: data.name || data.username || 'Student'
-        });
-      }
-    } catch (error) {
-      console.error('Error loading student info:', error);
-    }
-  };
-
-  const loadResources = async () => {
-    try {
-      setLoading(true);
-
-      // Fetch resources from library table in Supabase
-      const { data: libraryData, error } = await supabase
-        .from('library')
-        .select('*');
-
-      if (error) {
-        if (error.code === '42P01') {
-          // Table doesn't exist
-          console.log('Library table not found:', error);
-          Alert.alert('Error', 'Library table does not exist in the database. Please contact your administrator.');
-          setResources([]);
-        } else {
-          console.error('Error fetching library resources:', error);
-          Alert.alert('Error', `Failed to load library resources: ${error.message}`);
-          setResources([]);
-        }
-      } else {
-        // Map library data to LearningResource format
-        const mappedResources: LearningResource[] = (libraryData || []).map(item => ({
-          id: item.id || String(Math.random()),
-          resource_title: item.resource_title || item.title || item.name || 'Untitled Resource',
-          description: item.description || 'No description available',
-          file_url: item.file_url || item.url || '',
-          file_type: item.file_type || item.type || 'unknown',
-          category: item.category || 'REMEMBER BETTER' // Default to BETTER category
-        }));
-
-        console.log(`Loaded ${mappedResources.length} resources from library table`);
-        setResources(mappedResources);
-        setFilteredResources(mappedResources);
-      }
-    } catch (error) {
-      console.error('Error loading library resources:', error);
-      Alert.alert('Error', 'An unexpected error occurred while loading resources');
-      setResources([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadResources();
-    setRefreshing(false);
-  }, []);
-
-  const handleDownload = async (resource: LearningResource) => {
-    try {
-      Alert.alert(
-        'Open Resource',
-        `Open "${resource.resource_title}"?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Open',
-            onPress: async () => {
-              try {
-                setDownloading(true);
-
-                // Get the file URL from Supabase storage
-                let fileUrl = resource.file_url;
-
-                // If it's a storage path, get the public URL
-                if (!fileUrl.startsWith('http')) {
-                  const { data } = supabase.storage
-                    .from('library_pdfs')
-                    .getPublicUrl(fileUrl);
-
-                  fileUrl = data.publicUrl;
-                }
-
-                // Open the file URL in browser/viewer
-                const supported = await Linking.canOpenURL(fileUrl);
-                if (supported) {
-                  await Linking.openURL(fileUrl);
-                } else {
-                  Alert.alert('Error', 'Unable to open this file type.');
-                }
-              } catch (downloadError) {
-                console.error('Open error:', downloadError);
-                Alert.alert('Error', 'Failed to open the file. Please try again.');
-              } finally {
-                setDownloading(false);
-              }
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      console.error('Download error:', error);
-      Alert.alert('Error', 'Failed to open resource');
-    }
-  };
-
-  const handlePreview = async (resource: LearningResource) => {
-    try {
-      // Get the file URL from Supabase storage
-      let fileUrl = resource.file_url;
-
-      // If it's a storage path, get the public URL
-      if (!fileUrl.startsWith('http')) {
-        const { data } = supabase.storage
-          .from('library_pdfs')
-          .getPublicUrl(fileUrl);
-
-        fileUrl = data.publicUrl;
-      }
-
-      // For PDFs, open in browser
-      if (resource.file_type === 'application/pdf') {
-        await Linking.openURL(fileUrl);
-      }
-      // For images, show in modal
-      else if (resource.file_type.startsWith('image/')) {
-        // Update resource with public URL for modal display
-        setSelectedResource({ ...resource, file_url: fileUrl });
-        setShowPreviewModal(true);
-      }
-      // For videos, open in external player
-      else if (resource.file_type.startsWith('video/')) {
-        await Linking.openURL(fileUrl);
-      }
-      // For other types, try to open
-      else {
-        await Linking.openURL(fileUrl);
-      }
-    } catch (error) {
-      console.error('Preview error:', error);
-      Alert.alert('Preview Error', 'Unable to preview this file. You can try downloading it instead.');
-    }
-  };
 
   const renderResourceItem = ({ item }: { item: LearningResource }) => (
     <View style={styles.resourceCard}>
@@ -246,7 +65,7 @@ export default function LearningSupport() {
       <View style={styles.resourceActions}>
         <TouchableOpacity
           style={styles.previewButton}
-          onPress={() => handlePreview(item)}
+          onPress={() => previewResource(item, { setSelectedResource, setShowPreviewModal })}
           activeOpacity={0.7}
         >
           <Text style={styles.previewButtonText}>👁️ Preview</Text>
@@ -254,7 +73,7 @@ export default function LearningSupport() {
 
         <TouchableOpacity
           style={styles.downloadButton}
-          onPress={() => handleDownload(item)}
+          onPress={() => downloadResource(item)}
           activeOpacity={0.7}
         >
           <Text style={styles.downloadButtonText}>⬇️ Download</Text>
@@ -277,40 +96,33 @@ export default function LearningSupport() {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Learning Support</Text>
-          <Text style={styles.headerSubtitle}>Academic Resources for {studentInfo.name}</Text>
+          <Text style={styles.headerSubtitle}>Academic Resources for {profile?.name}</Text>
         </View>
       </View>
 
       {/* Resources List */}
       <View style={styles.resourcesContainer}>
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>📚 Loading resources...</Text>
-          </View>
-        ) : filteredResources.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📭</Text>
-            <Text style={styles.emptyTitle}>No Resources Found</Text>
-            <Text style={styles.emptyText}>
-              No learning resources have been uploaded yet. Check back soon as experts regularly upload new materials!
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredResources}
-            renderItem={renderResourceItem}
-            keyExtractor={(item) => item.id}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                colors={['#7b1fa2']}
-              />
-            }
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.resourcesList}
-          />
-        )}
+        {isLoading ? (
+  <View style={styles.loadingContainer}>
+    <Text style={styles.loadingText}>📚 Loading resources...</Text>
+  </View>
+) : resources?.length === 0 ? (
+  <View style={styles.emptyContainer}>
+    <Text style={styles.emptyIcon}>📭</Text>
+    <Text style={styles.emptyTitle}>No Resources Found</Text>
+    <Text style={styles.emptyText}>
+      No learning resources have been uploaded yet.
+    </Text>
+  </View>
+) : (
+  <FlatList
+    data={resources}
+    renderItem={renderResourceItem}
+    keyExtractor={(item) => item.id}
+    contentContainerStyle={styles.resourcesList}
+  />
+)}
+
       </View>
 
       {/* Preview Modal */}
@@ -372,7 +184,7 @@ export default function LearningSupport() {
                       style={styles.modalDownloadButton}
                       onPress={() => {
                         setShowPreviewModal(false);
-                        handleDownload(selectedResource);
+                        // downloadResource(item)
                       }}
                       activeOpacity={0.7}
                     >
@@ -389,7 +201,7 @@ export default function LearningSupport() {
       {/* Footer */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          {filteredResources.length} resources available • Pull to refresh
+          {resources?.length} resources available • Pull to refresh
         </Text>
       </View>
     </SafeAreaView>

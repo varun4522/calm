@@ -16,9 +16,6 @@ export default function FrontPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { session, loading } = useAuth();
 
-  if (session && loading) {
-    return <ActivityIndicator />
-  }  
 
   useEffect(() => {
     const redirectUser = async () => {

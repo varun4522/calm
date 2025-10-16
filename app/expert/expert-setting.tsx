@@ -37,49 +37,9 @@ export default function ExpertSetting() {
   const [choosePicModal, setChoosePicModal] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Expert data states
-  const [expertProfile, setExpertProfile] = useState({
-    bio: '',
-    email: '',
-  });
   const {session } = useAuth();
   const {data: profile} = useProfile(session?.user.id);
 
-  // Refresh expert data function
-  const refreshExpertData = async () => {
-    setLoading(true);
-    try {
-      let regNo = params.registration;
-      if (!regNo) {
-        const storedReg = await AsyncStorage.getItem('currentExpertReg');
-        if (storedReg) regNo = storedReg;
-      }
-
-      if (regNo) {
-        // Fetch fresh expert data from user_requests table
-        const { data, error } = await supabase
-          .from('user_requests')
-          .select('*')
-          .eq('registration_number', regNo)
-          .eq('user_type', 'Expert')
-          .single();
-
-        if (error) {
-          console.error('Error refreshing expert data:', error);
-        } else if (data) {
-          setExpertName(data.user_name || data.name || '');
-          setExpertProfile({
-            bio: data.bio || `Expert specializing in ${data.specialization || 'Mental Health'}`,
-            email: data.email || ''
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error refreshing expert data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Profile pic fade-in animation
   useEffect(() => {
@@ -121,7 +81,6 @@ export default function ExpertSetting() {
         <Text style={styles.headerTitle}>Settings</Text>
         <TouchableOpacity
           style={styles.refreshButton}
-          onPress={refreshExpertData}
           disabled={loading}
         >
           <Ionicons name="refresh" size={20} color={Colors.primary} />

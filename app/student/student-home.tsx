@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
 import PeerScreen from './peer-screen';
+import { Notification } from '@/types/Notification';
 
 const profilePics = [
   require('@/assets/images/profile/pic1.png'),
@@ -23,18 +24,6 @@ const profilePics = [
   require('@/assets/images/profile/pic11.png'),
   require('@/assets/images/profile/pic12.png'),
   require('@/assets/images/profile/pic13.png'),
-];
-
-const alerts = [
-  { id: '1', text: 'Assignment due tomorrow!' },
-  { id: '2', text: 'New message from your teacher.' },
-  { id: '3', text: 'Mood check-in available.' },
-];
-
-const messages = [
-  { id: '1', sender: 'You', text: 'Hey, how are you?' },
-  { id: '2', sender: 'Alex', text: 'I am good, thanks!' },
-  { id: '3', sender: 'You', text: 'Ready for the test?' },
 ];
 
 // Base tabs for all users
@@ -95,9 +84,6 @@ export default function StudentHome() {
   const {session, loading} = useAuth();
   const {data:profile, error, isLoading} = useProfile(session?.user.id);
 
-  if (isLoading){
-    return <ActivityIndicator />
-  }
 
   // Animated bubble background (home tab only)
   const { height: screenHeight } = Dimensions.get('window');
@@ -143,7 +129,6 @@ export default function StudentHome() {
   const [studentReg, setStudentReg] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [studentUsername, setStudentUsername] = useState('');
-  const [userType, setUserType] = useState('student'); // Track user type for peer visibility
 
   // App usage statistics tracking per user
   const [appUsageStats, setAppUsageStats] = useState({
@@ -166,7 +151,7 @@ export default function StudentHome() {
 
   // Notification states
   const [showNotificationModal, setShowNotificationModal] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -203,34 +188,12 @@ export default function StudentHome() {
   const TABS = React.useMemo(() => {
     const tabs = [...BASE_TABS];
     // Add peer tab only if user is a peer listener
-    if (userType === 'peer' || userType === 'peer_listener') {
+    if (profile?.type === "PEER") {
       tabs.splice(2, 0, PEER_TAB); // Insert at index 2 (before SOS)
     }
     return tabs;
-  }, [userType]);
+  }, [profile]);
 
-  // Force show mood selection for testing
-  const forceShowMoodSelection = () => {
-    setCurrentPromptInfo({ timeLabel: 'Manual Check-in', scheduleKey: 'manual' });
-    setMoodModalVisible(true);
-  };
-
-  // Load userType immediately on mount (before other operations)
-  useEffect(() => {
-    const loadUserTypeImmediately = async () => {
-      try {
-        const storedUserType = await AsyncStorage.getItem('userType');
-        if (storedUserType) {
-          setUserType(storedUserType);
-          console.log('🚀 User type loaded immediately on mount:', storedUserType);
-        }
-      } catch (error) {
-        console.error('Error loading user type immediately:', error);
-      }
-    };
-
-    loadUserTypeImmediately();
-  }, []); // Empty dependency array - runs only once on mount
 
   // Load student data from AsyncStorage or params
   useEffect(() => {
@@ -258,12 +221,6 @@ export default function StudentHome() {
             setStudentUsername(data.username || '');
           }
 
-          // Load userType to determine if peer tab should be visible
-          const storedUserType = await AsyncStorage.getItem('userType');
-          if (storedUserType) {
-            setUserType(storedUserType);
-            console.log('User type loaded:', storedUserType);
-          }
 
           // Load app usage stats for this user
           await loadAppUsageStats(regNo);
@@ -337,23 +294,11 @@ export default function StudentHome() {
   // Notification functions
   const loadNotifications = async () => {
     try {
-      // Try to get registration number from state first, then params, then AsyncStorage
-      let regNo = studentReg || studentRegNo;
-      if (!regNo) {
-        const storedReg = await AsyncStorage.getItem('currentStudentReg');
-        if (storedReg) regNo = storedReg;
-      }
-
-      // Don't proceed if regNo is still undefined/null/empty or has invalid string values
-      if (!regNo || regNo === 'undefined' || regNo === 'null') {
-        return;
-      }
-
       // Load notifications where student is the recipient or recipient_type is 'student' or 'all'
       const { data: notificationsData, error } = await supabase
         .from('notifications')
         .select('*')
-        .or(`recipient_id.eq.${regNo},recipient_type.eq.student,recipient_type.eq.all`)
+        .or(`receiver_type.eq.STUDENTS,receiver_type.eq.ALL`)
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -394,16 +339,8 @@ export default function StudentHome() {
     }
   };
 
-
-
-
-
   // Load notifications on component mount and when focused
   useEffect(() => {
-    // Only load notifications if we have a valid registration number
-    // Skip initial load here since it's handled in loadStudentSession
-    // This useEffect is mainly for setting up the real-time subscription
-
     // Set up real-time subscription for notifications
     const notificationSubscription = supabase
       .channel('notifications')
@@ -417,34 +354,17 @@ export default function StudentHome() {
         (payload) => {
           // Check if this notification is for current student
           const isForCurrentStudent = async () => {
-            // Try to get registration number from state first, then params, then AsyncStorage
-            let regNo = studentReg || studentRegNo;
-            if (!regNo) {
-              const storedReg = await AsyncStorage.getItem('currentStudentReg');
-              if (storedReg) regNo = storedReg;
-            }
-
-            // Skip if no valid registration number
-            if (!regNo || regNo === 'undefined' || regNo === 'null') {
-              return;
-            }
-
             if (payload.eventType === 'INSERT' && payload.new) {
               const notification = payload.new;
               const isRelevant =
-                notification.recipient_id === regNo ||
-                notification.recipient_type === 'student' ||
-                notification.recipient_type === 'all';
+                notification.receiver_type === 'STUDENTS' ||
+                notification.receiver_type === 'ALL';
 
               if (isRelevant) {
-                // Trigger bell animation for new notification
                 setHasNewNotification(true);
-
-                // Show toast notification
                 setToastMessage(notification.title || 'New notification received!');
                 setShowToast(true);
 
-                // Start bell shake animation
                 Animated.sequence([
                   Animated.timing(bellAnimation, {
                     toValue: 1,
@@ -503,34 +423,14 @@ export default function StudentHome() {
     return () => {
       supabase.removeChannel(notificationSubscription);
     };
-  }, [studentRegNo, studentReg]);
+  }, [profile]);
 
   useFocusEffect(
     useCallback(() => {
-      // Only load notifications if we have a valid registration number
-      if (studentReg || studentRegNo) {
+      if (profile) {
         loadNotifications();
       }
-    }, [studentReg, studentRegNo])
-  );
-
-  // Load userType when screen comes into focus to maintain peer tab visibility
-  useFocusEffect(
-    useCallback(() => {
-      const loadUserType = async () => {
-        try {
-          const storedUserType = await AsyncStorage.getItem('userType');
-          if (storedUserType) {
-            setUserType(storedUserType);
-            console.log('✅ User type reloaded on focus:', storedUserType);
-          }
-        } catch (error) {
-          console.error('Error loading user type on focus:', error);
-        }
-      };
-
-      loadUserType();
-    }, [])
+    }, [profile])
   );
 
   // Load profile picture when screen comes into focus (for instant updates from settings)
@@ -1435,12 +1335,12 @@ export default function StudentHome() {
               ) : (
                 notifications.map((notification) => (
                   <View key={notification.id} style={{
-                    backgroundColor: !notification.is_read ? Colors.accent + '10' : Colors.white,
+                    // backgroundColor: !notification.is_read ? Colors.accent + '10' : Colors.white,
                     borderRadius: 12,
                     padding: 15,
                     marginBottom: 10,
                     borderWidth: 1,
-                    borderColor: !notification.is_read ? Colors.primary : Colors.border,
+                    // borderColor: !notification.is_read ? Colors.primary : Colors.border,
                     shadowColor: Colors.shadow,
                     shadowOffset: { width: 0, height: 2 },
                     shadowOpacity: 0.1,
@@ -1455,7 +1355,7 @@ export default function StudentHome() {
                           {new Date(notification.created_at).toLocaleDateString()} {new Date(notification.created_at).toLocaleTimeString()}
                         </Text>
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                      {/* <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                         {!notification.is_read && (
                           <TouchableOpacity
                             style={{ backgroundColor: Colors.primary, borderRadius: 15, padding: 8 }}
@@ -1464,9 +1364,9 @@ export default function StudentHome() {
                             <Ionicons name="checkmark" size={16} color={Colors.white} />
                           </TouchableOpacity>
                         )}
-                      </View>
+                      </View> */}
                     </View>
-                    {notification.priority === 'high' && (
+                    {notification.priority === 'HIGH' && (
                       <View style={{ backgroundColor: '#ff4444', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, alignSelf: 'flex-start', marginTop: 8 }}>
                         <Text style={{ color: Colors.white, fontSize: 10, fontWeight: 'bold' }}>High Priority</Text>
                       </View>
@@ -1529,57 +1429,10 @@ export default function StudentHome() {
           </>
         )}
 
-        {/* Setting Tab Content */}
-        {activeTab === 'setting' && (
-          <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 10, backgroundColor: Colors.white, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: Colors.border }}>
-            <Image source={profilePics[selectedProfilePic]} style={{ width: 90, height: 90, borderRadius: 45, borderWidth: 4, borderColor: Colors.accent }} />
-            <Text style={{ color: Colors.text, fontSize: 24, fontWeight: 'bold', marginTop: 15 }}>
-              {profile?.name}
-            </Text>
-            <Text style={{ color: Colors.textSecondary, fontSize: 16, marginTop: 5 }}>
-              {profile?.course}
-            </Text>
-            <Text style={{ color: Colors.textSecondary, fontSize: 14, marginTop: 5 }}>
-              Registration: {profile?.registration_number}
-            </Text>
-
-            {/* Profile Picture Selector */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 20, width: '100%' }}>
-              {profilePics.map((pic, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => setSelectedProfilePic(index)}
-                  style={{ margin: 5, borderRadius: 25, borderWidth: selectedProfilePic === index ? 3 : 0, borderColor: Colors.accent }}
-                >
-                  <Image source={pic} style={{ width: 40, height: 40, borderRadius: 20 }} />
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* App Usage Stats */}
-            <View style={{ marginTop: 20, width: '100%', backgroundColor: Colors.backgroundLight, borderRadius: 15, padding: 15, borderWidth: 1, borderColor: Colors.border }}>
-              <Text style={{ color: Colors.text, fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 10 }}>📊 App Usage Statistics</Text>
-              <Text style={{ color: Colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
-                Total time spent: {Math.floor(appUsageStats.totalTimeSpent / 60)} minutes
-              </Text>
-              <Text style={{ color: Colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
-                Sessions: {appUsageStats.sessionCount}
-              </Text>
-              <Text style={{ color: Colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
-                Last active: {appUsageStats.lastSessionTime ? new Date(appUsageStats.lastSessionTime).toLocaleDateString() : 'Never'}
-              </Text>
-              <Text style={{ color: Colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
-                Mood entries: {detailedMoodEntries.length}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Mood Calendar Tab */}
         {activeTab === 'mood' && (
           <MoodCalendar />
         )}
-        {activeTab === 'peer' && (
+        {activeTab === 'peer' && profile?.type === "PEER" && (
           <PeerScreen />
         )}
       </View>
@@ -1606,7 +1459,7 @@ export default function StudentHome() {
                 <Image source={require('@/assets/images/home.png')} style={{ width: 40, height: 40 }} />
               ) : tab.key === 'mood' ? (
                 <Image source={require('@/assets/images/mood calender.png')} style={{ width: 40, height: 40 }} />
-              ) : tab.key === 'peer' ? (
+              ) : tab.key === 'peer' && profile?.type === "PEER"  ? (
                 <Image source={require('@/assets/images/community.png')} style={{ width: 38, height: 38 }} />
               ) : tab.key === 'sos' ? (
                 <Image source={require('@/assets/images/sos.png')} style={{ width: 35, height: 35 }} />

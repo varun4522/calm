@@ -24,7 +24,6 @@ export default function ConsultationPage() {
 
     useEffect(() => {
         if (session && profile) {
-            console.log(messagesIncludingExpertId);
             loadMessages();
             groupingMessagesSender();
         }

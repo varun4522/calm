@@ -1,21 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { formatDateToLocalString } from '@/api/OtherMethods';
 
-// Helper function to format date to YYYY-MM-DD in local timezone (no UTC conversion)
-const formatDateToLocalString = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 export default function StudentCalm() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ registration?: string }>();
   const [showPsychologistModal, setShowPsychologistModal] = useState(false);
   const [selectedPsychologist, setSelectedPsychologist] = useState<string | null>(null);
   const [bookingMode, setBookingMode] = useState<'online' | 'offline' | null>(null);
@@ -58,137 +51,6 @@ export default function StudentCalm() {
   const [sessionHistory, setSessionHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // Load student info on component mount
-  useEffect(() => {
-    const loadStudentInfo = async () => {
-      try {
-        let regNo = params.registration;
-        if (!regNo) {
-          const storedReg = await AsyncStorage.getItem('currentStudentReg');
-          if (storedReg) regNo = storedReg;
-        }
-
-        if (regNo) {
-          const studentData = await AsyncStorage.getItem('currentStudentData');
-          if (studentData) {
-            const data = JSON.parse(studentData);
-            setStudentInfo({
-              name: data.name || '',
-              email: data.email || '',
-              registration: regNo,
-              course: data.course || '',
-              username: data.username || ''
-            });
-          } else {
-            setStudentInfo(prev => ({ ...prev, registration: regNo }));
-          }
-        }
-      } catch (error) {
-        console.error('Error loading student info:', error);
-      }
-    };
-
-    loadStudentInfo();
-    loadBookedSessions(); // Load booked sessions when component mounts
-    loadSessionHistory(); // Load session history when component mounts
-  }, [params.registration]);
-
-  // Load expert data from user_requests table
-  useEffect(() => {
-    const loadExperts = async () => {
-      setLoadingExperts(true);
-      try {
-        console.log('Loading experts from user_requests table...');
-        const { data: expertData, error } = await supabase
-          .from('user_requests')
-          .select('*')
-          .eq('user_type', 'Expert')
-          .order('user_name');
-
-        if (error) {
-          console.error('Error loading experts from user_requests table:', error);
-          console.error('Error details:', error.message);
-          setExperts([]);
-        } else if (expertData && expertData.length > 0) {
-          // Transform data to match expected format
-          const transformedExperts = expertData.map(expert => ({
-            id: expert.id?.toString() || expert.registration_number || `expert_${Math.random()}`,
-            name: expert.user_name || 'Unknown Expert',
-            registration_number: expert.registration_number || expert.id?.toString() || 'N/A',
-            specialization: expert.specialization || expert.course || 'Mental Health Expert',
-            experience: expert.experience || '5+ years',
-            rating: expert.rating ? expert.rating.toString() : '4.8',
-            email: expert.email || '',
-            phone: expert.phone || '',
-            qualifications: expert.qualifications || '',
-            bio: expert.bio || `Expert in ${expert.specialization || 'Mental Health'}`,
-            username: expert.username || ''
-          }));
-          setExperts(transformedExperts);
-          console.log('Successfully loaded experts from user_requests table:', transformedExperts.length);
-        } else {
-          // No experts in database
-          console.log('No experts found in user_requests table');
-          setExperts([]);
-        }
-      } catch (error) {
-        console.error('Error fetching experts:', error);
-        setExperts([]);
-      } finally {
-        setLoadingExperts(false);
-      }
-    };
-
-    loadExperts();
-  }, []);
-
-  // Load peer listeners from user_requests table
-  useEffect(() => {
-    const loadPeerListeners = async () => {
-      setLoadingPeerListeners(true);
-      try {
-        console.log('Loading peer listeners from user_requests table...');
-        const { data: peerListenerData, error } = await supabase
-          .from('user_requests')
-          .select('*')
-          .eq('user_type', 'Peer Listener')
-          .order('user_name');
-
-        if (error) {
-          console.error('Error loading peer listeners from user_requests table:', error);
-          console.error('Error details:', error.message);
-          setPeerListeners([]);
-        } else if (peerListenerData && peerListenerData.length > 0) {
-          // Transform data to match expected format
-          const transformedPeerListeners = peerListenerData.map(peerListener => ({
-            id: peerListener.id?.toString() || peerListener.registration_number || `peer_${Math.random()}`,
-            name: peerListener.user_name || 'Unknown Peer Listener',
-            student_id: peerListener.registration_number || peerListener.id?.toString() || 'N/A',
-            course: peerListener.course || 'General Studies',
-            year: peerListener.year || 'Not specified',
-            rating: peerListener.rating ? peerListener.rating.toString() : '4.5',
-            email: peerListener.email || '',
-            phone: peerListener.phone || '',
-            username: peerListener.username || '',
-            bio: peerListener.bio || `${peerListener.course || 'Student'} peer listener ready to help`
-          }));
-          setPeerListeners(transformedPeerListeners);
-          console.log('Successfully loaded peer listeners from user_requests table:', transformedPeerListeners.length);
-        } else {
-          // No peer listeners in database
-          console.log('No peer listeners found in user_requests table');
-          setPeerListeners([]);
-        }
-      } catch (error) {
-        console.error('Error fetching peer listeners:', error);
-        setPeerListeners([]);
-      } finally {
-        setLoadingPeerListeners(false);
-      }
-    };
-
-    loadPeerListeners();
-  }, []);
 
   // Load peer listener time slots from expert_schedule table
   const loadPeerListenerTimeSlots = async (peerRegistration: string, date: string) => {
@@ -201,7 +63,7 @@ export default function StudentCalm() {
       let { data: slots, error } = await supabase
         .from('expert_schedule')
         .select('*')
-        .eq('expert_registration', peerRegistration)
+        .eq('expert_registration_number', peerRegistration)
         .eq('date', date)
         .order('start_time', { ascending: true });
 
@@ -210,10 +72,10 @@ export default function StudentCalm() {
         console.log('No slots found in expert_schedule, attempting to sync from student_schedule');
 
         // Check if peer listener has slots in student_schedule
-        const { data: studentSlots, error: studentError } = await supabase
+        const { data: studentSlots } = await supabase
           .from('student_schedule')
           .select('*')
-          .eq('student_registration', peerRegistration)
+          .eq('student_registration_number', peerRegistration)
           .eq('date', date)
           .order('start_time', { ascending: true });
 
@@ -225,7 +87,7 @@ export default function StudentCalm() {
             const { error: insertError } = await supabase
               .from('expert_schedule')
               .upsert({
-                expert_registration: peerRegistration,
+                expert_registration_number: peerRegistration,
                 expert_name: slot.student_name,
                 date: slot.date,
                 start_time: slot.start_time,
@@ -341,7 +203,7 @@ export default function StudentCalm() {
       // Query Supabase for all booked sessions
       const { data: sessions, error } = await supabase
         .from('book_request')
-        .select('expert_registration, session_date, session_time')
+        .select('expert_registration_number, session_date, session_time')
         .eq('status', 'approved'); // Only approved bookings count as unavailable
 
       if (error) {
@@ -351,7 +213,7 @@ export default function StudentCalm() {
 
       // Create unique session identifiers
       const bookedSlots = sessions?.map(session =>
-        `${session.expert_registration}_${session.session_date}_${session.session_time}`
+        `${session.expert_registration_number}_${session.session_date}_${session.session_time}`
       ) || [];
 
       setBookedSessions(bookedSlots);
@@ -382,7 +244,7 @@ export default function StudentCalm() {
       const { data: sessions, error } = await supabase
         .from('book_request')
         .select('*')
-        .eq('registration_number', regNo)
+        .eq('student_registration_number', regNo)
         .order('updated_at', { ascending: false });
 
       if (error) {
@@ -516,7 +378,7 @@ export default function StudentCalm() {
                     is_available: true,
                     booked_by: null
                   })
-                  .eq('expert_registration', sessionData.expert_registration)
+                  .eq('expert_registration_number', sessionData.expert_registration_number)
                   .eq('date', sessionData.session_date)
                   .eq('start_time', startTime);
 
@@ -668,7 +530,7 @@ export default function StudentCalm() {
         dateString: formatDateToLocalString(date),
         displayDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         dayName: date.toLocaleDateString('en-US', { weekday: 'short' })
-    });
+      });
     }
     return days;
   };
@@ -823,15 +685,15 @@ export default function StudentCalm() {
           .select()
           .single();
 
-    if (supabaseError) {
+        if (supabaseError) {
           console.error('Supabase error details:', supabaseError);
 
           // Check for specific error types
           if (supabaseError.code === '42P01') {
             Alert.alert('Database Error', 'The book_request table does not exist. Please check the database setup.');
           } else if (supabaseError.code === '23505') {
-      // Unique constraint violation - student already has maximum sessions
-      Alert.alert('Maximum Sessions Reached', 'You already have 2 active sessions (pending or approved). Please complete or cancel at least one before booking another.');
+            // Unique constraint violation - student already has maximum sessions
+            Alert.alert('Maximum Sessions Reached', 'You already have 2 active sessions (pending or approved). Please complete or cancel at least one before booking another.');
           } else if (supabaseError.code === '42501') {
             Alert.alert('Permission Error', 'Database permission denied. Please check RLS policies.');
           } else {
@@ -839,36 +701,6 @@ export default function StudentCalm() {
           }
           return;
         }
-
-        // Also save to AsyncStorage for backward compatibility and offline access
-        const sessionRequest = {
-          id: supabaseData.id || `session_${Date.now()}`,
-          studentName: studentInfo.name || studentInfo.username || 'Student',
-          studentReg: studentInfo.registration || 'Unknown',
-          studentEmail: studentInfo.email || '',
-          studentCourse: studentInfo.course || '',
-          psychologistId: selectedPsychologist,
-          psychologistName: expert?.name || 'Unknown Expert',
-          expertRegistration: expert?.registration_number || selectedPsychologist,
-          date: selectedDate,
-          time: selectedTime,
-          bookingMode: bookingMode,
-          status: 'pending',
-          requestedAt: new Date().toISOString(),
-          notes: `Session booking request from ${studentInfo.name || studentInfo.username}`
-        };
-
-        // Save to AsyncStorage for expert to see (backward compatibility)
-        const existingSessions = await AsyncStorage.getItem('psychologistSessions');
-        const sessions = existingSessions ? JSON.parse(existingSessions) : [];
-        sessions.push(sessionRequest);
-        await AsyncStorage.setItem('psychologistSessions', JSON.stringify(sessions));
-
-        // Also save to expert-specific storage
-        const expertSessions = await AsyncStorage.getItem(`sessions_${selectedPsychologist}`);
-        const expertSessionsList = expertSessions ? JSON.parse(expertSessions) : [];
-        expertSessionsList.push(sessionRequest);
-        await AsyncStorage.setItem(`sessions_${selectedPsychologist}`, JSON.stringify(expertSessionsList));
 
         // After successful booking, refresh the booked sessions
         await loadBookedSessions();
@@ -1755,63 +1587,63 @@ export default function StudentCalm() {
                       </View>
 
                       <View style={styles.timeSlotsContainer}>
-                      {peerListenerTimeSlots.map((slot) => {
-                        // Format time from database (HH:MM:SS to HH:MM AM/PM)
-                        const formatTime = (timeString: string) => {
-                          const [hours, minutes] = timeString.split(':');
-                          const hour = parseInt(hours);
-                          const ampm = hour >= 12 ? 'PM' : 'AM';
-                          const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-                          return `${displayHour}:${minutes} ${ampm}`;
-                        };
+                        {peerListenerTimeSlots.map((slot) => {
+                          // Format time from database (HH:MM:SS to HH:MM AM/PM)
+                          const formatTime = (timeString: string) => {
+                            const [hours, minutes] = timeString.split(':');
+                            const hour = parseInt(hours);
+                            const ampm = hour >= 12 ? 'PM' : 'AM';
+                            const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+                            return `${displayHour}:${minutes} ${ampm}`;
+                          };
 
-                        const timeDisplay = `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`;
-                        const timeKey = formatTime(slot.start_time);
-                        const isSelected = selectedPeerTime === timeKey;
-                        const isAvailable = slot.is_available;
-                        return (
-                          <TouchableOpacity
-                            key={slot.id}
-                            style={[
-                              styles.timeSlot,
-                              !isAvailable && styles.bookedTimeSlot,
-                              isSelected && styles.selectedTimeSlot,
-                              !isAvailable && { opacity: 0.6 }
-                            ]}
-                            onPress={() => {
-                              if (!isAvailable) {
-                                Alert.alert(
-                                  'Slot Not Available',
-                                  'This time slot is already booked. Please select a different time.',
-                                  [{ text: 'OK' }]
-                                );
-                              } else {
-                                setSelectedPeerTime(timeKey);
-                              }
-                            }}
-                            disabled={!isAvailable}
-                          >
-                            <View style={styles.timeSlotContent}>
-                              <Text style={[
-                                styles.timeText,
-                                !isAvailable && styles.bookedTimeText,
-                                isSelected && styles.selectedTimeText
-                              ]}>
-                                {timeDisplay}
-                              </Text>
-                              <View style={[
-                                styles.statusDot,
-                                !isAvailable && styles.bookedStatusDot,
-                                { backgroundColor: !isAvailable ? '#f44336' : (isSelected ? '#2196f3' : '#4caf50') }
-                              ]} />
-                              {!isAvailable && (
-                                <Text style={styles.bookedIndicatorText}>❌</Text>
-                              )}
-                            </View>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+                          const timeDisplay = `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`;
+                          const timeKey = formatTime(slot.start_time);
+                          const isSelected = selectedPeerTime === timeKey;
+                          const isAvailable = slot.is_available;
+                          return (
+                            <TouchableOpacity
+                              key={slot.id}
+                              style={[
+                                styles.timeSlot,
+                                !isAvailable && styles.bookedTimeSlot,
+                                isSelected && styles.selectedTimeSlot,
+                                !isAvailable && { opacity: 0.6 }
+                              ]}
+                              onPress={() => {
+                                if (!isAvailable) {
+                                  Alert.alert(
+                                    'Slot Not Available',
+                                    'This time slot is already booked. Please select a different time.',
+                                    [{ text: 'OK' }]
+                                  );
+                                } else {
+                                  setSelectedPeerTime(timeKey);
+                                }
+                              }}
+                              disabled={!isAvailable}
+                            >
+                              <View style={styles.timeSlotContent}>
+                                <Text style={[
+                                  styles.timeText,
+                                  !isAvailable && styles.bookedTimeText,
+                                  isSelected && styles.selectedTimeText
+                                ]}>
+                                  {timeDisplay}
+                                </Text>
+                                <View style={[
+                                  styles.statusDot,
+                                  !isAvailable && styles.bookedStatusDot,
+                                  { backgroundColor: !isAvailable ? '#f44336' : (isSelected ? '#2196f3' : '#4caf50') }
+                                ]} />
+                                {!isAvailable && (
+                                  <Text style={styles.bookedIndicatorText}>❌</Text>
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
                     </>
                   )}
                 </>
