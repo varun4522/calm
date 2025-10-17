@@ -21,3 +21,28 @@ export interface GroupedConversation {
     message_count: number;
     is_read?: boolean;
 }
+
+
+export interface Conversation {
+  id: string;
+  participantId: string;
+  participantName: string;
+  participantType: 'student' | 'expert' | 'peer' | 'admin';
+  lastMessage: string;
+  timestamp: string;
+  unreadCount: number;
+  profilePic: number;
+  isOnline: boolean;
+}
+
+export interface ReceivedMessage {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  sender_name: string;
+  sender_type: 'STUDENT' | 'EXPERT' | 'PEER' | 'ADMIN';
+  message: string;
+  created_at: string;
+  is_read: boolean;
+  profilePic?: number;
+}

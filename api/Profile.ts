@@ -4,6 +4,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Toast from "react-native-toast-message";
 
 
+export const useGetProfileList = (user_type: string) => {
+  return useQuery({
+    queryKey: ["experts"],
+    queryFn: async() => {
+      const {data, error} = await supabase.from("profiles").select("*").eq("type",user_type);
+      if (error){
+        console.log(error);
+        throw new Error("Error");
+      }
+      return data;
+    }
+  })
+}
+
 export const useProfile = (userId: string | null | undefined) => {
   return useQuery<Profile>({
     queryKey: ["profile", userId],

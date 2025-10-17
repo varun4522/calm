@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { ChatMessage } from '@/types/Message';
 import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
-import { useChatMessages, useInsertMessage } from '@/api/Messages';
+import { useChatMessages, useInsertMessage } from '@/api/ExpertMessages';
 import { useQueryClient } from '@tanstack/react-query';
 
 

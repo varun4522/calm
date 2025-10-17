@@ -6,7 +6,7 @@ import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
 import { Profile } from '@/types/Profile';
 import { ChatMessage, GroupedConversation } from '@/types/Message';
-import { useMessagesByUserId } from '@/api/Messages';
+import { useMessagesByUserId } from '@/api/ExpertMessages';
 
 
 export default function ConsultationPage() {

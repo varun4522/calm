@@ -1,0 +1,15 @@
+export const profilePics = [
+  require('@/assets/images/profile/pic1.png'),
+  require('@/assets/images/profile/pic2.png'),
+  require('@/assets/images/profile/pic3.png'),
+  require('@/assets/images/profile/pic4.png'),
+  require('@/assets/images/profile/pic5.png'),
+  require('@/assets/images/profile/pic6.png'),
+  require('@/assets/images/profile/pic7.png'),
+  require('@/assets/images/profile/pic8.png'),
+  require('@/assets/images/profile/pic9.png'),
+  require('@/assets/images/profile/pic10.png'),
+  require('@/assets/images/profile/pic11.png'),
+  require('@/assets/images/profile/pic12.png'),
+  require('@/assets/images/profile/pic13.png'),
+];

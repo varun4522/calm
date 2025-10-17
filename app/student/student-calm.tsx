@@ -5,10 +5,15 @@ import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, Vi
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { formatDateToLocalString } from '@/api/OtherMethods';
+import { useAuth } from '@/providers/AuthProvider';
+import { useGetProfileList, useProfile } from '@/api/Profile';
 
 
 export default function StudentCalm() {
   const router = useRouter();
+  const { session } = useAuth();
+  const { data: profile } = useProfile(session?.user.id);
+
   const [showPsychologistModal, setShowPsychologistModal] = useState(false);
   const [selectedPsychologist, setSelectedPsychologist] = useState<string | null>(null);
   const [bookingMode, setBookingMode] = useState<'online' | 'offline' | null>(null);
@@ -32,13 +37,9 @@ export default function StudentCalm() {
     username: ''
   });
 
-  // Expert data state
-  const [experts, setExperts] = useState<any[]>([]);
-  const [loadingExperts, setLoadingExperts] = useState(false);
+  const {data: experts, isLoading: isExpertsProfileLoading} = useGetProfileList("EXPERT");
+  const {data: peers, isLoading: isPeersProfileLoading} = useGetProfileList("PEER");
 
-  // Peer listener data state
-  const [peerListeners, setPeerListeners] = useState<any[]>([]);
-  const [loadingPeerListeners, setLoadingPeerListeners] = useState(false);
 
   // Peer listener time slots state
   const [peerListenerTimeSlots, setPeerListenerTimeSlots] = useState<any[]>([]);
@@ -595,7 +596,7 @@ export default function StudentCalm() {
         }
 
         // Find the selected expert details
-        const expert = experts.find(e => (e.registration_number || e.id) === selectedPsychologist);
+        const expert = experts?.find(e => (e.registration_number || e.id) === selectedPsychologist);
 
         if (!expert) {
           Alert.alert('Error', 'Selected expert information not found. Please try again.');
@@ -757,7 +758,7 @@ export default function StudentCalm() {
         }
 
         // Find the selected peer listener details
-        const peerListener = peerListeners.find(p => (p.student_id || p.id) === selectedPeerListener);
+        const peerListener = peers?.find(p => (p.student_id || p.id) === selectedPeerListener);
 
         if (!peerListener) {
           Alert.alert('Error', 'Selected peer listener information not found. Please try again.');
@@ -1143,12 +1144,12 @@ export default function StudentCalm() {
             <ScrollView style={styles.modalBody}>
               {/* Expert Selection */}
               <Text style={styles.sectionTitle}>Select Expert</Text>
-              {loadingExperts ? (
+              {isExpertsProfileLoading ? (
                 <Text style={styles.loadingText}>Loading experts...</Text>
-              ) : experts.length === 0 ? (
+              ) : experts?.length === 0 ? (
                 <Text style={styles.emptyText}>No experts available at the moment.</Text>
               ) : (
-                experts.map((expert) => (
+                experts?.map((expert) => (
                   <TouchableOpacity
                     key={expert.id || expert.registration_number}
                     style={[
@@ -1428,12 +1429,12 @@ export default function StudentCalm() {
             <ScrollView style={styles.modalBody}>
               {/* Peer Listener Selection */}
               <Text style={styles.sectionTitle}>Select Peer Listener</Text>
-              {loadingPeerListeners ? (
+              {isPeersProfileLoading ? (
                 <Text style={styles.loadingText}>Loading peer listeners...</Text>
-              ) : peerListeners.length === 0 ? (
+              ) : peers?.length === 0 ? (
                 <Text style={styles.emptyText}>No peer listeners available at the moment.</Text>
               ) : (
-                peerListeners.map((peerListener) => (
+                peers?.map((peerListener) => (
                   <TouchableOpacity
                     key={peerListener.id || peerListener.student_id}
                     style={[
