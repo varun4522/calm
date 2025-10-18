@@ -1,47 +1,90 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {  ActivityIndicator,  Alert,  RefreshControl,  ScrollView,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
-import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
-import { SessionRequest } from '@/types/SessionRequest';
-import { useAuth } from '@/providers/AuthProvider';
+import {
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { Colors } from '../../constants/Colors';
+import { supabase } from '../../lib/supabase';
 import { useProfile } from '@/api/Profile';
+import { useAuth } from '@/providers/AuthProvider';
 
+interface SessionRequest {
+  id: string;
+  studentName: string;
+  studentReg: string;
+  studentEmail: string;
+  studentCourse: string;
+  session_date: string;
+  session_time: string;
+  booking_mode?: 'online' | 'offline';
+  status: 'pending' | 'approved' | 'rejected';
+  updated_at: string;
+  notes?: string;
+  expert_name?: string;
+  expert_registration?: string;
+}
 
 export default function ExpertClientPage() {
   const router = useRouter();
   const params = useLocalSearchParams<{ registration?: string }>();
-  const [expertName, setExpertName] = useState('');
-  const [expertRegNo, setExpertRegNo] = useState('');
+  const { session } = useAuth();
+  const { data: profile } = useProfile(session?.user.id);
+
+  const expertName = profile?.name;
+  const expertRegNo = profile?.registration_number.toString();
+
   const [sessionRequests, setSessionRequests] = useState<SessionRequest[]>([]);
   const [filteredSessions, setFilteredSessions] = useState<SessionRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-    const { session } = useAuth();
-    const { data: profile } = useProfile(session?.user.id);
+
 
   useEffect(() => {
-    if (profile) {
-      loadPatients();
+    if (expertRegNo || expertName) {
+      loadSessionRequests();
     }
-  }, [profile]);
-
+  }, [expertRegNo, expertName]);
 
   const loadPatients = async () => {
     setLoading(true);
     try {
       console.log('Loading session requests from book_request table...');
 
+      let regNo = expertRegNo;
+      if (!regNo) {
+        const storedReg = await AsyncStorage.getItem('currentExpertReg');
+        if (storedReg) regNo = storedReg;
+      }
+
+      if (!regNo && !expertName) {
+        console.log('No expert registration or name found');
+        setSessionRequests([]);
+        setFilteredSessions([]);
+        setLoading(false);
+        return;
+      }
+
       // Load all session requests for this expert
       let query = supabase
         .from('book_request')
         .select('*');
 
-      if (profile) {
-        query = query.or(`expert_registration_number.eq.${profile.registration_number},expert_name.eq.${profile.name}`);
-      } 
+      if (regNo) {
+        query = query.or(`expert_registration.eq.${regNo},expert_name.eq.${expertName}`);
+      } else if (expertName) {
+        query = query.eq('expert_name', expertName);
+      }
 
       const { data: sessionsData, error } = await query.order('updated_at', { ascending: false });
 
@@ -51,9 +94,23 @@ export default function ExpertClientPage() {
         setFilteredSessions([]);
       } else if (sessionsData) {
         console.log('Successfully loaded session requests:', sessionsData.length);
-        console.log(sessionsData);
-        setSessionRequests(sessionsData);
-        setFilteredSessions(sessionsData);
+        const transformedSessions: SessionRequest[] = sessionsData.map(session => ({
+          id: session.id?.toString() || `session_${Math.random()}`,
+          studentName: session.user_name || 'Unknown Student',
+          studentReg: session.registration_number || 'N/A',
+          studentEmail: session.student_email || '',
+          studentCourse: session.student_course || 'N/A',
+          session_date: session.session_date || '',
+          session_time: session.session_time || '',
+          booking_mode: session.booking_mode || undefined,
+          status: session.status || 'pending',
+          updated_at: session.updated_at || session.created_at || '',
+          notes: session.notes || '',
+          expert_name: session.expert_name || '',
+          expert_registration: session.expert_registration || ''
+        }));
+        setSessionRequests(transformedSessions);
+        setFilteredSessions(transformedSessions);
       }
     } catch (error) {
       console.error('Error loading session requests:', error);
@@ -64,6 +121,7 @@ export default function ExpertClientPage() {
     }
   };
 
+  const loadSessionRequests = loadPatients;
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
@@ -74,8 +132,8 @@ export default function ExpertClientPage() {
 
     const q = text.toLowerCase();
     const filtered = sessionRequests.filter(s =>
-      (s.student_name || '').toLowerCase().includes(q) ||
-      (s.student_registration_number || '').toLowerCase().includes(q) ||
+      (s.studentName || '').toLowerCase().includes(q) ||
+      (s.studentReg || '').toLowerCase().includes(q) ||
       (s.status || '').toLowerCase().includes(q)
     );
     setFilteredSessions(filtered);
@@ -90,7 +148,7 @@ export default function ExpertClientPage() {
   const handleConfirm = async (session: SessionRequest) => {
     Alert.alert(
       'Approve Session',
-      `Approve and book session with ${session.student_name} on ${formatDate(session.session_date)} at ${session.session_time}?`,
+      `Approve and book session with ${session.studentName} on ${formatDate(session.session_date)} at ${session.session_time}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -135,9 +193,9 @@ export default function ExpertClientPage() {
                 .from('expert_schedule')
                 .update({
                   is_available: false,
-                  booked_by: session.student_registration_number
+                  booked_by: session.studentReg
                 })
-                .eq('expert_id', session.expert_registration || expertRegNo)
+                .eq('expert_registration', session.expert_registration || expertRegNo)
                 .eq('date', session.session_date)
                 .eq('start_time', startTime);
 
@@ -164,7 +222,7 @@ export default function ExpertClientPage() {
   const handleReject = async (session: SessionRequest) => {
     Alert.alert(
       'Reject Session',
-      `Are you sure you want to reject the session with ${session.student_name}?`,
+      `Are you sure you want to reject the session with ${session.studentName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -200,7 +258,7 @@ export default function ExpertClientPage() {
   const handleDelete = async (session: SessionRequest) => {
     Alert.alert(
       'Delete Session Request',
-      `Are you sure you want to permanently delete this session request from ${session.student_registration_number}?`,
+      `Are you sure you want to permanently delete this session request from ${session.studentName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -266,8 +324,15 @@ export default function ExpertClientPage() {
   const handleChatWithStudent = (session: SessionRequest) => {
     // Navigate to chat page with student details
     router.push({
-      pathname: './expert-chat',
-      params: { studentId: session.student_id }
+      pathname: '/expert/expert-chat',
+      params: {
+        expertReg: expertRegNo,
+        expertName: expertName,
+        studentName: session.studentName,
+        studentReg: session.studentReg,
+        email: session.studentEmail,
+        course: session.studentCourse
+      }
     });
   };
 
@@ -296,20 +361,20 @@ export default function ExpertClientPage() {
         <View style={styles.studentInfo}>
           <View style={styles.infoRow}>
             <Ionicons name="person" size={18} color={Colors.primary} />
-            <Text style={styles.studentName}>{session.student_name}</Text>
+            <Text style={styles.studentName}>{session.studentName}</Text>
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="card-outline" size={18} color="#666" />
-            <Text style={styles.infoText}>ID: {session.student_registration_number}</Text>
+            <Text style={styles.infoText}>ID: {session.studentReg}</Text>
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="book-outline" size={18} color="#666" />
-            <Text style={styles.infoText}>{session.student_course}</Text>
+            <Text style={styles.infoText}>{session.studentCourse}</Text>
           </View>
-          {session.student_email && (
+          {session.studentEmail && (
             <View style={styles.infoRow}>
               <Ionicons name="mail-outline" size={18} color="#666" />
-              <Text style={styles.infoText}>{session.student_email}</Text>
+              <Text style={styles.infoText}>{session.studentEmail}</Text>
             </View>
           )}
         </View>
@@ -416,6 +481,7 @@ export default function ExpertClientPage() {
           </Text>
         </View>
         <TouchableOpacity
+          onPress={onRefresh}
           style={styles.refreshButton}
         >
           <Ionicons name="refresh-outline" size={24} color="#fff" />
