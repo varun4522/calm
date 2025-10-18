@@ -1,16 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert, Dimensions, FlatList, Image, InteractionManager, KeyboardAvoidingView, Modal, Platform, SafeAreaView,
-  StyleSheet, Text, TextInput, TouchableOpacity, View
-} from 'react-native';
+import {  Alert,  Dimensions,  FlatList,  Image,  InteractionManager,  KeyboardAvoidingView,  Modal,  Platform,  SafeAreaView,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { ChatMessage } from '@/types/Message';
-import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/api/Profile';
-import { useChatMessages } from '@/api/ExpertMessages';
-import Toast from 'react-native-toast-message';
+import { useAuth } from '@/providers/AuthProvider';
+
+
 
 const { width, height } = Dimensions.get('window');
 
@@ -66,9 +63,6 @@ export default function Chat() {
   const { session } = useAuth();
   const { data: profile } = useProfile(session?.user.id);
 
-  const { data: chatMessagesPro, refetch: refetchMessages } = useChatMessages(participantId, profile?.id);
-
-  const [studentInfo, setStudentInfo] = useState({ registration: '', name: '' });
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -111,72 +105,40 @@ export default function Chat() {
     setShowOptionsModal(false);
   }, [tempAlias]);
 
-  const handleSendMessage = useCallback(async () => {
+  const handleSendMessage = useCallback(() => {
     if (newMessage.trim() === '' || isSending) return;
-    setIsSending(true);
-    const messageText = newMessage.trim();
-    setNewMessage('');
 
-    // Optional: temporary UI feedback (like a temp message)
-    const tempMessage: ChatMessage = {
+    setIsSending(true);
+
+    // Immediate UI update for instant feedback
+    const tempMessage = {
       id: `temp_${Date.now()}`,
-      sender_id: profile?.id || '',
-      receiver_id: participantId || '',
-      sender_name: profile?.name || '',
-      sender_type: 'STUDENT',
-      receiver_name: '', // optional
-      receiver_type: 'STUDENT', // adjust if needed
-      message: messageText,
+      sender_id: profile!.id,
+      receiver_id: participantId,
+      message: newMessage.trim(),
       created_at: new Date().toISOString(),
+      sender_name: profile!.name,
+      sender_type: 'STUDENT' as const,
     };
 
     setChatMessages(prev => [...prev, tempMessage]);
+    const messageToSend = newMessage.trim();
+    setNewMessage('');
 
     // Scroll immediately
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 0);
 
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .insert([{
-          sender_id: profile?.id,
-          receiver_id: participantId,
-          sender_name: profile?.name,
-          sender_type: 'STUDENT',
-          receiver_name: '', // optional
-          receiver_type: 'STUDENT', // adjust if needed
-          message: messageText,
-          created_at: new Date().toISOString(),
-        }])
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
+    // Send to server in background
+    InteractionManager.runAfterInteractions(async () => {
+      try {
+        await sendMessage(messageToSend, tempMessage.id);
+      } finally {
+        setIsSending(false);
       }
-
-      // Message sent successfully -> refetch messages
-      refetchMessages();
-
-    } catch (err: any) {
-      console.error('Error sending message:', err);
-
-      // Remove the temp message from UI
-      setChatMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
-
-      // Show toast instead of alert
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to send message',
-        text2: err.message || 'Something went wrong',
-      });
-    } finally {
-      setIsSending(false);
-    }
-  }, [newMessage, participantId, profile, refetchMessages]);
-
+    });
+  }, [newMessage, profile, participantId, isSending]);
 
   // Memoized profile image getter
   const getProfileImageMemo = useMemo(() => {
@@ -187,17 +149,28 @@ export default function Chat() {
 
       switch (senderType) {
         case 'expert':
-          return require('@/assets/images/profile/pic2.png');
+          return require('../../assets/images/profile/pic2.png');
         case 'peer':
-          return require('@/assets/images/profile/pic3.png');
+          return require('../../assets/images/profile/pic3.png');
         case 'admin':
-          return require('@/assets/images/profile/pic4.png');
+          return require('../../assets/images/profile/pic4.png');
         default:
-          return require('@/assets/images/profile/pic5.png');
+          return require('../../assets/images/profile/pic5.png');
       }
     };
   }, []);
 
+  useEffect(() => {
+    if (profile && participantId) {
+      loadChatMessages();
+      const cleanup = setupRealtimeSubscription();
+      // compute initial online/last-seen from recent messages
+      updateParticipantStatusFromMessages();
+      // load stored alias if exists
+      loadAlias();
+      return cleanup;
+    }
+  }, [profile, participantId]);
 
   const loadAlias = async () => {
     try {
@@ -265,8 +238,34 @@ export default function Chat() {
     }
   };
 
+
+  const loadChatMessages = async () => {
+    try {
+      if (!participantId || !profile) return;
+
+      const { data: messages, error } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`and(sender_id.eq.${profile.id},receiver_id.eq.${participantId}),and(sender_id.eq.${participantId},receiver_id.eq.${profile.id})`)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error loading messages:', error);
+        return;
+      }
+
+      setChatMessages(messages || []);
+
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 100);
+    } catch (error) {
+      console.error('Error loading chat messages:', error);
+    }
+  };
+
   const setupRealtimeSubscription = () => {
-    if (!studentInfo.registration || !participantId) return;
+    if (!profile || !participantId) return;
 
     const channel = supabase
       .channel('chat_messages')
@@ -276,7 +275,7 @@ export default function Chat() {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `or(and(sender_id.eq.${participantId},receiver_id.eq.${studentInfo.registration}),and(sender_id.eq.${studentInfo.registration},receiver_id.eq.${participantId}))`,
+          filter: `or(and(sender_id.eq.${participantId},receiver_id.eq.${profile.id}),and(sender_id.eq.${profile.id},receiver_id.eq.${participantId}))`,
         },
         (payload) => {
           const newMessage = payload.new as ChatMessage;
@@ -312,18 +311,15 @@ export default function Chat() {
 
   const sendMessage = async (messageText?: string, tempId?: string) => {
     const textToSend = messageText || newMessage.trim();
-    if (!textToSend || !profile?.id || !participantId) return;
+    if (textToSend === '') return;
 
-    const messageData: Partial<ChatMessage> = {
-      sender_id: profile.id,       // UUID of logged-in user
-      receiver_id: participantId,  // must also be UUID
-      sender_name: profile?.name || 'Me',
-      sender_type: 'STUDENT',
-      receiver_type: 'EXPERT',     // set appropriately
-      receiver_name: profile.name,
+    const messageData = {
+      sender_id: profile?.id,
+      receiver_id: participantId as string,
+      sender_name: profile?.name,
+      sender_type: 'STUDENT' as const,
       message: textToSend,
-      created_at: new Date().toISOString(),
-      is_read: false,
+      created_at: new Date(),
     };
 
     try {
@@ -335,23 +331,39 @@ export default function Chat() {
 
       if (error) {
         console.error('Error sending message:', error);
-        if (tempId) setChatMessages(prev => prev.filter(msg => msg.id !== tempId));
+        // Remove temp message and show error
+        if (tempId) {
+          setChatMessages(prev => prev.filter(msg => msg.id !== tempId));
+        }
         Alert.alert('Error', 'Failed to send message');
         return;
       }
 
       if (data && tempId) {
-        setChatMessages(prev => prev.map(msg => msg.id === tempId ? data : msg));
+        // Replace temp message with real message
+        setChatMessages(prev =>
+          prev.map(msg => msg.id === tempId ? data : msg)
+        );
       } else if (data && !tempId) {
+        // Legacy path - add message normally
         setChatMessages(prev => [...prev, data]);
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
       }
-    } catch (err) {
-      console.error('Error sending message:', err);
-      if (tempId) setChatMessages(prev => prev.filter(msg => msg.id !== tempId));
+
+      if (!messageText) {
+        setNewMessage('');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Remove temp message and show error
+      if (tempId) {
+        setChatMessages(prev => prev.filter(msg => msg.id !== tempId));
+      }
       Alert.alert('Error', 'Failed to send message');
     }
   };
-
 
   const clearChat = async () => {
     Alert.alert(
@@ -367,7 +379,7 @@ export default function Chat() {
               const { error } = await supabase
                 .from('messages')
                 .delete()
-                .or(`and(sender_id.eq.${studentInfo.registration},receiver_id.eq.${participantId}),and(sender_id.eq.${participantId},receiver_id.eq.${studentInfo.registration})`);
+                .or(`and(sender_id.eq.${profile?.id},receiver_id.eq.${participantId}),and(sender_id.eq.${participantId},receiver_id.eq.${profile?.id})`);
 
               if (error) {
                 Alert.alert('Error', 'Failed to clear chat');
@@ -410,7 +422,7 @@ export default function Chat() {
 
   // Optimized memoized message renderer
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
-    const isSentByMe = item.sender_id === studentInfo.registration;
+    const isSentByMe = item.sender_id === profile?.id;
     const displayName = item.sender_id === participantId && alias ? alias : item.sender_name;
     const profileImage = getProfileImageMemo(item.sender_type, isSentByMe);
 
@@ -423,7 +435,7 @@ export default function Chat() {
         formatTime={formatTime}
       />
     );
-  }, [studentInfo.registration, participantId, alias, getProfileImageMemo]);
+  }, [profile, participantId, alias, getProfileImageMemo]);
 
   // Memoized message key extractor for better FlatList performance
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
@@ -436,183 +448,183 @@ export default function Chat() {
       enabled={true}
     >
       <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={handleBackPress}
-            style={styles.backButton}
-            activeOpacity={0.3}
-            delayPressIn={0}
-          >
-            <Text style={styles.backButtonText}>←</Text>
-          </TouchableOpacity>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={handleBackPress}
+          style={styles.backButton}
+          activeOpacity={0.3}
+          delayPressIn={0}
+        >
+          <Text style={styles.backButtonText}>←</Text>
+        </TouchableOpacity>
 
-          <View style={styles.headerCenter}>
-            <Image
-              source={getProfileImageMemo(participantType, false)}
-              style={styles.headerProfileImage}
-            />
-            <View>
-              <Text style={styles.headerTitle}>{alias || participantName}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {participantOnline ? (
-                  <View style={styles.onlineDot} />
-                ) : null}
-                <Text style={styles.headerStatus}>{participantOnline ? 'Online' : (participantLastSeen ? `Last seen ${participantLastSeen}` : '')}</Text>
-              </View>
+        <View style={styles.headerCenter}>
+          <Image
+            source={getProfileImageMemo(participantType, false)}
+            style={styles.headerProfileImage}
+          />
+          <View>
+            <Text style={styles.headerTitle}>{alias || participantName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {participantOnline ? (
+                <View style={styles.onlineDot} />
+              ) : null}
+              <Text style={styles.headerStatus}>{participantOnline ? 'Online' : (participantLastSeen ? `Last seen ${participantLastSeen}` : '')}</Text>
             </View>
           </View>
-
-          <TouchableOpacity
-            onPress={handleMenuPress}
-            style={styles.menuButton}
-            activeOpacity={0.3}
-            delayPressIn={0}
-          >
-            <Text style={styles.menuButtonText}>⋯</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Messages */}
-        <View style={{ flex: 1 }}>
-          <FlatList
-            ref={flatListRef}
-            data={chatMessagesPro}
-            renderItem={renderMessage}
-            keyExtractor={keyExtractor}
-            style={styles.messagesList}
-            contentContainerStyle={styles.messagesContainer}
-            showsVerticalScrollIndicator={false}
-            removeClippedSubviews={true}
-            maxToRenderPerBatch={10}
-            windowSize={10}
-            initialNumToRender={15}
-            updateCellsBatchingPeriod={50}
-            getItemLayout={undefined}
-            disableVirtualization={false}
-            keyboardShouldPersistTaps="handled"
-          />
-        </View>
-
-        {/* Input */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.messageInput}
-            value={newMessage}
-            onChangeText={setNewMessage}
-            placeholder="Type a message..."
-            placeholderTextColor="#666"
-            multiline
-            maxLength={500}
-            returnKeyType="send"
-            blurOnSubmit={false}
-            onSubmitEditing={handleSendMessage}
-          />
-          <TouchableOpacity
-            onPress={handleSendMessage}
-            style={[styles.sendButton, isSending && { opacity: 0.6 }]}
-            activeOpacity={0.3}
-            delayPressIn={0}
-            disabled={isSending || newMessage.trim() === ''}
-          >
-            <Text style={styles.sendButtonText}>{isSending ? 'Sending...' : 'Send'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Options Modal */}
-        <Modal
-          visible={showOptionsModal}
-          transparent={true}
-          animationType="none"
-          onRequestClose={handleOptionsClose}
-          statusBarTranslucent={true}
-          hardwareAccelerated={true}
+        <TouchableOpacity
+          onPress={handleMenuPress}
+          style={styles.menuButton}
+          activeOpacity={0.3}
+          delayPressIn={0}
         >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={handleOptionsClose}
-            delayPressIn={0}
-          >
-            <View style={styles.modalContent}>
+          <Text style={styles.menuButtonText}>⋯</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Messages */}
+      <View style={{ flex: 1 }}>
+        <FlatList
+          ref={flatListRef}
+          data={chatMessages}
+          renderItem={renderMessage}
+          keyExtractor={keyExtractor}
+          style={styles.messagesList}
+          contentContainerStyle={styles.messagesContainer}
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          initialNumToRender={15}
+          updateCellsBatchingPeriod={50}
+          getItemLayout={undefined}
+          disableVirtualization={false}
+          keyboardShouldPersistTaps="handled"
+        />
+      </View>
+
+      {/* Input */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.messageInput}
+          value={newMessage}
+          onChangeText={setNewMessage}
+          placeholder="Type a message..."
+          placeholderTextColor="#666"
+          multiline
+          maxLength={500}
+          returnKeyType="send"
+          blurOnSubmit={false}
+          onSubmitEditing={handleSendMessage}
+        />
+        <TouchableOpacity
+          onPress={handleSendMessage}
+          style={[styles.sendButton, isSending && { opacity: 0.6 }]}
+          activeOpacity={0.3}
+          delayPressIn={0}
+          disabled={isSending || newMessage.trim() === ''}
+        >
+          <Text style={styles.sendButtonText}>{isSending ? 'Sending...' : 'Send'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Options Modal */}
+      <Modal
+        visible={showOptionsModal}
+        transparent={true}
+        animationType="none"
+        onRequestClose={handleOptionsClose}
+        statusBarTranslucent={true}
+        hardwareAccelerated={true}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={handleOptionsClose}
+          delayPressIn={0}
+        >
+          <View style={styles.modalContent}>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={handleChangeNamePress}
+              activeOpacity={0.7}
+              delayPressIn={0}
+            >
+              <Text style={styles.modalOptionText}>Change Name</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={clearChat}
+              activeOpacity={0.7}
+              delayPressIn={0}
+            >
+              <Text style={styles.modalOptionText}>Clear Chat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={handleOptionsClose}
+              activeOpacity={0.7}
+              delayPressIn={0}
+            >
+              <Text style={styles.modalOptionText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Change Name Modal */}
+      <Modal
+        visible={showChangeNameModal}
+        transparent={true}
+        animationType="none"
+        onRequestClose={handleChangeNameClose}
+        statusBarTranslucent={true}
+        hardwareAccelerated={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { padding: 16 }]}>
+            <Text style={[styles.modalOptionText, { fontWeight: '700', marginBottom: 8 }]}>Change Display Name</Text>
+            <TextInput
+              value={tempAlias}
+              onChangeText={setTempAlias}
+              placeholder="Enter name"
+              placeholderTextColor="#999"
+              style={{
+                backgroundColor: '#fff',
+                color: '#000',
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+                marginBottom: 12,
+              }}
+              autoFocus={true}
+              returnKeyType="done"
+              onSubmitEditing={handleSaveAlias}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
               <TouchableOpacity
-                style={styles.modalOption}
-                onPress={handleChangeNamePress}
-                activeOpacity={0.7}
-                delayPressIn={0}
-              >
-                <Text style={styles.modalOptionText}>Change Name</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalOption}
-                onPress={clearChat}
-                activeOpacity={0.7}
-                delayPressIn={0}
-              >
-                <Text style={styles.modalOptionText}>Clear Chat</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalOption}
-                onPress={handleOptionsClose}
+                onPress={handleChangeNameClose}
+                style={{ marginRight: 12 }}
                 activeOpacity={0.7}
                 delayPressIn={0}
               >
                 <Text style={styles.modalOptionText}>Cancel</Text>
               </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </Modal>
-
-        {/* Change Name Modal */}
-        <Modal
-          visible={showChangeNameModal}
-          transparent={true}
-          animationType="none"
-          onRequestClose={handleChangeNameClose}
-          statusBarTranslucent={true}
-          hardwareAccelerated={true}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { padding: 16 }]}>
-              <Text style={[styles.modalOptionText, { fontWeight: '700', marginBottom: 8 }]}>Change Display Name</Text>
-              <TextInput
-                value={tempAlias}
-                onChangeText={setTempAlias}
-                placeholder="Enter name"
-                placeholderTextColor="#999"
-                style={{
-                  backgroundColor: '#fff',
-                  color: '#000',
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 8,
-                  marginBottom: 12,
-                }}
-                autoFocus={true}
-                returnKeyType="done"
-                onSubmitEditing={handleSaveAlias}
-              />
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                <TouchableOpacity
-                  onPress={handleChangeNameClose}
-                  style={{ marginRight: 12 }}
-                  activeOpacity={0.7}
-                  delayPressIn={0}
-                >
-                  <Text style={styles.modalOptionText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleSaveAlias}
-                  activeOpacity={0.7}
-                  delayPressIn={0}
-                >
-                  <Text style={styles.modalOptionText}>Save</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={handleSaveAlias}
+                activeOpacity={0.7}
+                delayPressIn={0}
+              >
+                <Text style={styles.modalOptionText}>Save</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </SafeAreaView>
+        </View>
+      </Modal>
+    </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
@@ -627,8 +639,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginTop: 30,
+  paddingVertical: 12,
+  marginTop: 30,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#ccc',

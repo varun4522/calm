@@ -1,13 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/providers/AuthProvider';
+import {  Alert,  FlatList,  Image,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
+import { supabase } from '../../lib/supabase';
+import { Conversation, ReceivedMessage } from '@/types/Message';
 import { useProfile } from '@/api/Profile';
-import { ChatMessage,  ReceivedMessage } from '@/types/Message';
-import { profilePics } from '@/constants/ProfilePhotos';
-import { useConversations } from '@/api/StudentMessages';
+import { useAuth } from '@/providers/AuthProvider';
+
+// Profile pictures for chat participants
+const profilePics = [
+  require('../../assets/images/profile/pic1.png'),
+  require('../../assets/images/profile/pic2.png'),
+  require('../../assets/images/profile/pic3.png'),
+  require('../../assets/images/profile/pic4.png'),
+  require('../../assets/images/profile/pic5.png'),
+  require('../../assets/images/profile/pic6.png'),
+  require('../../assets/images/profile/pic7.png'),
+  require('../../assets/images/profile/pic8.png'),
+  require('../../assets/images/profile/pic9.png'),
+  require('../../assets/images/profile/pic10.png'),
+  require('../../assets/images/profile/pic11.png'),
+  require('../../assets/images/profile/pic12.png'),
+  require('../../assets/images/profile/pic13.png'),
+];
+
 
 
 export default function MessagesPage() {
@@ -16,14 +32,29 @@ export default function MessagesPage() {
   const { data: profile } = useProfile(session?.user.id);
 
   const [searchText, setSearchText] = useState('');
-  const { conversations, refetch: refetchConversations } = useConversations(profile?.id);
-
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [filteredConversations, setFilteredConversations] = useState<Conversation[]>([]);
   const [sentMessages, setSentMessages] = useState<ReceivedMessage[]>([]);
   const [filteredMessages, setFilteredMessages] = useState<ReceivedMessage[]>([]);
+  const [viewMode, setViewMode] = useState<'messages'>('messages');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   const [isChatDeleteMode, setIsChatDeleteMode] = useState(false);
-  const [aliases, setAliases] = useState<{ [participantId: string]: string }>({});
+  const [aliases, setAliases] = useState<{[participantId: string]: string}>({});
+  const [studentInfo, setStudentInfo] = useState({
+    name: '',
+    registration: '',
+    profilePic: 0
+  });
+
+
+  // Load conversations and messages when student info is available
+  useEffect(() => {
+    if (profile) {
+      loadConversations();
+      loadSentMessages();
+    }
+  }, [profile]);
 
   // Group messages by contact for chat delete mode
   const getUniqueContacts = (messages: ReceivedMessage[]) => {
@@ -43,8 +74,7 @@ export default function MessagesPage() {
     });
 
     return Array.from(contactMap.values());
-  };
-  // Set up real-time subscription for new messages
+  };  // Set up real-time subscription for new messages
   useEffect(() => {
     if (!profile) return;
 
@@ -60,7 +90,8 @@ export default function MessagesPage() {
         },
         (payload) => {
           console.log('New message in conversation:', payload);
-          refetchConversations();
+          loadSentMessages();
+          loadConversations();
         }
       )
       .on(
@@ -73,7 +104,6 @@ export default function MessagesPage() {
         },
         (payload) => {
           console.log('Message updated in conversation:', payload);
-          // Refresh conversations when message is updated (e.g., marked as read)
           loadSentMessages();
         }
       )
@@ -99,16 +129,16 @@ export default function MessagesPage() {
     setSelectedMessages([]);
   }, [searchText, sentMessages]);
 
+
   const loadSentMessages = async () => {
     try {
-      const currentStudentId = profile?.id; // use UUID from profile
-      if (!currentStudentId) return;
+      if (!profile) return;
 
-      // Fetch ALL messages where current student is either sender OR receiver
+      // Fetch ALL messages where current student is either sender OR receiver (private conversations)
       const { data: messages, error } = await supabase
         .from('messages')
         .select('*')
-        .or(`sender_id.eq.${currentStudentId},receiver_id.eq.${currentStudentId}`)
+        .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -117,35 +147,42 @@ export default function MessagesPage() {
       }
 
       if (messages) {
+        // Group messages by conversation partner
         const conversationMap = new Map<string, any>();
 
         messages.forEach(msg => {
-          const partnerId = msg.sender_id === currentStudentId ? msg.receiver_id : msg.sender_id;
-          const partnerName = msg.sender_id === currentStudentId ? 'Sent to recipient' : msg.sender_name;
-
+          // Determine who the conversation partner is
+          const partnerId = msg.sender_id === profile.id ? msg.receiver_id : msg.sender_id;
+          
+          // Only keep the most recent message for each conversation
           if (!conversationMap.has(partnerId) ||
-            new Date(msg.created_at) > new Date(conversationMap.get(partnerId)!.created_at)) {
+              new Date(msg.created_at) > new Date(conversationMap.get(partnerId)!.created_at)) {
 
-            let partnerType = msg.sender_id !== currentStudentId ? msg.sender_type : 'student';
-
-            // If current student sent it, infer type from receiver_id
-            if (msg.sender_id === currentStudentId) {
+            // Determine partner type based on available info or ID patterns
+            let partnerType = 'student';
+            if (msg.sender_id !== profile.id) {
+              partnerType = msg.sender_type;
+            } else {
+              // Try to infer from receiver ID patterns
               if (msg.receiver_id.includes('expert')) partnerType = 'expert';
               else if (msg.receiver_id.includes('peer')) partnerType = 'peer';
               else if (msg.receiver_id.includes('admin')) partnerType = 'admin';
             }
 
+            // Create a standardized message format for display
             conversationMap.set(partnerId, {
               id: msg.id,
-              sender_id: partnerId,
-              receiver_id: currentStudentId,
-              sender_name: msg.sender_id === currentStudentId ? (msg.receiver_id.split('_')[0] || 'Recipient') : msg.sender_name,
+              sender_id: partnerId, // Show partner as sender for consistency
+              receiver_id: profile.id,
+              sender_name: msg.sender_id === profile.id ?
+                (msg.receiver_id.split('_')[0] || 'Recipient') : msg.sender_name,
               sender_type: partnerType,
-              message: msg.sender_id === currentStudentId ? `You: ${msg.message}` : msg.message,
+              message: msg.sender_id === profile.id ?
+                `You: ${msg.message}` : msg.message, // Prefix with "You:" if student sent it
               created_at: msg.created_at,
               is_read: msg.is_read,
               profilePic: Math.floor(Math.random() * profilePics.length),
-              originalSenderId: msg.sender_id,
+              originalSenderId: msg.sender_id // Keep track of who actually sent the message
             });
           }
         });
@@ -160,7 +197,6 @@ export default function MessagesPage() {
       setFilteredMessages([]);
     }
   };
-
 
   const toggleSelectMode = () => {
     setIsSelectMode(!isSelectMode);
@@ -225,36 +261,31 @@ export default function MessagesPage() {
     }
   };
 
-  const deleteChatWithContact = async (message: ChatMessage) => {
-    const studentId = profile?.id;
-    if (!studentId) return;
-
-    const otherPersonId = message.sender_id === studentId ? message.receiver_id : message.sender_id;
-    const otherPersonName = message.sender_id === studentId ? message.receiver_name : message.sender_name;
-
+  const deleteChatWithContact = async (partnerId: string, partnerName: string) => {
     try {
       Alert.alert(
         'Delete Conversation',
-        `Are you sure you want to delete your entire conversation with ${otherPersonName}? This action cannot be undone.`,
+        `Are you sure you want to delete your entire conversation with ${partnerName}? This action cannot be undone.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Delete Conversation',
             style: 'destructive',
             onPress: async () => {
+              // Delete all messages between current student and the specific contact
               const { error } = await supabase
                 .from('messages')
                 .delete()
-                .or(
-                  `and(sender_id.eq.${studentId},receiver_id.eq.${otherPersonId}),and(sender_id.eq.${otherPersonId},receiver_id.eq.${studentId})`
-                );
+                .or(`and(sender_id.eq.${profile?.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${profile?.id})`);
 
               if (error) {
-                console.error('Delete conversation error:', error);
                 Alert.alert('Error', 'Failed to delete conversation');
+                console.error('Delete conversation error:', error);
               } else {
-                refetchConversations();
-                Alert.alert('Success', `Conversation with ${otherPersonName} deleted successfully`);
+                // Refresh the messages list
+                loadSentMessages();
+                loadConversations();
+                Alert.alert('Success', `Conversation with ${partnerName} deleted successfully`);
               }
             }
           }
@@ -265,7 +296,6 @@ export default function MessagesPage() {
       Alert.alert('Error', 'Failed to delete conversation');
     }
   };
-
 
   const toggleChatDeleteMode = () => {
     setIsChatDeleteMode(!isChatDeleteMode);
@@ -279,7 +309,7 @@ export default function MessagesPage() {
   // Load aliases for all participants
   const loadAliases = async (participantIds: string[]) => {
     try {
-      const aliasMap: { [key: string]: string } = {};
+      const aliasMap: {[key: string]: string} = {};
 
       for (const participantId of participantIds) {
         const stored = await AsyncStorage.getItem(`alias_${participantId}`);
@@ -292,6 +322,167 @@ export default function MessagesPage() {
     } catch (error) {
       console.error('Error loading aliases:', error);
     }
+  };
+
+  const loadConversations = async () => {
+    try {
+      if (!profile) return;
+
+      // Fetch all messages where student is either sender or receiver
+      const { data: messages, error } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching conversations:', error);
+        return;
+      }
+
+      if (messages) {
+        // Group messages by participant to create conversations
+        const conversationMap = new Map<string, Conversation>();
+
+        messages.forEach(msg => {
+          const participantId = msg.sender_id === profile.id ? msg.receiver_id : msg.sender_id;
+          const participantType = msg.sender_id === profile.id ? 'STUDENT' : msg.sender_type;
+
+          if (!conversationMap.has(participantId)) {
+            // For new conversations, try to get the participant name from any message
+            let participantName = 'Unknown';
+
+            // If this message is from the participant, use their name
+            if (msg.sender_id === participantId) {
+              participantName = msg.sender_name;
+            } else {
+              // Look for any other message from this participant to get their name
+              const participantMessage = messages.find(m => m.sender_id === participantId);
+              if (participantMessage) {
+                participantName = participantMessage.sender_name;
+              }
+            }
+
+            // If name is still unknown or looks like a registration number, enhance it
+            if (participantName === 'Unknown' || !participantName || /^\d+$/.test(participantName) || participantName === participantId) {
+              // Try to enhance the name based on participant type
+              if (participantType === 'expert') {
+                participantName = `Expert ${participantId.substring(0, 6)}...`;
+              } else if (participantType === 'peer') {
+                participantName = `Peer ${participantId.substring(0, 6)}...`;
+              } else {
+                participantName = `User ${participantId.substring(0, 6)}...`;
+              }
+            }
+
+            conversationMap.set(participantId, {
+              id: `conversation_${participantId}_${profile.id}`,
+              participantId: participantId,
+              participantName: participantName,
+              participantType: participantType,
+              lastMessage: msg.message,
+              timestamp: msg.created_at,
+              unreadCount: 0, // Will be calculated below
+              profilePic: Math.floor(Math.random() * profilePics.length),
+              isOnline: Math.random() > 0.5
+            });
+          } else {
+            // Update with more recent message if this is newer
+            const existing = conversationMap.get(participantId)!;
+            if (new Date(msg.created_at) > new Date(existing.timestamp)) {
+              existing.lastMessage = msg.message;
+              existing.timestamp = msg.created_at;
+            }
+
+            // Update participant name if we have a better one from this message
+            if (msg.sender_id === participantId && existing.participantName === 'Unknown') {
+              existing.participantName = msg.sender_name;
+            }
+          }
+        });
+
+        // Calculate unread count for each conversation
+        for (const conversation of conversationMap.values()) {
+          const unreadMessages = messages.filter(msg =>
+            msg.sender_id === conversation.participantId &&
+            msg.receiver_id === profile.id &&
+            !msg.is_read
+          );
+          conversation.unreadCount = unreadMessages.length;
+        }
+
+        const allConversations = Array.from(conversationMap.values());
+
+        // Enhance participant names by looking up actual names from database
+        const enhancedConversations = await Promise.all(allConversations.map(async (conversation) => {
+          if (conversation.participantName.includes('Expert') ||
+              conversation.participantName.includes('Peer') ||
+              conversation.participantName.includes('User') ||
+              conversation.participantName === 'Unknown' ||
+              /^\d+$/.test(conversation.participantName)) {
+
+            try {
+              let actualName = conversation.participantName;
+
+              if (conversation.participantType === 'expert') {
+                const { data: expertData } = await supabase
+                  .from('expert_registrations')
+                  .select('name')
+                  .eq('registration', conversation.participantId)
+                  .single();
+                if (expertData?.name) actualName = expertData.name;
+              } else if (conversation.participantType === 'peer') {
+                const { data: peerData } = await supabase
+                  .from('peer_registrations')
+                  .select('name')
+                  .eq('registration', conversation.participantId)
+                  .single();
+                if (peerData?.name) actualName = peerData.name;
+              } else if (conversation.participantType === 'student') {
+                const { data: studentData } = await supabase
+                  .from('student_registrations')
+                  .select('name')
+                  .eq('registration', conversation.participantId)
+                  .single();
+                if (studentData?.name) actualName = studentData.name;
+              }
+
+              return { ...conversation, participantName: actualName };
+            } catch (error) {
+              console.log('Could not enhance participant name for:', conversation.participantId);
+              return conversation;
+            }
+          }
+          return conversation;
+        }));
+
+        enhancedConversations.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        setConversations(enhancedConversations);
+        setFilteredConversations(enhancedConversations);
+
+        // Load aliases for all participants
+        const participantIds = enhancedConversations.map(conv => conv.participantId);
+        loadAliases(participantIds);
+      }
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      setConversations([]);
+      setFilteredConversations([]);
+    }
+  };
+
+
+  const handleConversationPress = (conversation: Conversation) => {
+    // Navigate directly to dedicated chat page for this conversation
+    router.push({
+      pathname: './chat',
+      params: {
+        participantId: conversation.participantId,
+        participantName: aliases[conversation.participantId] || conversation.participantName,
+        participantType: conversation.participantType
+      }
+    });
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -309,25 +500,35 @@ export default function MessagesPage() {
     }
   };
 
-  const handleChatWithSender = (message: ChatMessage) => {
-    const studentId = profile?.id; // logged-in student ID
-    if (!studentId) return;
+  const getSenderTypeIcon = (senderType: string) => {
+    switch (senderType) {
+      case 'expert': return '🩺';
+      case 'peer': return '👥';
+      default: return '💬';
+    }
+  };
 
-    // Mark message as read
-    markMessageAsRead(message.id);
-
-    // Determine the "other participant" in the conversation
-    const isSender = message.sender_id === studentId;
-    const otherPersonId = isSender ? message.receiver_id : message.sender_id;
-    const otherPersonName = isSender ? message.receiver_name : message.sender_name;
-    const otherPersonType = isSender ? message.receiver_type : message.sender_type;
-    // Navigate to chat page with all relevant info
+  const handleOpenDedicatedChat = (conversation: Conversation) => {
     router.push({
       pathname: './chat',
       params: {
-        participantId: otherPersonId,
-        participantName: otherPersonName,
-        participantType: otherPersonType
+        participantId: conversation.participantId,
+        participantName: aliases[conversation.participantId] || conversation.participantName,
+        participantType: conversation.participantType
+      }
+    });
+  };
+
+  const handleChatWithSender = (message: ReceivedMessage) => {
+    // Mark message as read when opening chat
+    markMessageAsRead(message.id);
+
+    router.push({
+      pathname: './chat',
+      params: {
+        participantId: message.sender_id, // This is now the conversation partner
+        participantName: aliases[message.sender_id] || message.sender_name,
+        participantType: message.sender_type
       }
     });
   };
@@ -359,9 +560,10 @@ export default function MessagesPage() {
     } catch (error) {
       console.error('Error marking message as read:', error);
     }
-  }; const refreshData = async () => {
-    if (profile) {
+  };  const refreshData = async () => {
+    if (studentInfo.registration) {
       await Promise.all([
+        loadConversations(),
         loadSentMessages()
       ]);
     }
@@ -380,7 +582,7 @@ export default function MessagesPage() {
     }
   };
 
-  const renderReceivedMessage = ({ item }: { item: ChatMessage }) => {
+  const renderReceivedMessage = ({ item }: { item: ReceivedMessage }) => {
     const isSelected = selectedMessages.includes(item.id);
 
     return (
@@ -394,7 +596,7 @@ export default function MessagesPage() {
           if (isSelectMode) {
             toggleMessageSelection(item.id);
           } else if (isChatDeleteMode) {
-            deleteChatWithContact(item);
+            deleteChatWithContact(item.sender_id, item.sender_name);
           } else {
             handleChatWithSender(item);
           }
@@ -416,6 +618,13 @@ export default function MessagesPage() {
         )}
 
         <View style={styles.messageHeader}>
+          <View style={styles.profileContainer}>
+            <Image source={profilePics[item.profilePic || 0]} style={styles.profilePic} />
+            <View style={styles.senderTypeIndicator}>
+              <Text style={styles.senderTypeIcon}>{getSenderTypeIcon(item.sender_type)}</Text>
+            </View>
+          </View>
+
           <View style={styles.messageContent}>
             <View style={styles.messageTop}>
               <Text style={styles.senderName}>
@@ -433,26 +642,28 @@ export default function MessagesPage() {
                 ? 'Tap to delete all messages with this contact'
                 : item.sender_type === 'EXPERT' ? 'Mental Health Expert' :
                   item.sender_type === 'PEER' ? 'Peer Listener' :
-                    item.sender_type === 'ADMIN' ? 'Administrator' : 'Contact'}
+                  item.sender_type === 'ADMIN' ? 'Administrator' : 'Contact'}
             </Text>
-            {!isSelectMode && (
-              <View style={styles.chatButtonWrapper}>
-                <TouchableOpacity
-                  style={styles.chatButton}
-                  onPress={() => handleChatWithSender(item)}
-                  activeOpacity={0.3}
-                  delayPressIn={0}
-                >
-                  <Text style={styles.chatButtonText}>💬 Chat</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              {!isSelectMode && (
+                <View style={styles.chatButtonWrapper}>
+                  <TouchableOpacity
+                    style={styles.chatButton}
+                    onPress={() => handleChatWithSender(item)}
+                    activeOpacity={0.3}
+                    delayPressIn={0}
+                  >
+                    <Text style={styles.chatButtonText}>💬 Chat</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
           </View>
 
           {!item.is_read && (
             <View style={styles.unreadIndicator} />
           )}
         </View>
+
+  {/* chat button moved inside messageContent so it sits directly under the timestamp */}
       </TouchableOpacity>
     );
   };
@@ -463,7 +674,7 @@ export default function MessagesPage() {
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => {
-            router.push(`./student-home?registration=${profile?.registration_number}`);
+            router.push(`./student-home?registration=${studentInfo.registration}`);
           }}
           style={styles.backButton}
         >
@@ -559,36 +770,36 @@ export default function MessagesPage() {
         )}
 
         {/* My Messages View */}
-        {conversations.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            {searchText.length > 0 ? (
-              <>
-                <Text style={styles.emptyIcon}>🔍</Text>
-                <Text style={styles.emptyTitle}>No Conversations Found</Text>
-                <Text style={styles.emptyText}>
-                  No conversations found for "{searchText}"
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.emptyIcon}>📨</Text>
-                <Text style={styles.emptyTitle}>No Conversations Yet</Text>
-                <Text style={styles.emptyText}>
-                  You haven't started any conversations yet.
-                  When experts, peers, or admins message you, your conversations will appear here.
-                </Text>
-              </>
-            )}
-          </View>
-        ) : (
-          <FlatList
-            data={conversations}
-            renderItem={renderReceivedMessage}
-            keyExtractor={(item) => isChatDeleteMode ? `chat_${item.sender_id}` : item.id}
-            showsVerticalScrollIndicator={false}
-            style={styles.messagesList}
-          />
-        )
+        {(isChatDeleteMode ? getUniqueContacts(filteredMessages) : filteredMessages).length === 0 ? (
+            <View style={styles.emptyContainer}>
+              {searchText.length > 0 ? (
+                <>
+                  <Text style={styles.emptyIcon}>🔍</Text>
+                  <Text style={styles.emptyTitle}>No Conversations Found</Text>
+                  <Text style={styles.emptyText}>
+                    No conversations found for "{searchText}"
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyIcon}>📨</Text>
+                  <Text style={styles.emptyTitle}>No Conversations Yet</Text>
+                  <Text style={styles.emptyText}>
+                    You haven't started any conversations yet.
+                    When experts, peers, or admins message you, your conversations will appear here.
+                  </Text>
+                </>
+              )}
+            </View>
+          ) : (
+            <FlatList
+              data={isChatDeleteMode ? getUniqueContacts(filteredMessages) : filteredMessages}
+              renderItem={renderReceivedMessage}
+              keyExtractor={(item) => isChatDeleteMode ? `chat_${item.sender_id}` : item.id}
+              showsVerticalScrollIndicator={false}
+              style={styles.messagesList}
+            />
+          )
         }
       </View>
 

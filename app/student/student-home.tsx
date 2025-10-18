@@ -81,8 +81,8 @@ export default function StudentHome() {
   const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string }[] }>({});
   const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, notes?: string }[]>([]);
 
-  const {session, loading} = useAuth();
-  const {data:profile, error, isLoading} = useProfile(session?.user.id);
+  const {session } = useAuth();
+  const {data:profile } = useProfile(session?.user.id);
 
 
   // Animated bubble background (home tab only)
