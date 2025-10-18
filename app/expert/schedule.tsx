@@ -1,18 +1,40 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View} from 'react-native';
-import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
-import { formatDateToLocalString } from '@/api/OtherMethods';
-import { useProfile } from '@/api/Profile';
+import { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { Colors } from '../../constants/Colors';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
-import { useGetExpertPeerSlots } from '@/api/Schedules';
+import { useProfile } from '@/api/Profile';
 
-const generateDefaultSlots = (): { start: string; end: string }[] => {
-  const slots: { start: string; end: string }[] = [];
+interface TimeSlot {
+  id?: string;
+  expert_registration: string;
+  expert_name: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  is_available: boolean;
+  booked_by?: string;
+  created_at?: string;
+}
+
+// Generate default time slots from 9:00 AM to 3:50 PM (50-minute sessions)
+const generateDefaultSlots = (): Array<{ start: string; end: string }> => {
+  const slots: Array<{ start: string; end: string }> = [];
   // 9:00-9:50, 10:00-10:50, 11:00-11:50, 12:00-12:50, 2:00-2:50, 3:00-3:50
-  const hours = [9, 10, 11, 12, 14, 15];
+  const hours = [9, 10, 11, 12, 14, 15]; // Skip 13 (1:00 PM)
 
   hours.forEach(hour => {
     slots.push({
@@ -26,20 +48,31 @@ const generateDefaultSlots = (): { start: string; end: string }[] => {
 
 const DEFAULT_SLOTS = generateDefaultSlots();
 
+// Helper function to format date to YYYY-MM-DD in local timezone (no UTC conversion)
+const formatDateToLocalString = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function ExpertSchedulePage() {
   const router = useRouter();
   const { session } = useAuth();
   const { data: profile } = useProfile(session?.user.id);
+    
+  const expertName = profile?.name;
+  const expertRegNo = profile?.registration_number;
+  
   const [currentMonth, setCurrentMonth] = useState(new Date());
-
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
   const [customSlotModalVisible, setCustomSlotModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
-  const type = profile?.type === "EXPERT" ? "EXPERT" : "PEER";
+  const [slots, setSlots] = useState<TimeSlot[]>([]);
+  const [allSchedules, setAllSchedules] = useState<Map<string, TimeSlot[]>>(new Map());
 
-  const {data: slots} = useGetExpertPeerSlots(profile?.id, selectedDate?.toISOString().split("T")[0],type);
-  console.log(slots);
-  console.log(selectedDate);
+  // Custom slot form
   const [customSlot, setCustomSlot] = useState({
     startHour: '09',
     startMinute: '00',
@@ -47,43 +80,118 @@ export default function ExpertSchedulePage() {
     endMinute: '50'
   });
 
+  useEffect(() => {
+    if (expertRegNo) {
+      loadAllSchedules();
+    }
+  }, [expertRegNo, currentMonth]);
+
+
+  const loadAllSchedules = async () => {
+    try {
+      const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+
+      const { data, error } = await supabase
+        .from('expert_schedule')
+        .select('*')
+        .eq('expert_registration', expertRegNo)
+        .gte('date', formatDateToLocalString(startOfMonth))
+        .lte('date', formatDateToLocalString(endOfMonth));
+
+      if (error) {
+        console.error('Error loading schedules:', error);
+      } else if (data) {
+        const scheduleMap = new Map<string, TimeSlot[]>();
+        data.forEach((slot: TimeSlot) => {
+          const dateKey = slot.date;
+          if (!scheduleMap.has(dateKey)) {
+            scheduleMap.set(dateKey, []);
+          }
+          scheduleMap.get(dateKey)?.push(slot);
+        });
+        setAllSchedules(scheduleMap);
+      }
+    } catch (error) {
+      console.error('Error loading schedules:', error);
+    }
+  };
+
+  const loadSlotsForDate = async (date: Date) => {
+    setLoading(true);
+    try {
+      const dateString = formatDateToLocalString(date);
+      const { data, error } = await supabase
+        .from('expert_schedule')
+        .select('*')
+        .eq('expert_registration', expertRegNo)
+        .eq('date', dateString)
+        .order('start_time', { ascending: true });
+
+      if (error) {
+        console.error('Error loading slots:', error);
+        setSlots([]);
+      } else {
+        setSlots(data || []);
+      }
+    } catch (error) {
+      console.error('Error loading slots:', error);
+      setSlots([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDatePress = async (date: Date) => {
     setSelectedDate(date);
+    await loadSlotsForDate(date);
 
+    // Auto-add default slots if no slots exist for this date
     const dateString = formatDateToLocalString(date);
+    const existingSlots = allSchedules.get(dateString);
+
+    if (!existingSlots || existingSlots.length === 0) {
+      // Automatically add default slots
       setLoading(true);
       try {
         const slotsToAdd = DEFAULT_SLOTS.map(slot => ({
-          expert_peer_id: profile?.id,
-          type: profile?.type,
+          expert_registration: expertRegNo,
+          expert_name: expertName,
           date: dateString,
           start_time: slot.start,
           end_time: slot.end,
+          is_available: true
         }));
-        console.log("before the insertion");
+
         const { error } = await supabase
-          .from('expert_peer_slots')
+          .from('expert_schedule')
           .insert(slotsToAdd);
-        console.log("after insertion");
-        console.log(error);
+
+        if (!error) {
+          await loadSlotsForDate(date);
+          await loadAllSchedules();
+        }
       } catch (error) {
         console.error('Error auto-adding slots:', error);
       } finally {
         setLoading(false);
       }
-    
+    }
   };
 
   const handleAddCustomSlot = async () => {
     if (!selectedDate) return;
 
+    // Validate inputs are not empty
     if (!customSlot.startHour || !customSlot.startMinute || !customSlot.endHour || !customSlot.endMinute) {
       Alert.alert('Invalid Input', 'Please fill in all time fields.');
       return;
     }
+
     const startTime = `${customSlot.startHour.padStart(2, '0')}:${customSlot.startMinute.padStart(2, '0')}:00`;
     const endTime = `${customSlot.endHour.padStart(2, '0')}:${customSlot.endMinute.padStart(2, '0')}:00`;
 
+    // Validate time range
     if (startTime >= endTime) {
       Alert.alert('Invalid Time', 'End time must be after start time.');
       return;
@@ -101,15 +209,16 @@ export default function ExpertSchedulePage() {
             try {
               const dateString = formatDateToLocalString(selectedDate);
               const slotToAdd = {
-                expert_peer_id: profile?.id,
-                type: profile?.type,
+                expert_registration: expertRegNo,
+                expert_name: expertName,
                 date: dateString,
                 start_time: startTime,
                 end_time: endTime,
+                is_available: true
               };
 
               const { error } = await supabase
-                .from('expert_peer_slots')
+                .from('expert_schedule')
                 .insert([slotToAdd]);
 
               if (error) {
@@ -118,6 +227,8 @@ export default function ExpertSchedulePage() {
               } else {
                 Alert.alert('Success', 'Custom slot added successfully!');
                 setCustomSlotModalVisible(false);
+                await loadSlotsForDate(selectedDate);
+                await loadAllSchedules();
                 // Reset form
                 setCustomSlot({
                   startHour: '09',
@@ -153,15 +264,16 @@ export default function ExpertSchedulePage() {
             try {
               const dateString = formatDateToLocalString(selectedDate);
               const slotsToAdd = DEFAULT_SLOTS.map(slot => ({
-                expert_peer_id: profile?.id,
+                expert_registration: expertRegNo,
+                expert_name: expertName,
                 date: dateString,
                 start_time: slot.start,
                 end_time: slot.end,
-                type: profile?.type,
+                is_available: true
               }));
 
               const { error } = await supabase
-                .from('expert_peer_slots')
+                .from('expert_schedule')
                 .insert(slotsToAdd);
 
               if (error) {
@@ -169,6 +281,8 @@ export default function ExpertSchedulePage() {
                 Alert.alert('Error', 'Failed to add slots. Some slots may already exist.');
               } else {
                 Alert.alert('Success', 'Default slots added successfully!');
+                await loadSlotsForDate(selectedDate);
+                await loadAllSchedules();
               }
             } catch (error) {
               console.error('Error:', error);
@@ -195,7 +309,7 @@ export default function ExpertSchedulePage() {
             setLoading(true);
             try {
               const { error } = await supabase
-                .from('expert_peer_slots')
+                .from('expert_schedule')
                 .delete()
                 .eq('id', slotId);
 
@@ -204,6 +318,10 @@ export default function ExpertSchedulePage() {
                 Alert.alert('Error', 'Failed to delete slot.');
               } else {
                 Alert.alert('Success', 'Slot deleted successfully!');
+                if (selectedDate) {
+                  await loadSlotsForDate(selectedDate);
+                  await loadAllSchedules();
+                }
               }
             } catch (error) {
               console.error('Error:', error);
@@ -233,9 +351,9 @@ export default function ExpertSchedulePage() {
             try {
               const dateString = selectedDate.toISOString().split('T')[0];
               const { error } = await supabase
-                .from('expert_peer_slots')
+                .from('expert_schedule')
                 .delete()
-                .eq('expert_peer_id', profile?.id)
+                .eq('expert_registration', expertRegNo)
                 .eq('date', dateString);
 
               if (error) {
@@ -243,6 +361,8 @@ export default function ExpertSchedulePage() {
                 Alert.alert('Error', 'Failed to delete slots.');
               } else {
                 Alert.alert('Success', 'All slots deleted successfully!');
+                setSlots([]);
+                await loadAllSchedules();
               }
             } catch (error) {
               console.error('Error:', error);
@@ -274,10 +394,12 @@ export default function ExpertSchedulePage() {
 
     const days: (Date | null)[] = [];
 
+    // Add empty slots for days before the first day of the month
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(null);
     }
 
+    // Add all days of the month
     for (let i = 1; i <= daysInMonth; i++) {
       days.push(new Date(year, month, i));
     }
@@ -290,6 +412,10 @@ export default function ExpertSchedulePage() {
     return date.toDateString() === today.toDateString();
   };
 
+  const hasSchedule = (date: Date) => {
+    const dateString = date.toISOString().split('T')[0];
+    return allSchedules.has(dateString) && (allSchedules.get(dateString)?.length || 0) > 0;
+  };
 
   const renderCalendar = () => {
     const days = getDaysInMonth(currentMonth);
@@ -333,7 +459,8 @@ export default function ExpertSchedulePage() {
               style={[
                 styles.dayCell,
                 !day && styles.emptyCell,
-                day && isToday(day) && styles.todayCell
+                day && isToday(day) && styles.todayCell,
+                day && hasSchedule(day) && styles.scheduledCell
               ]}
               onPress={() => day && handleDatePress(day)}
               disabled={!day}
@@ -342,10 +469,12 @@ export default function ExpertSchedulePage() {
                 <>
                   <Text style={[
                     styles.dayText,
-                    isToday(day) && styles.todayText
+                    isToday(day) && styles.todayText,
+                    hasSchedule(day) && styles.scheduledText
                   ]}>
                     {day.getDate()}
                   </Text>
+                  {hasSchedule(day) && <View style={styles.scheduleDot} />}
                 </>
               )}
             </TouchableOpacity>
@@ -354,6 +483,102 @@ export default function ExpertSchedulePage() {
       </View>
     );
   };
+
+  const renderSlotModal = () => (
+    <Modal
+      visible={modalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          {/* Modal Header */}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {selectedDate?.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })}
+            </Text>
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <Ionicons name="close" size={28} color="#333" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.addBtn]}
+              onPress={handleAddDefaultSlots}
+              disabled={loading}
+            >
+              <Ionicons name="add-circle" size={20} color="#fff" />
+              <Text style={styles.actionBtnText}>Add Default Slots</Text>
+            </TouchableOpacity>
+            {slots.length > 0 && (
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.deleteAllBtn]}
+                onPress={handleDeleteAllSlots}
+                disabled={loading}
+              >
+                <Ionicons name="trash" size={20} color="#fff" />
+                <Text style={styles.actionBtnText}>Delete All</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Slots List */}
+          <ScrollView style={styles.slotsList} showsVerticalScrollIndicator={false}>
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+              </View>
+            ) : slots.length === 0 ? (
+              <View style={styles.emptySlots}>
+                <Ionicons name="calendar-outline" size={60} color="#ccc" />
+                <Text style={styles.emptySlotsText}>No time slots scheduled</Text>
+                <Text style={styles.emptySlotsHint}>Tap "Add Default Slots" to add schedule</Text>
+              </View>
+            ) : (
+              slots.map((slot, index) => (
+                <View key={slot.id || index} style={styles.slotCard}>
+                  <View style={styles.slotInfo}>
+                    <View style={styles.slotTimeContainer}>
+                      <Ionicons name="time-outline" size={20} color={Colors.primary} />
+                      <Text style={styles.slotTime}>
+                        {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                      </Text>
+                    </View>
+                    <View style={[
+                      styles.slotStatus,
+                      { backgroundColor: slot.is_available ? '#E8F5E9' : '#FFEBEE' }
+                    ]}>
+                      <Text style={[
+                        styles.slotStatusText,
+                        { color: slot.is_available ? '#4CAF50' : '#F44336' }
+                      ]}>
+                        {slot.is_available ? 'Available' : 'Booked'}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.deleteSlotBtn}
+                    onPress={() => slot.id && handleDeleteSlot(slot.id)}
+                    disabled={loading}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#F44336" />
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const renderCustomSlotModal = () => (
     <Modal
@@ -477,7 +702,7 @@ export default function ExpertSchedulePage() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>My Schedule</Text>
-          <Text style={styles.headerSubtitle}>{profile?.name}</Text>
+          <Text style={styles.headerSubtitle}>{expertName}</Text>
         </View>
       </View>
 
@@ -524,7 +749,7 @@ export default function ExpertSchedulePage() {
                   })}
                 </Text>
                 <Text style={styles.scheduleSectionSubtitle}>
-                  {slots?.length} slot{slots?.length !== 1 ? 's' : ''} scheduled
+                  {slots.length} slot{slots.length !== 1 ? 's' : ''} scheduled
                 </Text>
               </View>
             </View>
@@ -549,7 +774,7 @@ export default function ExpertSchedulePage() {
                 <Text style={styles.actionBtnText}>Custom Slot</Text>
               </TouchableOpacity>
 
-              {slots && slots?.length > 0 && (
+              {slots.length > 0 && (
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.deleteAllBtn]}
                   onPress={handleDeleteAllSlots}
@@ -567,7 +792,7 @@ export default function ExpertSchedulePage() {
                 <ActivityIndicator size="large" color={Colors.primary} />
                 <Text style={styles.loadingText}>Loading slots...</Text>
               </View>
-            ) : slots?.length === 0 ? (
+            ) : slots.length === 0 ? (
               <View style={styles.emptySlots}>
                 <Ionicons name="calendar-outline" size={50} color="#ccc" />
                 <Text style={styles.emptySlotsText}>No time slots scheduled</Text>
@@ -575,7 +800,7 @@ export default function ExpertSchedulePage() {
               </View>
             ) : (
               <View style={styles.slotsList}>
-                {slots?.map((slot, index) => (
+                {slots.map((slot, index) => (
                   <View key={slot.id || index} style={styles.slotCard}>
                     <View style={styles.slotInfo}>
                       <View style={styles.slotTimeContainer}>
@@ -584,7 +809,7 @@ export default function ExpertSchedulePage() {
                           {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
                         </Text>
                       </View>
-                      {/* <View style={[
+                      <View style={[
                         styles.slotStatus,
                         { backgroundColor: slot.is_available ? '#E8F5E9' : '#FFEBEE' }
                       ]}>
@@ -594,7 +819,7 @@ export default function ExpertSchedulePage() {
                         ]}>
                           {slot.is_available ? '✓ Available' : '✗ Booked'}
                         </Text>
-                      </View> */}
+                      </View>
                     </View>
                     <TouchableOpacity
                       style={styles.deleteSlotBtn}

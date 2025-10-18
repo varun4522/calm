@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { ExpertPeerSlot } from "@/types/ExpertPeerSlot";
 
-export const useGetExpertPeerSlots = (expertPeerId: string | undefined, date: string | null | undefined, type: "EXPERT" | "PEER" | undefined) => {
+export const useGetExpertPeerSlots = (expertPeerId: string | undefined, date: string, type: "EXPERT" | "PEER" | undefined) => {
   return useQuery<ExpertPeerSlot[], Error>({
     queryKey: ["expertPeerSlots", expertPeerId, date],
     queryFn: async () => {
