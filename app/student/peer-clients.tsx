@@ -2,19 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native';
+import {  ActivityIndicator,  Alert,  RefreshControl,  ScrollView,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
+import { useProfile } from '@/api/Profile';
+import { useAuth } from '@/providers/AuthProvider';
 
 interface ClientSession {
   id: string;
@@ -30,9 +22,9 @@ interface ClientSession {
 
 export default function PeerClientsPage() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ registration?: string }>();
-  const [peerName, setPeerName] = useState('');
-  const [peerReg, setPeerReg] = useState('');
+  const {session } = useAuth();
+  const {data: profile} = useProfile(session?.user.id);
+
   const [clients, setClients] = useState<ClientSession[]>([]);
   const [filteredClients, setFilteredClients] = useState<ClientSession[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,41 +32,17 @@ export default function PeerClientsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'pending' | 'approved' | 'completed'>('all');
 
-  useEffect(() => {
-    loadPeerInfo();
-  }, []);
 
   useEffect(() => {
-    if (peerReg) {
+    if (profile) {
       loadClients();
     }
-  }, [peerReg]);
+  }, [profile]);
 
   useEffect(() => {
     filterClients();
   }, [clients, searchQuery, selectedFilter]);
 
-  const loadPeerInfo = async () => {
-    try {
-      let regNo = params.registration;
-      
-      if (!regNo) {
-        const storedReg = await AsyncStorage.getItem('currentStudentReg');
-        regNo = storedReg || undefined;
-      }
-      
-      const storedData = await AsyncStorage.getItem('currentStudentData');
-      
-      if (regNo) setPeerReg(regNo);
-      
-      if (storedData) {
-        const data = JSON.parse(storedData);
-        setPeerName(data.name || data.user_name || '');
-      }
-    } catch (error) {
-      console.error('Error loading peer info:', error);
-    }
-  };
 
   const loadClients = async () => {
     setLoading(true);
@@ -83,7 +51,7 @@ export default function PeerClientsPage() {
       const { data, error } = await supabase
         .from('book_request')
         .select('*')
-        .eq('expert_registration', peerReg)
+        .eq('expert_registration_number', profile?.registration_number)
         .order('created_at', { ascending: false });
 
       if (error) {

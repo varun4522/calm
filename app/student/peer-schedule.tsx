@@ -1,31 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Modal,
-  TextInput,
-} from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useState, useEffect } from 'react';
+import {  View,  Text,  StyleSheet,  ScrollView,  TouchableOpacity,  ActivityIndicator,  Alert,  Modal,  TextInput,} from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { Colors } from '@/constants/Colors';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useProfile } from '@/api/Profile';
+import { useAuth } from '@/providers/AuthProvider';
 
 interface TimeSlot {
   id?: string;
+  peer_id?: string;
   date: string;
   start_time: string;
   end_time: string;
   is_available: boolean;
-  peer_listener_registration?: string;
+  peer_name?: string;
+  peer_registration_number?: string;
 }
 
-// Default time slots (same as expert schedule)
 const DEFAULT_SLOTS = [
   { start: '09:00', end: '09:50' },
   { start: '10:00', end: '10:50' },
@@ -54,14 +46,13 @@ const formatDateToLocalString = (date: Date): string => {
 
 export default function PeerSchedule() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const peerRegistration = params.registration as string;
 
-  const [peerName, setPeerName] = useState('');
+  const {session } = useAuth();
+  const {data: profile} = useProfile(session?.user.id);
+
   const [loading, setLoading] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
   const [customSlotModalVisible, setCustomSlotModalVisible] = useState(false);
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [allSchedules, setAllSchedules] = useState<Map<string, TimeSlot[]>>(new Map());
@@ -72,30 +63,15 @@ export default function PeerSchedule() {
     endMinute: '',
   });
 
-  useEffect(() => {
-    loadPeerInfo();
-  }, []);
 
   useEffect(() => {
-    if (peerRegistration) {
+    if (profile) {
       loadAllSchedules();
     }
-  }, [currentMonth, peerRegistration]);
-
-  const loadPeerInfo = async () => {
-    try {
-      const storedData = await AsyncStorage.getItem('currentStudentData');
-      if (storedData) {
-        const data = JSON.parse(storedData);
-        setPeerName(data.name || 'Peer Listener');
-      }
-    } catch (error) {
-      console.error('Error loading peer info:', error);
-    }
-  };
+  }, [currentMonth, profile]);
 
   const loadAllSchedules = async () => {
-    if (!peerRegistration) return;
+    if (!profile) return;
     
     try {
       const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
@@ -104,7 +80,7 @@ export default function PeerSchedule() {
       const { data, error } = await supabase
         .from('student_schedule')
         .select('*')
-        .eq('peer_listener_registration', peerRegistration)
+        .eq('peer_registration_number', profile.registration_number)
         .gte('date', formatDateToLocalString(startOfMonth))
         .lte('date', formatDateToLocalString(endOfMonth))
         .order('start_time', { ascending: true });
@@ -127,7 +103,7 @@ export default function PeerSchedule() {
   };
 
   const loadSlotsForDate = async (date: Date) => {
-    if (!peerRegistration) return;
+    if (!profile) return;
     
     setLoading(true);
     try {
@@ -135,7 +111,7 @@ export default function PeerSchedule() {
       const { data, error } = await supabase
         .from('student_schedule')
         .select('*')
-        .eq('peer_listener_registration', peerRegistration)
+        .eq('peer_registration_number', profile.registration_number)
         .eq('date', dateString)
         .order('start_time', { ascending: true });
 
@@ -161,7 +137,7 @@ export default function PeerSchedule() {
   };
 
   const handleAddCustomSlot = async () => {
-    if (!selectedDate || !peerRegistration) return;
+    if (!selectedDate || !profile) return;
 
     const { startHour, startMinute, endHour, endMinute } = customSlot;
 
@@ -192,7 +168,9 @@ export default function PeerSchedule() {
               const { error } = await supabase
                 .from('student_schedule')
                 .insert({
-                  peer_listener_registration: peerRegistration,
+                  peer_id: profile.id,
+                  peer_name: profile.name,
+                  peer_registration_number: profile.registration_number,
                   date: dateString,
                   start_time: startTime,
                   end_time: endTime,
@@ -219,7 +197,7 @@ export default function PeerSchedule() {
   };
 
   const handleAddDefaultSlots = async () => {
-    if (!selectedDate || !peerRegistration) return;
+    if (!selectedDate || !profile) return;
 
     Alert.alert(
       'Add Default Slots',
@@ -233,7 +211,9 @@ export default function PeerSchedule() {
             try {
               const slotsToAdd = generateDefaultSlots(selectedDate).map(slot => ({
                 ...slot,
-                peer_listener_registration: peerRegistration,
+                peer_registration_number: profile.registration_number,
+                peer_name: profile.name,
+                peer_id: profile.id,
               }));
 
               const { error } = await supabase
@@ -314,7 +294,7 @@ export default function PeerSchedule() {
               const { error } = await supabase
                 .from('student_schedule')
                 .delete()
-                .eq('peer_listener_registration', peerRegistration)
+                .eq('peer_registration_number', profile?.registration_number)
                 .eq('date', dateString);
 
               if (error) {
@@ -567,7 +547,7 @@ export default function PeerSchedule() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>My Schedule</Text>
-          <Text style={styles.headerSubtitle}>{peerName}</Text>
+          <Text style={styles.headerSubtitle}>{profile?.name}</Text>
         </View>
       </View>
 

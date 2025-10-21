@@ -1,49 +1,27 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Colors } from "../../constants/Colors";
+import { useAuth } from "@/providers/AuthProvider";
+import { useProfile } from "@/api/Profile";
 
 const PeerScreen = () => {
     const router = useRouter();
-    const [peerName, setPeerName] = useState('');
-    const [peerReg, setPeerReg] = useState('');
-
-    useEffect(() => {
-        loadPeerInfo();
-    }, []);
-
-    const loadPeerInfo = async () => {
-        try {
-            const storedData = await AsyncStorage.getItem('currentStudentData');
-            const storedReg = await AsyncStorage.getItem('currentStudentReg');
-            
-            if (storedData) {
-                const data = JSON.parse(storedData);
-                setPeerName(data.name || data.user_name || 'Peer Listener');
-            }
-            
-            if (storedReg) {
-                setPeerReg(storedReg);
-            }
-        } catch (error) {
-            console.error('Error loading peer info:', error);
-        }
-    };
-
+    const {session } = useAuth();
+    const {data: profile} = useProfile(session?.user.id);
+    
     const handleSchedule = () => {
-        router.push(`./peer-schedule?registration=${peerReg}`);
+        router.push(`./peer-schedule?registration=${profile?.registration_number}`);
     };
 
     const handleMyClients = () => {
-        router.push(`./peer-clients?registration=${peerReg}`);
+        router.push(`./peer-clients`);
     };
 
     return (
         <View style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.welcomeText}>Welcome, {peerName}! 👋</Text>
+                <Text style={styles.welcomeText}>Welcome, {profile?.name}! 👋</Text>
                 <Text style={styles.subText}>Peer Listener Dashboard</Text>
             </View>
 
@@ -57,7 +35,7 @@ const PeerScreen = () => {
                 >
                     <View style={styles.iconContainer}>
                         <Image 
-                            source={require('../../assets/images/mood calender.png')} 
+                            source={require('@/assets/images/mood calender.png')} 
                             style={styles.icon} 
                         />
                     </View>
