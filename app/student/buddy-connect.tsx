@@ -8,6 +8,8 @@ import * as MediaLibrary from 'expo-media-library';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@/providers/AuthProvider';
+import { useProfile } from '@/api/Profile';
 
 const profilePics = [
   require('@/assets/images/profile/pic1.png'),
@@ -28,6 +30,8 @@ const profilePics = [
 export default function BuddyConnect() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { session } = useAuth();
+  const { data: profile } = useProfile(session?.user.id);
   const [modalVisible, setModalVisible] = useState(false);
   const [postText, setPostText] = useState('');
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
@@ -43,7 +47,14 @@ export default function BuddyConnect() {
   useEffect(() => {
     const loadStudentRegNo = async () => {
       try {
-        // First try to get from params
+        // First try to get from profile
+        if (profile?.registration_number) {
+          setStudentRegNo(String(profile.registration_number));
+          await AsyncStorage.setItem('currentStudentReg', String(profile.registration_number));
+          return;
+        }
+
+        // If not in profile, try params
         let regNo = params.registration as string;
         
         // If not in params, try AsyncStorage
@@ -62,7 +73,7 @@ export default function BuddyConnect() {
     };
 
     loadStudentRegNo();
-  }, [params.registration]);
+  }, [params.registration, profile]);
 
   useEffect(() => {
     fetchPosts();
@@ -184,6 +195,28 @@ export default function BuddyConnect() {
     try {
       console.log('Starting post creation...');
 
+      // Check authentication first
+      if (!session?.user?.id) {
+        Alert.alert('Error', 'User not authenticated. Please log in again.');
+        return;
+      }
+
+      // Get current user ID (student registration number)
+      let userId = studentRegNo;
+      
+      // If studentRegNo is not set, try to get from profile
+      if (!userId && profile?.registration_number) {
+        userId = String(profile.registration_number);
+        setStudentRegNo(String(profile.registration_number));
+      }
+
+      console.log('User ID:', userId);
+
+      if (!userId) {
+        Alert.alert('Error', 'Unable to identify user. Please log in again.');
+        return;
+      }
+
       let mediaUrl = null;
 
       // Upload media if selected
@@ -197,15 +230,6 @@ export default function BuddyConnect() {
           Alert.alert('Error', `Failed to upload media: ${mediaError instanceof Error ? mediaError.message : 'Unknown error'}`);
           return;
         }
-      }
-
-      // Get current user ID (student registration number)
-      const userId = studentRegNo;
-      console.log('User ID:', userId);
-
-      if (!userId) {
-        Alert.alert('Error', 'User not authenticated. Please log in again.');
-        return;
       }
 
       // Insert post into community_post table
@@ -414,12 +438,32 @@ export default function BuddyConnect() {
     if (!newComment.trim() || !selectedPostForComments) return;
 
     try {
+      // Check authentication
+      if (!session?.user?.id) {
+        Alert.alert('Error', 'User not authenticated. Please log in again.');
+        return;
+      }
+
+      // Get current user ID
+      let userId = studentRegNo;
+      
+      // If studentRegNo is not set, try to get from profile
+      if (!userId && profile?.registration_number) {
+        userId = String(profile.registration_number);
+        setStudentRegNo(String(profile.registration_number));
+      }
+
+      if (!userId) {
+        Alert.alert('Error', 'Unable to identify user. Please log in again.');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('post_comment')
         .insert([
           {
             post_id: selectedPostForComments.id,
-            user_id: studentRegNo,
+            user_id: userId,
             content: newComment.trim(),
             created_at: new Date().toISOString(),
           },

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {  useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
@@ -33,6 +33,8 @@ export default function StudentCalm() {
   const [selectedPeerListener, setSelectedPeerListener] = useState<string | null>(null);
   const [selectedPeerDate, setSelectedPeerDate] = useState<string | null>(null);
   const [selectedPeerTime, setSelectedPeerTime] = useState<string | null>(null);
+  const [availablePeerTimeSlots, setAvailablePeerTimeSlots] = useState<any[]>([]);
+  const [loadingPeerTimeSlots, setLoadingPeerTimeSlots] = useState(false);
 
   const {data: experts, isLoading: loadingExperts} = useGetProfileList("EXPERT");
   const {data: peerListeners, isLoading: loadingPeerListeners} = useGetProfileList("PEER");
@@ -356,6 +358,122 @@ export default function StudentCalm() {
     }
   };
 
+  // Load available time slots for peer listeners from student_schedule table
+  const loadAvailablePeerTimeSlots = async (peerRegistration: string, date: string) => {
+    setLoadingPeerTimeSlots(true);
+    try {
+      console.log('Loading time slots for peer listener:', peerRegistration, 'on date:', date);
+
+      const { data: slots, error } = await supabase
+        .from('student_schedule')
+        .select('*')
+        .eq('peer_registration_number', peerRegistration)
+        .eq('date', date)
+        .order('start_time', { ascending: true });
+
+      if (error) {
+        console.error('Error loading peer time slots:', error);
+        console.error('Error details:', error.message, error.details);
+        setAvailablePeerTimeSlots([]);
+        Alert.alert('Error', `Failed to load time slots: ${error.message}`);
+      } else {
+        console.log('Peer time slots loaded successfully:', slots?.length || 0, 'slots');
+        console.log('Peer slot details:', JSON.stringify(slots, null, 2));
+
+        // Process slots based on current time
+        const now = new Date();
+
+        // Process slots and handle past time slots
+        const processedSlots = slots || [];
+        const bookedSlotsToFree: any[] = [];
+        const unbookedSlotsToExpire: any[] = [];
+
+        processedSlots.forEach(slot => {
+          if (!slot.date || !slot.start_time) return;
+
+          // Parse start time (HH:MM or HH:MM:SS format)
+          const timeParts = slot.start_time.split(':').map(Number);
+          const startHours = timeParts[0];
+          const startMinutes = timeParts[1];
+          const slotStartDateTime = new Date(slot.date);
+          slotStartDateTime.setHours(startHours, startMinutes, 0, 0);
+
+          // Check if slot start time has passed or started
+          const hasStarted = now >= slotStartDateTime;
+
+          if (hasStarted) {
+            // Case 1: Slot was booked and session ended - free it for future bookings
+            if (!slot.is_available && slot.booked_by && slot.end_time) {
+              const endTimeParts = slot.end_time.split(':').map(Number);
+              const endHours = endTimeParts[0];
+              const endMinutes = endTimeParts[1];
+              const slotEndDateTime = new Date(slot.date);
+              slotEndDateTime.setHours(endHours, endMinutes, 0, 0);
+
+              if (now > slotEndDateTime) {
+                console.log(`Past booked peer session ended - freeing slot: ${slot.date} ${slot.start_time}-${slot.end_time}`);
+                bookedSlotsToFree.push(slot.id);
+                slot.is_available = true;
+                slot.booked_by = null;
+              }
+            }
+            // Case 2: Slot was available but time has started/passed - mark as expired
+            else if (slot.is_available && !slot.booked_by) {
+              console.log(`Unbooked peer slot expired - marking unavailable: ${slot.date} ${slot.start_time}`);
+              unbookedSlotsToExpire.push(slot.id);
+              slot.is_available = false;
+              slot.booked_by = null;
+            }
+          }
+        });
+
+        // Update database for past booked slots (free them)
+        if (bookedSlotsToFree.length > 0) {
+          console.log(`Freeing ${bookedSlotsToFree.length} completed peer sessions`);
+          supabase
+            .from('student_schedule')
+            .update({ is_available: true, booked_by: null })
+            .in('id', bookedSlotsToFree)
+            .then(({ error: updateError }) => {
+              if (updateError) {
+                console.error('Error freeing past peer slots:', updateError);
+              } else {
+                console.log('Successfully freed past booked peer slots');
+              }
+            });
+        }
+
+        // Update database for unbooked expired slots (mark unavailable)
+        if (unbookedSlotsToExpire.length > 0) {
+          console.log(`Expiring ${unbookedSlotsToExpire.length} unbooked past peer slots`);
+          supabase
+            .from('student_schedule')
+            .update({ is_available: false, booked_by: null })
+            .in('id', unbookedSlotsToExpire)
+            .then(({ error: updateError }) => {
+              if (updateError) {
+                console.error('Error expiring unbooked peer slots:', updateError);
+              } else {
+                console.log('Successfully expired unbooked past peer slots');
+              }
+            });
+        }
+
+        setAvailablePeerTimeSlots(processedSlots);
+
+        if (!slots || slots.length === 0) {
+          Alert.alert('No Slots', 'This peer listener has not set up any time slots for the selected date. Please choose a different date or contact the peer listener.');
+        }
+      }
+    } catch (error) {
+      console.error('Error in loadAvailablePeerTimeSlots:', error);
+      setAvailablePeerTimeSlots([]);
+      Alert.alert('Error', 'An error occurred while loading time slots.');
+    } finally {
+      setLoadingPeerTimeSlots(false);
+    }
+  };
+
   // Define available time slots
   const timeSlots = ['09:00 AM','10:00 AM','11:00 AM','01:00 PM','02:00 PM','03:00 PM','04:00 PM',  ];
 
@@ -437,6 +555,7 @@ export default function StudentCalm() {
 
         // Create session request data for Supabase
         const sessionRequestData = {
+          student_id: profile.id,
           student_name: profile.name,
           student_email: profile.email,
           student_course: profile.course,
@@ -615,7 +734,7 @@ export default function StudentCalm() {
         }
 
         // Find the selected peer listener details
-        const peerListener = peerListeners?.find(p => (p.student_id || p.id) === selectedPeerListener);
+        const peerListener = peerListeners?.find(p => String(p.registration_number) === selectedPeerListener);
 
         if (!peerListener) {
           Alert.alert('Error', 'Selected peer listener information not found. Please try again.');
@@ -624,17 +743,18 @@ export default function StudentCalm() {
 
         // Create session request data for Supabase
         const sessionRequestData = {
+          student_id: profile.id,
           student_name: profile.name,
           student_registration_number: profile.registration_number,
           student_email: profile.email ,
           student_course: profile.course ,
-          expert_registration_number: peerListener?.student_id || selectedPeerListener,
+          expert_id: peerListener.id,
+          expert_registration_number: peerListener.registration_number,
           expert_name: peerListener?.name || 'Unknown Peer Listener',
           session_date: selectedPeerDate,
           session_time: selectedPeerTime,
           status: 'pending',
           session_type: 'peer_listener',
-          reason: `Peer listener session booking request from ${profile.name}`,
         };
 
         console.log('Attempting to book peer listener session with data:', sessionRequestData);
@@ -695,7 +815,7 @@ export default function StudentCalm() {
           studentCourse: profile.course,
           peerListenerId: selectedPeerListener,
           peerListenerName: peerListener?.name || 'Unknown Peer Listener',
-          peerListenerStudentId: peerListener?.student_id || selectedPeerListener,
+          peerListenerRegistrationNumber: peerListener.registration_number,
           date: selectedPeerDate,
           time: selectedPeerTime,
           status: 'pending',
@@ -731,7 +851,7 @@ export default function StudentCalm() {
           `Your session request has been saved to the database.\n\n` +
           `📋 Request Details:\n` +
           `• Peer Listener: ${peerListener?.name || 'Peer Listener'}\n` +
-          `• Student ID: ${peerListener?.student_id || selectedPeerListener}\n` +
+          `• Registration Number: ${peerListener.registration_number}\n` +
           `• Date: ${new Date(selectedPeerDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n` +
           `• Time: ${selectedPeerTime}\n` +
           `• Request ID: ${supabaseData.id}\n` +
@@ -843,7 +963,7 @@ export default function StudentCalm() {
           ) : sessionHistory.length === 0 ? (
             <Text style={{ textAlign: 'center', color: Colors.textSecondary, fontSize: 16 }}>No sessions booked yet.</Text>
           ) : (
-            <ScrollView style={{ maxHeight: 300 }}>
+            <View>
               {sessionHistory.map((session) => (
                 <View key={session.id} style={{ backgroundColor: Colors.backgroundLight, borderRadius: 15, padding: 15, marginBottom: 10, elevation: 2, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -887,7 +1007,7 @@ export default function StudentCalm() {
                   </View>
                 </View>
               ))}
-            </ScrollView>
+            </View>
           )}
         </View>
       </ScrollView>
@@ -1185,6 +1305,7 @@ export default function StudentCalm() {
           setSelectedPeerListener(null);
           setSelectedPeerDate(null);
           setSelectedPeerTime(null);
+          setAvailablePeerTimeSlots([]);
         }}
       >
         <View style={styles.modalOverlay}>
@@ -1197,6 +1318,7 @@ export default function StudentCalm() {
                   setSelectedPeerListener(null);
                   setSelectedPeerDate(null);
                   setSelectedPeerTime(null);
+                  setAvailablePeerTimeSlots([]);
                 }}
                 style={styles.modalCloseButton}
               >
@@ -1214,23 +1336,23 @@ export default function StudentCalm() {
               ) : (
                 peerListeners?.map((peerListener) => (
                   <TouchableOpacity
-                    key={peerListener.id || peerListener.student_id}
+                    key={peerListener.id}
                     style={[
                       styles.psychologistCard,
-                      selectedPeerListener === (peerListener.student_id || peerListener.id) && styles.selectedPsychologistCard
+                      selectedPeerListener === String(peerListener.registration_number) && styles.selectedPsychologistCard
                     ]}
-                    onPress={() => setSelectedPeerListener(peerListener.student_id || peerListener.id)}
+                    onPress={() => setSelectedPeerListener(String(peerListener.registration_number))}
                   >
                     <View style={styles.psychologistInfo}>
                       <View style={styles.nameAndChatContainer}>
                         <View style={styles.nameContainer}>
                           <Text style={styles.psychologistName}>{peerListener.name}</Text>
-                          <Text style={styles.expertId}>Student ID: {peerListener.student_id || peerListener.id}</Text>
+                          <Text style={styles.expertId}>Registration: {peerListener.registration_number}</Text>
                         </View>
                         <TouchableOpacity
                           style={styles.chatButton}
                           onPress={() => {
-                            router.push(`./chat?peerId=${peerListener.student_id || peerListener.id}&peerName=${peerListener.name}&userType=peer`);
+                            router.push(`./chat?peerId=${peerListener.id}&peerName=${peerListener.name}&userType=peer`);
                           }}
                         >
                           <Text style={styles.chatButtonText}>💬 Chat</Text>
@@ -1241,7 +1363,7 @@ export default function StudentCalm() {
                         Year: {peerListener.year || 'N/A'} | Rating: ⭐ {peerListener.rating || '4.8'}
                       </Text>
                     </View>
-                    {selectedPeerListener === (peerListener.student_id || peerListener.id) && (
+                    {selectedPeerListener === String(peerListener.registration_number) && (
                       <Text style={styles.selectedIcon}>✓</Text>
                     )}
                   </TouchableOpacity>
@@ -1260,7 +1382,13 @@ export default function StudentCalm() {
                           styles.dateButton,
                           selectedPeerDate === day.dateString && styles.selectedDateButton
                         ]}
-                        onPress={() => setSelectedPeerDate(day.dateString)}
+                        onPress={() => {
+                          setSelectedPeerDate(day.dateString);
+                          setSelectedPeerTime(null);
+                          setAvailablePeerTimeSlots([]);
+                          // Load time slots when date is selected
+                          loadAvailablePeerTimeSlots(selectedPeerListener, day.dateString);
+                        }}
                       >
                         <Text style={[
                           styles.dayName,
@@ -1285,52 +1413,63 @@ export default function StudentCalm() {
                 <>
                   <Text style={styles.sectionTitle}>Available Time Slots</Text>
 
-                  <View style={styles.timeSlotsContainer}>
-                    {timeSlots.map((time) => {
-                      const isBooked = isSessionBooked(selectedPeerListener, selectedPeerDate, time);
-                      return (
-                        <TouchableOpacity
-                          key={time}
-                          style={[
-                            styles.timeSlot,
-                            isBooked && styles.bookedTimeSlot,
-                            selectedPeerTime === time && styles.selectedTimeSlot,
-                            isBooked && { opacity: 0.5 }
-                          ]}
-                          onPress={() => {
-                            if (isBooked) {
-                              Alert.alert(
-                                'Session Unavailable',
-                                'This time slot is already booked. Please select a different time.',
-                                [{ text: 'OK' }]
-                              );
-                            } else {
-                              setSelectedPeerTime(time);
-                            }
-                          }}
-                          disabled={isBooked}
-                        >
-                          <View style={styles.timeSlotContent}>
-                            <Text style={[
-                              styles.timeText,
-                              isBooked && styles.bookedTimeText,
-                              selectedPeerTime === time && styles.selectedTimeText
-                            ]}>
-                              {time}
-                            </Text>
-                            <View style={[
-                              styles.statusDot,
-                              isBooked && styles.bookedStatusDot,
-                              { backgroundColor: isBooked ? '#f44336' : (selectedPeerTime === time ? '#2196f3' : '#4caf50') }
-                            ]} />
-                            {isBooked && (
-                              <Text style={styles.bookedIndicatorText}>❌</Text>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                  {loadingPeerTimeSlots ? (
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                  ) : availablePeerTimeSlots.length === 0 ? (
+                    <Text style={styles.emptyText}>No time slots available for this date. Please select another date.</Text>
+                  ) : (
+                    <>
+                      <View style={styles.timeSlotsContainer}>
+                        {availablePeerTimeSlots.map((slot) => {
+                          const displayTime = slot.start_time?.substring(0, 5) || slot.start_time;
+                          const isAvailable = slot.is_available && !slot.booked_by;
+                          const isSelected = selectedPeerTime === displayTime;
+                          
+                          return (
+                            <TouchableOpacity
+                              key={slot.id}
+                              style={[
+                                styles.timeSlot,
+                                !isAvailable && styles.bookedTimeSlot,
+                                isSelected && styles.selectedTimeSlot,
+                                !isAvailable && { opacity: 0.5 }
+                              ]}
+                              onPress={() => {
+                                if (!isAvailable) {
+                                  Alert.alert(
+                                    'Session Unavailable',
+                                    'This time slot is already booked or unavailable. Please select a different time.',
+                                    [{ text: 'OK' }]
+                                  );
+                                } else {
+                                  setSelectedPeerTime(displayTime);
+                                }
+                              }}
+                              disabled={!isAvailable}
+                            >
+                              <View style={styles.timeSlotContent}>
+                                <Text style={[
+                                  styles.timeText,
+                                  !isAvailable && styles.bookedTimeText,
+                                  isSelected && styles.selectedTimeText
+                                ]}>
+                                  {displayTime}
+                                </Text>
+                                <View style={[
+                                  styles.statusDot,
+                                  !isAvailable && styles.bookedStatusDot,
+                                  { backgroundColor: !isAvailable ? '#f44336' : (isSelected ? '#2196f3' : '#4caf50') }
+                                ]} />
+                                {!isAvailable && (
+                                  <Text style={styles.bookedIndicatorText}>❌</Text>
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
                 </>
               )}
 

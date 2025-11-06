@@ -1,4 +1,4 @@
-import { useState , useRef } from "react";
+import { useState, useRef } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Alert, Button } from "react-native";
 import * as MediaLibrary from "expo-media-library";
 import Svg, { Path } from "react-native-svg";
@@ -6,10 +6,13 @@ import { mandalaTemplates } from "@/constants/data/mandala-data";
 import { MandalaTemplate } from "@/types/MandalaTemplateType";
 import ColorPickerModal from "@/components/ColorPicker";
 import { captureRef } from "react-native-view-shot";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { ReactNativeZoomableView } from "@openspacelabs/react-native-zoomable-view";
 
 const SampleMandala = () => {
+  const router = useRouter();
   const [selectedTemplate, setSelectedTemplate] = useState<MandalaTemplate | null>(null);
   const [pathColors, setPathColors] = useState<Record<number, string>>({});
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -78,6 +81,14 @@ const SampleMandala = () => {
 
   return (
     <View style={styles.container}>
+      {/* Back Button */}
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => router.back()}
+      >
+        <Ionicons name="arrow-back" size={24} color="#fff" />
+      </TouchableOpacity>
+
       {/* Template selection */}
       <View style={{ padding: 10, }}>
         <Text style={styles.heading}>Choose Mandala Template</Text>
@@ -236,6 +247,23 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: "#ffffffff",
     paddingTop: 20,
+  },
+  backButton: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: "#8B5CF6",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   heading: {
     fontSize: 16,

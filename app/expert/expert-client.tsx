@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {  ActivityIndicator,  Alert,  RefreshControl,  ScrollView,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
+import { RefreshConfig } from '@/constants/RefreshConfig';
 
 interface SessionRequest {
   id: string; // auto generated UUID
@@ -36,10 +37,36 @@ export default function ExpertClientPage() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  const autoRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     if (profile) {
       loadSessionRequests();
     }
+  }, [profile]);
+
+  // Auto-refresh on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      if (profile) {
+        loadSessionRequests();
+      }
+    }, [profile])
+  );
+
+  // Setup auto-refresh interval (every 45 seconds)
+  useEffect(() => {
+    if (!profile) return;
+
+    autoRefreshIntervalRef.current = setInterval(() => {
+      loadSessionRequests();
+    }, RefreshConfig.CLIENT_LIST_REFRESH_INTERVAL);
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+    };
   }, [profile]);
 
   const loadPatients = async () => {

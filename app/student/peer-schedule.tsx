@@ -28,7 +28,7 @@ const DEFAULT_SLOTS = [
 ];
 
 const generateDefaultSlots = (date: Date): TimeSlot[] => {
-  const dateString = date.toISOString().split('T')[0];
+  const dateString = formatDateToLocalString(date);
   return DEFAULT_SLOTS.map(slot => ({
     date: dateString,
     start_time: slot.start,

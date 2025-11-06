@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import {  Alert,  FlatList,  Image,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {  Alert,  FlatList,  Image,  RefreshControl,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { Conversation, ReceivedMessage } from '@/types/Message';
 import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
+import { RefreshConfig } from '@/constants/RefreshConfig';
 
 // Profile pictures for chat participants
 const profilePics = [
@@ -41,11 +42,14 @@ export default function MessagesPage() {
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   const [isChatDeleteMode, setIsChatDeleteMode] = useState(false);
   const [aliases, setAliases] = useState<{[participantId: string]: string}>({});
+  const [refreshing, setRefreshing] = useState(false);
   const [studentInfo, setStudentInfo] = useState({
     name: '',
     registration: '',
     profilePic: 0
   });
+
+  const autoRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
 
   // Load conversations and messages when student info is available
@@ -54,6 +58,37 @@ export default function MessagesPage() {
       loadConversations();
       loadSentMessages();
     }
+  }, [profile]);
+
+  // Auto-refresh on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      if (profile) {
+        loadConversations();
+        loadSentMessages();
+      }
+    }, [profile])
+  );
+
+  // Setup auto-refresh interval (every 30 seconds)
+  useEffect(() => {
+    if (!profile) return;
+
+    // Initial load
+    loadConversations();
+    loadSentMessages();
+
+    // Set up interval for auto-refresh
+    autoRefreshIntervalRef.current = setInterval(() => {
+      loadConversations();
+      loadSentMessages();
+    }, RefreshConfig.MESSAGES_REFRESH_INTERVAL);
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+    };
   }, [profile]);
 
   // Group messages by contact for chat delete mode
@@ -149,6 +184,31 @@ export default function MessagesPage() {
       if (messages) {
         // Group messages by conversation partner
         const conversationMap = new Map<string, any>();
+        const participantIds = new Set<string>();
+
+        // First, collect all unique participant IDs
+        messages.forEach(msg => {
+          const partnerId = msg.sender_id === profile.id ? msg.receiver_id : msg.sender_id;
+          participantIds.add(partnerId);
+        });
+
+        // Fetch names for all participants from profiles table
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, name, type')
+          .in('id', Array.from(participantIds));
+
+        if (profilesError) {
+          console.error('Error fetching participant profiles:', profilesError);
+        }
+
+        // Create a map of participant IDs to their profiles
+        const profilesMap = new Map<string, any>();
+        if (profilesData) {
+          profilesData.forEach(p => {
+            profilesMap.set(p.id, p);
+          });
+        }
 
         messages.forEach(msg => {
           // Determine who the conversation partner is
@@ -158,24 +218,17 @@ export default function MessagesPage() {
           if (!conversationMap.has(partnerId) ||
               new Date(msg.created_at) > new Date(conversationMap.get(partnerId)!.created_at)) {
 
-            // Determine partner type based on available info or ID patterns
-            let partnerType = 'student';
-            if (msg.sender_id !== profile.id) {
-              partnerType = msg.sender_type;
-            } else {
-              // Try to infer from receiver ID patterns
-              if (msg.receiver_id.includes('expert')) partnerType = 'expert';
-              else if (msg.receiver_id.includes('peer')) partnerType = 'peer';
-              else if (msg.receiver_id.includes('admin')) partnerType = 'admin';
-            }
+            // Get partner's profile info
+            const partnerProfile = profilesMap.get(partnerId);
+            const partnerName = partnerProfile?.name || msg.sender_name || 'Unknown User';
+            const partnerType = partnerProfile?.type?.toLowerCase() || msg.sender_type || 'student';
 
             // Create a standardized message format for display
             conversationMap.set(partnerId, {
               id: msg.id,
               sender_id: partnerId, // Show partner as sender for consistency
               receiver_id: profile.id,
-              sender_name: msg.sender_id === profile.id ?
-                (msg.receiver_id.split('_')[0] || 'Recipient') : msg.sender_name,
+              sender_name: partnerName,
               sender_type: partnerType,
               message: msg.sender_id === profile.id ?
                 `You: ${msg.message}` : msg.message, // Prefix with "You:" if student sent it
@@ -343,38 +396,39 @@ export default function MessagesPage() {
       if (messages) {
         // Group messages by participant to create conversations
         const conversationMap = new Map<string, Conversation>();
+        const participantIds = new Set<string>();
+
+        // Collect all unique participant IDs
+        messages.forEach(msg => {
+          const participantId = msg.sender_id === profile.id ? msg.receiver_id : msg.sender_id;
+          participantIds.add(participantId);
+        });
+
+        // Fetch profiles for all participants
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, name, type')
+          .in('id', Array.from(participantIds));
+
+        if (profilesError) {
+          console.error('Error fetching participant profiles:', profilesError);
+        }
+
+        // Create a map of participant IDs to their profiles
+        const profilesMap = new Map<string, any>();
+        if (profilesData) {
+          profilesData.forEach(p => {
+            profilesMap.set(p.id, p);
+          });
+        }
 
         messages.forEach(msg => {
           const participantId = msg.sender_id === profile.id ? msg.receiver_id : msg.sender_id;
-          const participantType = msg.sender_id === profile.id ? 'STUDENT' : msg.sender_type;
+          const participantProfile = profilesMap.get(participantId);
+          const participantName = participantProfile?.name || msg.sender_name || 'Unknown User';
+          const participantType = participantProfile?.type?.toLowerCase() || msg.sender_type || 'student';
 
           if (!conversationMap.has(participantId)) {
-            // For new conversations, try to get the participant name from any message
-            let participantName = 'Unknown';
-
-            // If this message is from the participant, use their name
-            if (msg.sender_id === participantId) {
-              participantName = msg.sender_name;
-            } else {
-              // Look for any other message from this participant to get their name
-              const participantMessage = messages.find(m => m.sender_id === participantId);
-              if (participantMessage) {
-                participantName = participantMessage.sender_name;
-              }
-            }
-
-            // If name is still unknown or looks like a registration number, enhance it
-            if (participantName === 'Unknown' || !participantName || /^\d+$/.test(participantName) || participantName === participantId) {
-              // Try to enhance the name based on participant type
-              if (participantType === 'expert') {
-                participantName = `Expert ${participantId.substring(0, 6)}...`;
-              } else if (participantType === 'peer') {
-                participantName = `Peer ${participantId.substring(0, 6)}...`;
-              } else {
-                participantName = `User ${participantId.substring(0, 6)}...`;
-              }
-            }
-
             conversationMap.set(participantId, {
               id: `conversation_${participantId}_${profile.id}`,
               participantId: participantId,
@@ -393,11 +447,6 @@ export default function MessagesPage() {
               existing.lastMessage = msg.message;
               existing.timestamp = msg.created_at;
             }
-
-            // Update participant name if we have a better one from this message
-            if (msg.sender_id === participantId && existing.participantName === 'Unknown') {
-              existing.participantName = msg.sender_name;
-            }
           }
         });
 
@@ -413,57 +462,15 @@ export default function MessagesPage() {
 
         const allConversations = Array.from(conversationMap.values());
 
-        // Enhance participant names by looking up actual names from database
-        const enhancedConversations = await Promise.all(allConversations.map(async (conversation) => {
-          if (conversation.participantName.includes('Expert') ||
-              conversation.participantName.includes('Peer') ||
-              conversation.participantName.includes('User') ||
-              conversation.participantName === 'Unknown' ||
-              /^\d+$/.test(conversation.participantName)) {
+        // Sort by most recent message
+        allConversations.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-            try {
-              let actualName = conversation.participantName;
-
-              if (conversation.participantType === 'expert') {
-                const { data: expertData } = await supabase
-                  .from('expert_registrations')
-                  .select('name')
-                  .eq('registration', conversation.participantId)
-                  .single();
-                if (expertData?.name) actualName = expertData.name;
-              } else if (conversation.participantType === 'peer') {
-                const { data: peerData } = await supabase
-                  .from('peer_registrations')
-                  .select('name')
-                  .eq('registration', conversation.participantId)
-                  .single();
-                if (peerData?.name) actualName = peerData.name;
-              } else if (conversation.participantType === 'student') {
-                const { data: studentData } = await supabase
-                  .from('student_registrations')
-                  .select('name')
-                  .eq('registration', conversation.participantId)
-                  .single();
-                if (studentData?.name) actualName = studentData.name;
-              }
-
-              return { ...conversation, participantName: actualName };
-            } catch (error) {
-              console.log('Could not enhance participant name for:', conversation.participantId);
-              return conversation;
-            }
-          }
-          return conversation;
-        }));
-
-        enhancedConversations.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-        setConversations(enhancedConversations);
-        setFilteredConversations(enhancedConversations);
+        setConversations(allConversations);
+        setFilteredConversations(allConversations);
 
         // Load aliases for all participants
-        const participantIds = enhancedConversations.map(conv => conv.participantId);
-        loadAliases(participantIds);
+        const participantIdsList = allConversations.map(conv => conv.participantId);
+        loadAliases(participantIdsList);
       }
     } catch (error) {
       console.error('Error loading conversations:', error);
@@ -560,7 +567,23 @@ export default function MessagesPage() {
     } catch (error) {
       console.error('Error marking message as read:', error);
     }
-  };  const refreshData = async () => {
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadConversations(),
+        loadSentMessages()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing messages:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const refreshData = async () => {
     if (studentInfo.registration) {
       await Promise.all([
         loadConversations(),
@@ -798,6 +821,14 @@ export default function MessagesPage() {
               keyExtractor={(item) => isChatDeleteMode ? `chat_${item.sender_id}` : item.id}
               showsVerticalScrollIndicator={false}
               style={styles.messagesList}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor="#007AFF"
+                  colors={['#007AFF']}
+                />
+              }
             />
           )
         }

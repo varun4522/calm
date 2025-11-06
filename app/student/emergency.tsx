@@ -47,7 +47,6 @@ export default function Emergency() {
 
       // Save location to Supabase database
       const locationData = {
-        student_id: session.user.id,
         student_reg: profile.registration_number,
         student_name: profile.name,
         latitude: latitude,

@@ -59,7 +59,7 @@ export default function Help() {
         <View style={styles.backButtonContainer}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.push('./select2')}
+            onPress={() => router.push('./')}
           >
             <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>

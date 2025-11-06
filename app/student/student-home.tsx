@@ -159,15 +159,17 @@ export default function StudentHome() {
   const bellAnimation = React.useRef(new Animated.Value(0)).current;
   const toastAnimation = React.useRef(new Animated.Value(0)).current;
 
-  // Dynamic mood prompt schedule (6 times a day with equal intervals)
-  // Each prompt is 4 hours apart from the first login time
-  const generateMoodPromptTimes = (firstLoginTime: Date): { time: Date, label: string, intervalNumber: number }[] => {
+  // Fixed mood prompt schedule (6 times a day at specific times)
+  // Times are distributed evenly throughout the day regardless of login time
+  const generateMoodPromptTimes = (referenceDate: Date): { time: Date, label: string, intervalNumber: number }[] => {
     const prompts = [];
-    const labels = ['First Check-in', 'Mid-Morning', 'Afternoon', 'Evening', 'Night', 'Late Night'];
+    // Fixed times: 8 AM, 11 AM, 2 PM, 5 PM, 8 PM, 11 PM
+    const scheduledHours = [8, 11, 14, 17, 20, 23];
+    const labels = ['Morning Check-in', 'Late Morning', 'Afternoon', 'Evening', 'Night', 'Before Sleep'];
 
     for (let i = 0; i < 6; i++) {
-      const promptTime = new Date(firstLoginTime);
-      promptTime.setHours(promptTime.getHours() + (i * 4)); // 4-hour intervals
+      const promptTime = new Date(referenceDate);
+      promptTime.setHours(scheduledHours[i], 0, 0, 0); // Set specific hour, 0 minutes, 0 seconds
 
       prompts.push({
         time: promptTime,
@@ -497,7 +499,7 @@ export default function StudentHome() {
     }
   };
 
-  // Initialize mood prompt system with equal intervals
+  // Initialize mood prompt system with fixed daily times
   const initializeMoodPromptSystem = async (regNo: string) => {
     try {
       const today = getTodayKey();
@@ -509,16 +511,21 @@ export default function StudentHome() {
 
       let dailySchedule;
       if (!scheduleData) {
-        // Create new schedule starting from current time (first login of the day)
+        // Create new schedule with fixed times for today
+        const todayDate = new Date();
+        todayDate.setHours(0, 0, 0, 0); // Start of day
+        
         dailySchedule = {
-          firstLoginTime: now.toISOString(),
-          promptTimes: generateMoodPromptTimes(now),
+          date: today,
+          promptTimes: generateMoodPromptTimes(todayDate),
           completedPrompts: [],
           count: 0
         };
         await AsyncStorage.setItem(scheduleKey, JSON.stringify(dailySchedule));
+        console.log('📅 Created new mood schedule for', today, 'with 6 prompts');
       } else {
         dailySchedule = JSON.parse(scheduleData);
+        console.log(`📊 Loaded mood schedule: ${dailySchedule.count}/6 completed`);
       }
 
       setMoodPromptsToday(dailySchedule.count);

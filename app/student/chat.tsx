@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {  Alert,  Dimensions,  FlatList,  Image,  InteractionManager,  KeyboardAvoidingView,  Modal,  Platform,  SafeAreaView,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
+import {  Alert,  Dimensions,  FlatList,  Image,  InteractionManager,  KeyboardAvoidingView,  Modal,  Platform,  RefreshControl,  SafeAreaView,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { ChatMessage } from '@/types/Message';
 import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
+import { RefreshConfig } from '@/constants/RefreshConfig';
 
 
 
@@ -63,9 +64,19 @@ export default function Chat() {
   const { session } = useAuth();
   const { data: profile } = useProfile(session?.user.id);
 
+  // Validation check
+  useEffect(() => {
+    if (!participantId) {
+      console.error('No participantId provided. Params:', params);
+      Alert.alert('Error', 'Cannot load chat. Participant information is missing.');
+      router.back();
+    }
+  }, [participantId, params]);
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [participantOnline, setParticipantOnline] = useState(false);
   const [participantLastSeen, setParticipantLastSeen] = useState<string | null>(null);
   const [alias, setAlias] = useState<string | null>(null);
@@ -74,6 +85,7 @@ export default function Chat() {
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const onlineTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Memoized functions for better performance
   const handleBackPress = useCallback(() => {
@@ -108,16 +120,27 @@ export default function Chat() {
   const handleSendMessage = useCallback(() => {
     if (newMessage.trim() === '' || isSending) return;
 
+    // Validation checks
+    if (!profile?.id) {
+      Alert.alert('Error', 'User profile not loaded. Please try again.');
+      return;
+    }
+
+    if (!participantId) {
+      Alert.alert('Error', 'Cannot send message. Recipient information is missing.');
+      return;
+    }
+
     setIsSending(true);
 
     // Immediate UI update for instant feedback
     const tempMessage = {
       id: `temp_${Date.now()}`,
-      sender_id: profile!.id,
+      sender_id: profile.id,
       receiver_id: participantId,
       message: newMessage.trim(),
       created_at: new Date().toISOString(),
-      sender_name: profile!.name,
+      sender_name: profile.name,
       sender_type: 'STUDENT' as const,
     };
 
@@ -313,14 +336,39 @@ export default function Chat() {
     const textToSend = messageText || newMessage.trim();
     if (textToSend === '') return;
 
+    // Validation checks
+    if (!profile?.id) {
+      console.error('No profile id');
+      Alert.alert('Error', 'User profile not loaded');
+      if (tempId) {
+        setChatMessages(prev => prev.filter(msg => msg.id !== tempId));
+      }
+      return;
+    }
+
+    if (!participantId) {
+      console.error('No participantId available');
+      Alert.alert('Error', 'Recipient information is missing');
+      if (tempId) {
+        setChatMessages(prev => prev.filter(msg => msg.id !== tempId));
+      }
+      return;
+    }
+
     const messageData = {
-      sender_id: profile?.id,
-      receiver_id: participantId as string,
-      sender_name: profile?.name,
+      sender_id: profile.id,
+      receiver_id: participantId,
+      sender_name: profile.name,
       sender_type: 'STUDENT' as const,
       message: textToSend,
       created_at: new Date(),
     };
+
+    console.log('Sending message with data:', { 
+      sender_id: messageData.sender_id, 
+      receiver_id: messageData.receiver_id,
+      message: messageData.message 
+    });
 
     try {
       const { data, error } = await supabase
@@ -364,6 +412,58 @@ export default function Chat() {
       Alert.alert('Error', 'Failed to send message');
     }
   };
+
+  // Pull-to-refresh handler
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadChatMessages(),
+        updateParticipantStatusFromMessages()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing chat:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Auto-refresh on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      if (profile && participantId) {
+        loadChatMessages();
+        updateParticipantStatusFromMessages();
+        loadAlias();
+      }
+    }, [profile, participantId])
+  );
+
+  // Setup auto-refresh interval (every 20 seconds for active chats)
+  useEffect(() => {
+    if (!profile || !participantId) return;
+
+    // Initial load
+    loadChatMessages();
+    updateParticipantStatusFromMessages();
+    loadAlias();
+    setupRealtimeSubscription();
+
+    // Set up interval for auto-refresh
+    autoRefreshIntervalRef.current = setInterval(() => {
+      loadChatMessages();
+      updateParticipantStatusFromMessages();
+    }, RefreshConfig.CHAT_REFRESH_INTERVAL);
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+      if (onlineTimeoutRef.current) {
+        clearTimeout(onlineTimeoutRef.current);
+      }
+    };
+  }, [profile, participantId]);
 
   const clearChat = async () => {
     Alert.alert(
@@ -503,6 +603,14 @@ export default function Chat() {
           getItemLayout={undefined}
           disableVirtualization={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#007AFF"
+              colors={['#007AFF']}
+            />
+          }
         />
       </View>
 

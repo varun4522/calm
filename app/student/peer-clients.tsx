@@ -1,23 +1,31 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import {  ActivityIndicator,  Alert,  RefreshControl,  ScrollView,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View} from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {  ActivityIndicator,  Alert,  RefreshControl,  ScrollView,  StyleSheet,  Text,  TextInput,  TouchableOpacity,  View, Modal, Linking} from 'react-native';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
 import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
+import { RefreshConfig } from '@/constants/RefreshConfig';
 
 interface ClientSession {
   id: string;
+  studentId: string;
   studentName: string;
   studentReg: string;
   session_date: string;
   session_time: string;
   booking_mode?: 'online' | 'offline';
-  status: 'pending' | 'approved' | 'rejected' | 'completed';
+  status: 'pending' | 'approved' | 'rejected' | 'complete';
   notes?: string;
   created_at: string;
+}
+
+interface ClientDetails extends ClientSession {
+  studentEmail?: string;
+  studentPhone?: string;
+  studentType?: string;
 }
 
 export default function PeerClientsPage() {
@@ -30,13 +38,41 @@ export default function PeerClientsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'pending' | 'approved' | 'completed'>('all');
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'complete'>('all');
+  const [selectedClient, setSelectedClient] = useState<ClientDetails | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
+  const autoRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (profile) {
       loadClients();
     }
+  }, [profile]);
+
+  // Auto-refresh on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      if (profile) {
+        loadClients();
+      }
+    }, [profile])
+  );
+
+  // Setup auto-refresh interval (every 45 seconds)
+  useEffect(() => {
+    if (!profile) return;
+
+    // Set up interval for auto-refresh
+    autoRefreshIntervalRef.current = setInterval(() => {
+      loadClients();
+    }, RefreshConfig.CLIENT_LIST_REFRESH_INTERVAL);
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+    };
   }, [profile]);
 
   useEffect(() => {
@@ -61,8 +97,9 @@ export default function PeerClientsPage() {
       } else if (data) {
         const transformedClients: ClientSession[] = data.map(session => ({
           id: session.id?.toString() || `session_${Math.random()}`,
+          studentId: session.student_id || '',
           studentName: session.user_name || session.student_name || 'Unknown Student',
-          studentReg: session.registration_number || session.student_registration || 'N/A',
+          studentReg: session.student_registration_number?.toString() || 'N/A',
           session_date: session.session_date || '',
           session_time: session.session_time || '',
           booking_mode: session.booking_mode || undefined,
@@ -106,6 +143,112 @@ export default function PeerClientsPage() {
   const onRefresh = async () => {
     setRefreshing(true);
     await loadClients();
+  };
+
+  const handleViewDetails = async (client: ClientSession) => {
+    try {
+      // Fetch additional user details from profiles table
+      const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('email, phone, type')
+        .eq('registration_number', parseInt(client.studentReg))
+        .single();
+
+      if (error) {
+        console.error('Error fetching client details:', error);
+      }
+
+      // Combine client session data with profile data
+      const clientDetails: ClientDetails = {
+        ...client,
+        studentEmail: profileData?.email,
+        studentPhone: profileData?.phone,
+        studentType: profileData?.type,
+      };
+
+      setSelectedClient(clientDetails);
+      setShowDetailsModal(true);
+    } catch (err) {
+      console.error('Error:', err);
+      Alert.alert('Error', 'Failed to load client details');
+    }
+  };
+
+  const handleCallClient = (phoneNumber: string) => {
+    if (!phoneNumber) {
+      Alert.alert('No Phone Number', 'Phone number is not available for this client.');
+      return;
+    }
+
+    Alert.alert(
+      'Call Client',
+      `Do you want to call ${phoneNumber}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Call',
+          onPress: async () => {
+            const phoneUrl = `tel:${phoneNumber}`;
+            const canOpen = await Linking.canOpenURL(phoneUrl);
+            if (canOpen) {
+              await Linking.openURL(phoneUrl);
+            } else {
+              Alert.alert('Error', 'Unable to make phone calls on this device');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEmailClient = (email: string) => {
+    if (!email) {
+      Alert.alert('No Email', 'Email address is not available for this client.');
+      return;
+    }
+
+    Alert.alert(
+      'Email Client',
+      `Do you want to send an email to ${email}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Email',
+          onPress: async () => {
+            const emailUrl = `mailto:${email}`;
+            const canOpen = await Linking.canOpenURL(emailUrl);
+            if (canOpen) {
+              await Linking.openURL(emailUrl);
+            } else {
+              Alert.alert('Error', 'Unable to open email client');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleMessageClient = (client: ClientDetails) => {
+    console.log('Message client pressed with:', {
+      studentId: client.studentId,
+      studentName: client.studentName,
+    });
+
+    if (!client.studentId) {
+      Alert.alert('Error', 'Cannot start chat. Student information is missing.');
+      return;
+    }
+
+    // Navigate to chat page with client info
+    router.push({
+      pathname: '/student/chat',
+      params: {
+        participantId: client.studentId,
+        participantName: client.studentName,
+        participantType: 'STUDENT',
+      }
+    });
+    setShowDetailsModal(false);
   };
 
   const handleApprove = async (clientId: string) => {
@@ -185,7 +328,7 @@ export default function PeerClientsPage() {
             try {
               const { error } = await supabase
                 .from('book_request')
-                .update({ status: 'completed' })
+                .update({ status: 'complete' })
                 .eq('id', clientId);
 
               if (error) {
@@ -231,7 +374,7 @@ export default function PeerClientsPage() {
       case 'pending': return '#FF9800';
       case 'approved': return '#4CAF50';
       case 'rejected': return '#F44336';
-      case 'completed': return '#2196F3';
+      case 'complete': return '#2196F3';
       default: return Colors.textSecondary;
     }
   };
@@ -246,7 +389,14 @@ export default function PeerClientsPage() {
         >
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Clients</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>My Clients</Text>
+          {profile?.registration_number && (
+            <Text style={styles.headerSubtitle}>
+              Reg No: {profile.registration_number}
+            </Text>
+          )}
+        </View>
         <View style={styles.placeholder} />
       </View>
 
@@ -274,7 +424,7 @@ export default function PeerClientsPage() {
         style={styles.filterContainer}
         contentContainerStyle={styles.filterContent}
       >
-        {(['all', 'pending', 'approved', 'completed'] as const).map((filter) => (
+        {(['all', 'pending', 'approved', 'rejected', 'complete'] as const).map((filter) => (
           <TouchableOpacity
             key={filter}
             style={[
@@ -289,7 +439,7 @@ export default function PeerClientsPage() {
                 selectedFilter === filter && styles.filterTextActive
               ]}
             >
-              {filter.charAt(0).toUpperCase() + filter.slice(1)}
+              {filter === 'complete' ? 'Completed' : filter.charAt(0).toUpperCase() + filter.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -322,7 +472,12 @@ export default function PeerClientsPage() {
           }
         >
           {filteredClients.map((client) => (
-            <View key={client.id} style={styles.clientCard}>
+            <TouchableOpacity
+              key={client.id}
+              style={styles.clientCard}
+              onPress={() => handleViewDetails(client)}
+              activeOpacity={0.7}
+            >
               {/* Client Header */}
               <View style={styles.clientHeader}>
                 <View style={styles.clientInfo}>
@@ -378,6 +533,37 @@ export default function PeerClientsPage() {
                 </View>
               )}
 
+              {/* Chat Button - Always visible */}
+              <TouchableOpacity
+                style={styles.chatButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  
+                  console.log('Chat button pressed with client:', {
+                    studentId: client.studentId,
+                    studentName: client.studentName,
+                    studentReg: client.studentReg,
+                  });
+
+                  if (!client.studentId) {
+                    Alert.alert('Error', 'Cannot start chat. Student information is missing.');
+                    return;
+                  }
+
+                  router.push({
+                    pathname: '/student/chat',
+                    params: {
+                      participantId: client.studentId,
+                      participantName: client.studentName,
+                      participantType: 'STUDENT',
+                    }
+                  });
+                }}
+              >
+                <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
+                <Text style={styles.chatButtonText}>Chat with Client</Text>
+              </TouchableOpacity>
+
               {/* Action Buttons */}
               {client.status === 'pending' && (
                 <View style={styles.actionButtons}>
@@ -407,10 +593,235 @@ export default function PeerClientsPage() {
                   <Text style={styles.actionButtonText}>Mark as Completed</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       )}
+
+      {/* Client Details Modal */}
+      <Modal
+        visible={showDetailsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDetailsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Client Details</Text>
+              <TouchableOpacity
+                onPress={() => setShowDetailsModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={28} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedClient && (
+              <ScrollView
+                style={styles.modalScroll}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Contact Actions */}
+                <View style={styles.contactActionsContainer}>
+                  <TouchableOpacity
+                    style={styles.contactButton}
+                    onPress={() => handleMessageClient(selectedClient)}
+                  >
+                    <Ionicons name="chatbubble" size={20} color="white" />
+                    <Text style={styles.contactButtonText}>Message</Text>
+                  </TouchableOpacity>
+                  
+                  {selectedClient.studentPhone && (
+                    <TouchableOpacity
+                      style={styles.contactButton}
+                      onPress={() => handleCallClient(selectedClient.studentPhone!)}
+                    >
+                      <Ionicons name="call" size={20} color="white" />
+                      <Text style={styles.contactButtonText}>Call</Text>
+                    </TouchableOpacity>
+                  )}
+                  
+                  {selectedClient.studentEmail && (
+                    <TouchableOpacity
+                      style={styles.contactButton}
+                      onPress={() => handleEmailClient(selectedClient.studentEmail!)}
+                    >
+                      <Ionicons name="mail" size={20} color="white" />
+                      <Text style={styles.contactButtonText}>Email</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Client Info Section */}
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>Personal Information</Text>
+                  
+                  <View style={styles.modalDetailRow}>
+                    <Ionicons name="person" size={20} color={Colors.primary} />
+                    <View style={styles.modalDetailContent}>
+                      <Text style={styles.modalDetailLabel}>Name</Text>
+                      <Text style={styles.modalDetailValue}>{selectedClient.studentName}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalDetailRow}>
+                    <Ionicons name="card" size={20} color={Colors.primary} />
+                    <View style={styles.modalDetailContent}>
+                      <Text style={styles.modalDetailLabel}>Registration Number</Text>
+                      <Text style={styles.modalDetailValue}>{selectedClient.studentReg}</Text>
+                    </View>
+                  </View>
+
+                  {selectedClient.studentEmail && (
+                    <View style={styles.modalDetailRow}>
+                      <Ionicons name="mail" size={20} color={Colors.primary} />
+                      <View style={styles.modalDetailContent}>
+                        <Text style={styles.modalDetailLabel}>Email</Text>
+                        <Text style={styles.modalDetailValue}>{selectedClient.studentEmail}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {selectedClient.studentPhone && (
+                    <View style={styles.modalDetailRow}>
+                      <Ionicons name="call" size={20} color={Colors.primary} />
+                      <View style={styles.modalDetailContent}>
+                        <Text style={styles.modalDetailLabel}>Phone</Text>
+                        <Text style={styles.modalDetailValue}>{selectedClient.studentPhone}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {selectedClient.studentType && (
+                    <View style={styles.modalDetailRow}>
+                      <Ionicons name="briefcase" size={20} color={Colors.primary} />
+                      <View style={styles.modalDetailContent}>
+                        <Text style={styles.modalDetailLabel}>User Type</Text>
+                        <Text style={styles.modalDetailValue}>{selectedClient.studentType}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                {/* Session Info Section */}
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>Session Information</Text>
+                  
+                  <View style={styles.modalDetailRow}>
+                    <Ionicons name="calendar" size={20} color={Colors.primary} />
+                    <View style={styles.modalDetailContent}>
+                      <Text style={styles.modalDetailLabel}>Date</Text>
+                      <Text style={styles.modalDetailValue}>{formatDate(selectedClient.session_date)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalDetailRow}>
+                    <Ionicons name="time" size={20} color={Colors.primary} />
+                    <View style={styles.modalDetailContent}>
+                      <Text style={styles.modalDetailLabel}>Time</Text>
+                      <Text style={styles.modalDetailValue}>{formatTime(selectedClient.session_time)}</Text>
+                    </View>
+                  </View>
+
+                  {selectedClient.booking_mode && (
+                    <View style={styles.modalDetailRow}>
+                      <Ionicons
+                        name={selectedClient.booking_mode === 'online' ? 'videocam' : 'person'}
+                        size={20}
+                        color={Colors.primary}
+                      />
+                      <View style={styles.modalDetailContent}>
+                        <Text style={styles.modalDetailLabel}>Mode</Text>
+                        <Text style={styles.modalDetailValue}>
+                          {selectedClient.booking_mode === 'online' ? 'Online Session' : 'In-Person Session'}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={styles.modalDetailRow}>
+                    <Ionicons name="information-circle" size={20} color={Colors.primary} />
+                    <View style={styles.modalDetailContent}>
+                      <Text style={styles.modalDetailLabel}>Status</Text>
+                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedClient.status) + '20' }]}>
+                        <Text style={[styles.statusText, { color: getStatusColor(selectedClient.status) }]}>
+                          {selectedClient.status.charAt(0).toUpperCase() + selectedClient.status.slice(1)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalDetailRow}>
+                    <Ionicons name="time-outline" size={20} color={Colors.primary} />
+                    <View style={styles.modalDetailContent}>
+                      <Text style={styles.modalDetailLabel}>Requested On</Text>
+                      <Text style={styles.modalDetailValue}>
+                        {new Date(selectedClient.created_at).toLocaleString('en-US', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short'
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Notes Section */}
+                {selectedClient.notes && (
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Notes</Text>
+                    <View style={styles.modalNotesBox}>
+                      <Text style={styles.modalNotesText}>{selectedClient.notes}</Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Action Buttons in Modal */}
+                <View style={styles.modalActionsSection}>
+                  {selectedClient.status === 'pending' && (
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.approveButton]}
+                        onPress={() => {
+                          setShowDetailsModal(false);
+                          handleApprove(selectedClient.id);
+                        }}
+                      >
+                        <Ionicons name="checkmark-circle" size={20} color="white" />
+                        <Text style={styles.actionButtonText}>Approve</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.rejectButton]}
+                        onPress={() => {
+                          setShowDetailsModal(false);
+                          handleReject(selectedClient.id);
+                        }}
+                      >
+                        <Ionicons name="close-circle" size={20} color="white" />
+                        <Text style={styles.actionButtonText}>Reject</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {selectedClient.status === 'approved' && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.completeButton]}
+                      onPress={() => {
+                        setShowDetailsModal(false);
+                        handleComplete(selectedClient.id);
+                      }}
+                    >
+                      <Ionicons name="checkmark-done" size={20} color="white" />
+                      <Text style={styles.actionButtonText}>Mark as Completed</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -434,11 +845,21 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: Colors.text,
-    flex: 1,
+    textAlign: 'center',
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
     textAlign: 'center',
   },
   placeholder: {
@@ -465,10 +886,11 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     marginBottom: 15,
+    maxHeight: 50,
   },
   filterContent: {
     paddingHorizontal: 20,
-    gap: 10,
+    paddingRight: 40,
   },
   filterTab: {
     paddingHorizontal: 20,
@@ -477,6 +899,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.border,
+    marginRight: 10,
   },
   filterTabActive: {
     backgroundColor: Colors.primary,
@@ -569,11 +992,11 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     marginBottom: 10,
+    gap: 8,
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
   },
   detailText: {
     fontSize: 14,
@@ -581,10 +1004,12 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   notesContainer: {
-    backgroundColor: '#FFF9C4',
+    backgroundColor: Colors.backgroundLight,
     padding: 12,
     borderRadius: 10,
     marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
   },
   notesLabel: {
     fontSize: 12,
@@ -597,18 +1022,42 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 20,
   },
+  chatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    gap: 8,
+  },
+  chatButtonText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   actionButtons: {
     flexDirection: 'row',
     gap: 10,
+    marginTop: 2,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 10,
-    gap: 6,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
   },
   approveButton: {
     backgroundColor: '#4CAF50',
@@ -623,5 +1072,119 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    maxHeight: '90%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalScroll: {
+    flex: 1,
+  },
+  modalSection: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  modalSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 15,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingLeft: 5,
+  },
+  modalDetailContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  modalDetailLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  modalDetailValue: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  modalNotesBox: {
+    backgroundColor: Colors.backgroundLight,
+    padding: 15,
+    borderRadius: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
+  },
+  modalNotesText: {
+    fontSize: 14,
+    color: Colors.text,
+    lineHeight: 22,
+  },
+  modalActionsSection: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  contactActionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  contactButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+    minWidth: '30%',
+  },
+  contactButtonText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

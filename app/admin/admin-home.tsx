@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
 import { JSX, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Modal, Alert } from 'react-native';
 import { supabase } from '@/lib/supabase'; // Corrected import path
+import Toast from 'react-native-toast-message';
 
 console.log('AdminHome component loaded');
 
@@ -14,6 +15,9 @@ export default function AdminHome() {
   const [buddyMessages, setBuddyMessages] = useState<any[]>([]);
   const [buddyMessage, setBuddyMessage] = useState('');
   const [buddySending, setBuddySending] = useState(false);
+  const [showUserTypeModal, setShowUserTypeModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [changingType, setChangingType] = useState(false);
   const router = useRouter();
   // Redirect to admin AI page when AI tab is selected
   useEffect(() => {
@@ -53,8 +57,7 @@ export default function AdminHome() {
         // Fetch all profiles with their details (includes Students, Experts, Peer Listeners, and Admins)
         const { data: profilesData, error: profileError } = await supabase
           .from('profiles')
-          .select('id, name, username, type, registration_number, email, course, phone_number, date_of_birth, created_at')
-          .order('created_at', { ascending: false });
+          .select('id, name, username, type, registration_number, email, course, phone_number, date_of_birth');
 
         console.log('Profiles results:', { data: profilesData, error: profileError });
 
@@ -83,13 +86,10 @@ export default function AdminHome() {
               email: profile.email || 'N/A',
               course: profile.course || 'N/A',
               type: profile.type, // 'STUDENT', 'EXPERT', 'PEER', 'ADMIN'
-              status: getOnlineStatus(profile.created_at),
               request_status: 'approved', // All users in profiles are approved
               phone: profile.phone_number || 'N/A',
               dob: profile.date_of_birth || 'N/A',
               details: 'N/A',
-              created_at: profile.created_at,
-              updated_at: profile.created_at,
               category: profile.type.toLowerCase()
             });
           });
@@ -126,8 +126,7 @@ export default function AdminHome() {
           // Fetch all profiles (includes Students, Experts, Peer Listeners, and Admins)
           const { data: profilesData, error: profileError } = await supabase
             .from('profiles')
-            .select('id, name, username, type, registration_number, email, course, phone_number, date_of_birth, created_at')
-            .order('created_at', { ascending: false });
+            .select('id, name, username, type, registration_number, email, course, phone_number, date_of_birth');
 
           if (profileError) {
             console.error('Error fetching profiles:', profileError);
@@ -253,71 +252,71 @@ export default function AdminHome() {
         }
 
         if (originalRequest.user_type === 'Student') {
-            // Create student account
-            const { error: studentError } = await supabase
-              .from('students')
-              .insert([{
-                user_name: originalRequest.user_name,
-                username: originalRequest.username || originalRequest.registration_number,
-                registration_number: originalRequest.registration_number,
-                email: originalRequest.email,
-                course: originalRequest.course || 'Not Specified',
-                password: originalRequest.password,
-                phone: originalRequest.phone,
-                dob: originalRequest.dob
-              }]);
+          // Create student account
+          const { error: studentError } = await supabase
+            .from('students')
+            .insert([{
+              user_name: originalRequest.user_name,
+              username: originalRequest.username || originalRequest.registration_number,
+              registration_number: originalRequest.registration_number,
+              email: originalRequest.email,
+              course: originalRequest.course || 'Not Specified',
+              password: originalRequest.password,
+              phone: originalRequest.phone,
+              dob: originalRequest.dob
+            }]);
 
-            if (studentError) {
-              console.error('Error creating student account:', studentError);
-              alert('Error creating student account. Please try again.');
-            } else {
-              console.log('Student account created successfully');
-              alert('Student account created successfully! They can now login.');
-            }
-          } else if (originalRequest.user_type === 'Expert') {
-            // Create expert account
-            const { error: expertError } = await supabase
-              .from('experts')
-              .insert([{
-                user_name: originalRequest.user_name,
-                username: originalRequest.username || originalRequest.registration_number,
-                registration_number: originalRequest.registration_number,
-                email: originalRequest.email,
-                specialization: originalRequest.course || 'General', // Use course as specialization
-                password: originalRequest.password,
-                phone: originalRequest.phone,
-                dob: originalRequest.dob
-              }]);
-
-            if (expertError) {
-              console.error('Error creating expert account:', expertError);
-              alert('Error creating expert account. Please try again.');
-            } else {
-              console.log('Expert account created successfully');
-              alert('Expert account created successfully! They can now login.');
-            }
-          } else if (originalRequest.user_type === 'Peer Listener') {
-            // Create peer listener account
-            const { error: peerError } = await supabase
-              .from('peer_listeners')
-              .insert([{
-                user_name: originalRequest.user_name,
-                username: originalRequest.username || originalRequest.registration_number,
-                registration_number: originalRequest.registration_number,
-                email: originalRequest.email,
-                password: originalRequest.password,
-                phone: originalRequest.phone,
-                dob: originalRequest.dob
-              }]);
-
-            if (peerError) {
-              console.error('Error creating peer listener account:', peerError);
-              alert('Error creating peer listener account. Please try again.');
-            } else {
-              console.log('Peer listener account created successfully');
-              alert('Peer listener account created successfully! They can now login.');
-            }
+          if (studentError) {
+            console.error('Error creating student account:', studentError);
+            alert('Error creating student account. Please try again.');
+          } else {
+            console.log('Student account created successfully');
+            alert('Student account created successfully! They can now login.');
           }
+        } else if (originalRequest.user_type === 'Expert') {
+          // Create expert account
+          const { error: expertError } = await supabase
+            .from('experts')
+            .insert([{
+              user_name: originalRequest.user_name,
+              username: originalRequest.username || originalRequest.registration_number,
+              registration_number: originalRequest.registration_number,
+              email: originalRequest.email,
+              specialization: originalRequest.course || 'General', // Use course as specialization
+              password: originalRequest.password,
+              phone: originalRequest.phone,
+              dob: originalRequest.dob
+            }]);
+
+          if (expertError) {
+            console.error('Error creating expert account:', expertError);
+            alert('Error creating expert account. Please try again.');
+          } else {
+            console.log('Expert account created successfully');
+            alert('Expert account created successfully! They can now login.');
+          }
+        } else if (originalRequest.user_type === 'Peer Listener') {
+          // Create peer listener account
+          const { error: peerError } = await supabase
+            .from('peer_listeners')
+            .insert([{
+              user_name: originalRequest.user_name,
+              username: originalRequest.username || originalRequest.registration_number,
+              registration_number: originalRequest.registration_number,
+              email: originalRequest.email,
+              password: originalRequest.password,
+              phone: originalRequest.phone,
+              dob: originalRequest.dob
+            }]);
+
+          if (peerError) {
+            console.error('Error creating peer listener account:', peerError);
+            alert('Error creating peer listener account. Please try again.');
+          } else {
+            console.log('Peer listener account created successfully');
+            alert('Peer listener account created successfully! They can now login.');
+          }
+        }
       }
 
       // Update local state
@@ -417,6 +416,70 @@ export default function AdminHome() {
     }
   };
 
+  const handleChangeUserType = async (newType: string) => {
+    if (!selectedUser) return;
+    
+    setChangingType(true);
+    console.log(`🔄 Changing user type for ${selectedUser.name} from ${selectedUser.type} to ${newType}`);
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ type: newType })
+        .eq('id', selectedUser.id)
+        .select();
+
+      if (error) {
+        console.error('❌ Error updating user type:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Failed to update user type',
+          text2: error.message,
+          position: 'bottom',
+          visibilityTime: 3000
+        });
+        return;
+      }
+
+      console.log('✅ User type updated successfully:', data);
+      
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.id === selectedUser.id 
+          ? { ...u, type: newType, category: newType.toLowerCase() }
+          : u
+      ));
+      
+      setRequests(prev => prev.map(r => 
+        r.id === selectedUser.id 
+          ? { ...r, type: newType, user_type: newType }
+          : r
+      ));
+
+      Toast.show({
+        type: 'success',
+        text1: 'User type updated',
+        text2: `${selectedUser.name} is now ${newType}`,
+        position: 'bottom',
+        visibilityTime: 2000
+      });
+
+      setShowUserTypeModal(false);
+      setSelectedUser(null);
+    } catch (error) {
+      console.error('❌ Unexpected error updating user type:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to update user type',
+        text2: 'An unexpected error occurred',
+        position: 'bottom',
+        visibilityTime: 3000
+      });
+    } finally {
+      setChangingType(false);
+    }
+  };
+
   let Content: JSX.Element | null = null;
   // Logout handler (make available for settings tab)
   const handleLogout = async () => {
@@ -494,7 +557,7 @@ export default function AdminHome() {
             </View>
           </View>
 
-          <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold', marginBottom: 16 }}>All User Requests ({users.length})</Text>
+          <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold', marginBottom: 16 }}>All User ({users.length})</Text>
 
           {loading ? (
             <View style={{ alignItems: 'center', marginTop: 40, backgroundColor: '#111', borderRadius: 12, padding: 20 }}>
@@ -503,7 +566,7 @@ export default function AdminHome() {
             </View>
           ) : users.length === 0 ? (
             <View style={{ alignItems: 'center', marginTop: 40, backgroundColor: '#111', borderRadius: 12, padding: 20 }}>
-              <Text style={{ color: '#aaa', fontSize: 18, marginBottom: 8 }}>No user requests found</Text>
+              <Text style={{ color: '#aaa', fontSize: 18, marginBottom: 8 }}>No user found</Text>
               <Text style={{ color: '#666', fontSize: 14 }}>User registration requests will appear here</Text>
             </View>
           ) : (
@@ -515,7 +578,7 @@ export default function AdminHome() {
                 marginBottom: 12,
                 borderLeftWidth: 4,
                 borderLeftColor: user.request_status === 'approved' ? '#2ecc71' :
-                                user.request_status === 'pending' ? '#f39c12' : '#e74c3c',
+                  user.request_status === 'pending' ? '#f39c12' : '#e74c3c',
                 elevation: 3,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
@@ -540,7 +603,7 @@ export default function AdminHome() {
                     </View>
                     <View style={{
                       backgroundColor: user.request_status === 'approved' ? '#2ecc71' :
-                                     user.request_status === 'pending' ? '#f39c12' : '#e74c3c',
+                        user.request_status === 'pending' ? '#f39c12' : '#e74c3c',
                       paddingHorizontal: 10,
                       paddingVertical: 4,
                       borderRadius: 12,
@@ -549,23 +612,6 @@ export default function AdminHome() {
                       <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>
                         {user.request_status?.toUpperCase() || 'UNKNOWN'}
                       </Text>
-                    </View>
-                    <View style={{
-                      backgroundColor: user.status === 'Online' ? '#2ecc71' : '#e74c3c',
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                      borderRadius: 12,
-                      flexDirection: 'row',
-                      alignItems: 'center'
-                    }}>
-                      <View style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: 'white',
-                        marginRight: 6
-                      }} />
-                      <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>{user.status}</Text>
                     </View>
                   </View>
                 </View>
@@ -581,29 +627,10 @@ export default function AdminHome() {
                         <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>{user.reg_no || 'N/A'}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>REQUEST STATUS</Text>
-                        <Text style={{
-                          color: user.request_status === 'approved' ? '#2ecc71' :
-                                 user.request_status === 'pending' ? '#f39c12' : '#e74c3c',
-                          fontSize: 14,
-                          fontWeight: 'bold'
-                        }}>
-                          {user.request_status?.toUpperCase() || 'UNKNOWN'}
-                        </Text>
+                        <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>PHONE NUMBER</Text>
+                         <Text style={{ color: 'white', fontSize: 14 }}>{user.phone}</Text>
                       </View>
                     </View>
-                    {user.phone !== 'N/A' && (
-                      <View style={{ flexDirection: 'row', marginBottom: 6 }}>
-                        <View style={{ flex: 1, marginRight: 8 }}>
-                          <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>PHONE NUMBER</Text>
-                          <Text style={{ color: 'white', fontSize: 14 }}>{user.phone}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>DATE OF BIRTH</Text>
-                          <Text style={{ color: 'white', fontSize: 14 }}>{user.dob !== 'N/A' ? new Date(user.dob).toLocaleDateString() : 'N/A'}</Text>
-                        </View>
-                      </View>
-                    )}
                   </View>
 
                   {/* Request Details Section */}
@@ -694,56 +721,38 @@ export default function AdminHome() {
                     </View>
                   )}
 
-                  {/* Account Activity & Timeline */}
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ color: '#f39c12', fontSize: 14, fontWeight: 'bold', marginBottom: 8 }}>⏰ Account Activity</Text>
-                    <View style={{ flexDirection: 'row', marginBottom: 6 }}>
-                      <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>ACCOUNT CREATED</Text>
-                        <Text style={{ color: 'white', fontSize: 13 }}>{new Date(user.created_at).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>LAST ACTIVITY</Text>
-                        <Text style={{ color: 'white', fontSize: 13 }}>{new Date(user.updated_at).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}</Text>
-                      </View>
+                  {/* Change User Type Button */}
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#9b59b6',
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      borderRadius: 10,
+                      marginBottom: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      elevation: 3,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 4,
+                    }}
+                    onPress={() => {
+                      setSelectedUser(user);
+                      setShowUserTypeModal(true);
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold', marginRight: 8 }}>🔄 Change User Type</Text>
+                    <View style={{
+                      backgroundColor: 'rgba(255,255,255,0.2)',
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 8
+                    }}>
+                      <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>Current: {user.type}</Text>
                     </View>
-                    <View style={{ flexDirection: 'row' }}>
-                      <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>ACCOUNT STATUS</Text>
-                        <Text style={{ color: '#2ecc71', fontSize: 13, fontWeight: 'bold' }}>Active & Verified</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>CURRENT STATUS</Text>
-                        <Text style={{ color: user.status === 'Online' ? '#2ecc71' : '#e74c3c', fontSize: 13, fontWeight: 'bold' }}>
-                          {user.status}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Quick Stats */}
-                  <View style={{
-                    backgroundColor: '#0a0a0a',
-                    borderRadius: 8,
-                    padding: 10,
-                    borderWidth: 1,
-                    borderColor: user.type === 'Student' ? '#1e90ff' : '#7965AF'
-                  }}>
-                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold', textAlign: 'center' }}>
-                      {user.type === 'Student'
-                        ? `📚 Student enrolled in ${user.course} • Joined ${new Date(user.created_at).toLocaleDateString()}`
-                        : `🩺 Mental Health Expert • Professional since ${new Date(user.created_at).toLocaleDateString()}`
-                    }
-                    </Text>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))
@@ -751,15 +760,15 @@ export default function AdminHome() {
         </ScrollView>
       </View>
     );
-  // Logout handler
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      router.replace('/'); // Navigate to main login page
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  };
+    // Logout handler
+    const handleLogout = async () => {
+      try {
+        await supabase.auth.signOut();
+        router.replace('/'); // Navigate to main login page
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+    };
 
   } else if (activeTab === 'settings') {
     Content = null; // Navigation handled in useEffect
@@ -808,7 +817,7 @@ export default function AdminHome() {
                 marginBottom: 12,
                 borderLeftWidth: 4,
                 borderLeftColor: request.status === 'pending' ? '#f39c12' :
-                                request.status === 'approved' ? '#2ecc71' : '#e74c3c'
+                  request.status === 'approved' ? '#2ecc71' : '#e74c3c'
               }}>
                 {/* Request Header */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -819,7 +828,7 @@ export default function AdminHome() {
                   <View style={{ alignItems: 'flex-end' }}>
                     <View style={{
                       backgroundColor: request.user_type === 'Student' ? '#1e90ff' :
-                                     request.user_type === 'Expert' ? '#7965AF' : '#10B981',
+                        request.user_type === 'Expert' ? '#7965AF' : '#10B981',
                       paddingHorizontal: 12,
                       paddingVertical: 4,
                       borderRadius: 12,
@@ -829,7 +838,7 @@ export default function AdminHome() {
                     </View>
                     <View style={{
                       backgroundColor: request.status === 'pending' ? '#f39c12' :
-                                     request.status === 'approved' ? '#2ecc71' : '#e74c3c',
+                        request.status === 'approved' ? '#2ecc71' : '#e74c3c',
                       paddingHorizontal: 8,
                       paddingVertical: 2,
                       borderRadius: 8
@@ -1037,6 +1046,139 @@ export default function AdminHome() {
           <Text style={[styles.tabLabel, activeTab === 'BuddyConnect' && styles.activeTabLabel]}>Buddy</Text>
         </TouchableOpacity>
       </View>
+
+      {/* User Type Change Modal */}
+      <Modal
+        visible={showUserTypeModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowUserTypeModal(false);
+          setSelectedUser(null);
+        }}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20
+        }}>
+          <View style={{
+            backgroundColor: '#222',
+            borderRadius: 20,
+            padding: 24,
+            width: '90%',
+            maxWidth: 400,
+            elevation: 10,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            borderWidth: 2,
+            borderColor: '#9b59b6'
+          }}>
+            <Text style={{
+              color: '#FFB347',
+              fontSize: 24,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              marginBottom: 8
+            }}>
+              🔄 Change User Type
+            </Text>
+            
+            {selectedUser && (
+              <>
+                <Text style={{
+                  color: '#aaa',
+                  fontSize: 14,
+                  textAlign: 'center',
+                  marginBottom: 20
+                }}>
+                  Change type for: <Text style={{ color: 'white', fontWeight: 'bold' }}>{selectedUser.name}</Text>
+                  {'\n'}
+                  Current type: <Text style={{ color: '#9b59b6', fontWeight: 'bold' }}>{selectedUser.type}</Text>
+                </Text>
+
+                <View style={{ marginBottom: 20 }}>
+                  {['STUDENT', 'PEER', 'EXPERT', 'ADMIN'].map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      style={{
+                        backgroundColor: selectedUser.type === type ? '#9b59b6' : '#333',
+                        paddingVertical: 14,
+                        paddingHorizontal: 20,
+                        borderRadius: 12,
+                        marginBottom: 10,
+                        borderWidth: 2,
+                        borderColor: selectedUser.type === type ? '#FFB347' : '#444',
+                        elevation: selectedUser.type === type ? 4 : 2,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                      onPress={() => handleChangeUserType(type)}
+                      disabled={changingType || selectedUser.type === type}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 20, marginRight: 12 }}>
+                          {type === 'STUDENT' ? '🎓' : type === 'PEER' ? '👥' : type === 'EXPERT' ? '🩺' : '👑'}
+                        </Text>
+                        <Text style={{
+                          color: 'white',
+                          fontSize: 16,
+                          fontWeight: 'bold'
+                        }}>
+                          {type}
+                        </Text>
+                      </View>
+                      {selectedUser.type === type && (
+                        <Text style={{ color: '#FFB347', fontSize: 14, fontWeight: 'bold' }}>✓ Current</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {changingType && (
+                  <Text style={{
+                    color: '#f39c12',
+                    textAlign: 'center',
+                    marginBottom: 16,
+                    fontSize: 14
+                  }}>
+                    Updating user type...
+                  </Text>
+                )}
+              </>
+            )}
+
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#e74c3c',
+                paddingVertical: 12,
+                paddingHorizontal: 24,
+                borderRadius: 10,
+                elevation: 3
+              }}
+              onPress={() => {
+                setShowUserTypeModal(false);
+                setSelectedUser(null);
+              }}
+              disabled={changingType}
+            >
+              <Text style={{
+                color: 'white',
+                fontSize: 16,
+                fontWeight: 'bold',
+                textAlign: 'center'
+              }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
