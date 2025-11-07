@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function ToolkitFocus() {
   const router = useRouter();
@@ -24,9 +24,6 @@ export default function ToolkitFocus() {
 
   // Cognitive Reframe State
   const [showReframe, setShowReframe] = useState(false);
-  const [reframeAnswers, setReframeAnswers] = useState<string[]>([]);
-  const [reframeInput, setReframeInput] = useState('');
-  const [currentPrompt, setCurrentPrompt] = useState(0);
 
   // Animation
   const timerAnim = useRef(new Animated.Value(1)).current;
@@ -35,12 +32,8 @@ export default function ToolkitFocus() {
   const categories = [
     { name: "Fruits & Vegetables", icon: "🍎", examples: "Apple, Banana, Carrot..." },
     { name: "Animals", icon: "🐱", examples: "Ant, Bear, Cat..." },
-    { name: "Emotions", icon: "😊", examples: "Angry, Brave, Calm..." },
     { name: "Countries", icon: "🌍", examples: "Australia, Brazil, Canada..." },
     { name: "Colors & Objects", icon: "🔴", examples: "Azure, Blue, Crimson..." },
-    { name: "Positive Words", icon: "✨", examples: "Amazing, Beautiful, Creative..." },
-    { name: "School Subjects", icon: "📚", examples: "Art, Biology, Chemistry..." },
-    { name: "Sports & Activities", icon: "⚽", examples: "Archery, Basketball, Cricket..." }
   ];
 
   // Scanner challenges
@@ -57,7 +50,7 @@ export default function ToolkitFocus() {
 
   // Cognitive reframe prompts
   const reframePrompts = [
-    "What's one thing I can control right now?",
+  "What's one thing I can control right now?",
     "What's going well in my life today?",
     "What's one small step I can take to feel better?",
     "What would I tell a friend in this situation?",
@@ -65,6 +58,20 @@ export default function ToolkitFocus() {
     "What's one positive thing about this challenge?",
     "How might this situation help me grow?",
     "What strengths do I have to handle this?"
+  ];
+
+  // Concrete cognitive reframing examples (Q = negative thought, A = constructive reframe)
+  const reframingExamples: { q: string; a: string }[] = [
+    { q: "If I mess up one line, I’ll look like an idiot.", a: "It’s okay to stumble; the audience cares about the message, not flawless delivery." },
+    { q: "This revision means I'm incompetent.", a: "This is specific feedback, offering me a clear opportunity to learn and improve a skill." },
+    { q: "The project is too huge to start.", a: "I just need to break this down and focus on the very first, manageable step." },
+    { q: "I missed that chance and will never get another one.", a: "I can use this time to prepare my skills so I'm ready for the next great opportunity." },
+    { q: "They didn't invite me; they must not like me.", a: "They were probably busy; I can initiate a connection with them next time." },
+    { q: "I'm still not good at this, I'm just bad at learning.", a: "Mastery takes time; I'm comparing my beginning to someone else's middle." },
+    { q: "I forgot one email; everything will fall apart.", a: "It's a correctable mistake; I will send it now and set a system to prevent it next time." },
+    { q: "I'm stuck and can't save anything right now.", a: "I can find one small cut to make in my budget; small steps lead to big change." },
+    { q: "A rough morning means this whole day is ruined.", a: "Stressful things happened, but I have control over how I handle the rest of the day." },
+    { q: "I must say yes to avoid disappointing people.", a: "Saying 'no' protects my well-being and lets me do a better job on my existing commitments." },
   ];
 
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -118,9 +125,6 @@ export default function ToolkitFocus() {
     setScannerInput('');
     setScannerTimer(60);
     setScannerActive(false);
-    setReframeAnswers([]);
-    setReframeInput('');
-    setCurrentPrompt(0);
   };
 
   const saveSession = async (type: string, data: any) => {
@@ -141,13 +145,6 @@ export default function ToolkitFocus() {
     if (scannerInput.trim()) {
       setScannerAnswers(prev => [...prev, scannerInput.trim()]);
       setScannerInput('');
-    }
-  };
-
-  const addReframeAnswer = () => {
-    if (reframeInput.trim()) {
-      setReframeAnswers(prev => [...prev, reframeInput.trim()]);
-      setReframeInput('');
     }
   };
 
@@ -297,7 +294,7 @@ export default function ToolkitFocus() {
                 }}
                 onPress={() => {
                   saveSession('word-builder', { category: categories[selectedCategory].name, answers: wordAnswers });
-                  Alert.alert('Saved!', `Great job! You completed ${getCompletionPercentage()}% of the alphabet.`);
+                  Alert.alert('completed', `Great job! You completed ${getCompletionPercentage()}% of the alphabet.`);
                 }}
               >
                 <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>💾 Save Progress</Text>
@@ -458,7 +455,7 @@ export default function ToolkitFocus() {
             <TouchableOpacity
               onPress={() => {
                 saveSession('scanner', { challenge: scannerTypes[selectedScanType].challenge, answers: scannerAnswers });
-                Alert.alert('Saved!', `Great observation skills! You found ${scannerAnswers.length} items.`);
+                Alert.alert('completed!', `Great observation skills! You found ${scannerAnswers.length} items.`);
               }}
               style={{
                 backgroundColor: scannerTypes[selectedScanType].color,
@@ -468,7 +465,7 @@ export default function ToolkitFocus() {
                 marginTop: 10
               }}
             >
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>💾 Save Results</Text>
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>Show Results</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -476,123 +473,109 @@ export default function ToolkitFocus() {
 
       {/* Cognitive Reframe Modal */}
       <Modal visible={showReframe} animationType="slide" transparent={true}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 25, width: '90%', maxHeight: '80%' }}>
-            <TouchableOpacity onPress={() => { setShowReframe(false); resetStates(); }} style={{ alignSelf: 'flex-end', marginBottom: 10 }}>
-              <Text style={{ color: '#0984e3', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
-            </TouchableOpacity>
-
-            <Text style={{ fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#2c3e50' }}>
-              💭 Cognitive Reframe
-            </Text>
-
-            <View style={{
-              backgroundColor: '#0984e3',
-              borderRadius: 15,
-              padding: 20,
-              marginBottom: 20
-            }}>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', textAlign: 'center' }}>
-                {reframePrompts[currentPrompt]}
-              </Text>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' }}>
+          <View style={{ flex: 1, backgroundColor: '#fff', marginTop: 50, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+            <View style={{ backgroundColor: '#0984e3', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+              <TouchableOpacity onPress={() => { setShowReframe(false); resetStates(); }} style={{ alignSelf: 'flex-start', marginBottom: 10 }}>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>✕ Close</Text>
+              </TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', textAlign: 'center' }}>💭 Cognitive Reframing</Text>
             </View>
 
-            <View style={{ flexDirection: 'row', marginBottom: 15 }}>
-              <TextInput
-                value={reframeInput}
-                onChangeText={setReframeInput}
-                placeholder="Type your thoughts..."
-                multiline
-                style={{
-                  flex: 1,
-                  borderWidth: 1,
-                  borderColor: '#0984e3',
-                  borderRadius: 10,
-                  padding: 15,
-                  marginRight: 10,
-                  fontSize: 16,
-                  minHeight: 60,
-                  textAlignVertical: 'top'
-                }}
-                onSubmitEditing={addReframeAnswer}
-              />
-              <TouchableOpacity
-                onPress={addReframeAnswer}
-                style={{
-                  backgroundColor: '#0984e3',
-                  borderRadius: 10,
-                  paddingHorizontal: 15,
-                  justifyContent: 'center'
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-              <TouchableOpacity
-                onPress={() => setCurrentPrompt(Math.floor(Math.random() * reframePrompts.length))}
-                style={{
-                  backgroundColor: '#f39c12',
-                  borderRadius: 10,
-                  paddingVertical: 8,
-                  paddingHorizontal: 15
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>🎲 Random</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setCurrentPrompt((currentPrompt + 1) % reframePrompts.length)}
-                style={{
-                  backgroundColor: '#2ecc71',
-                  borderRadius: 10,
-                  paddingVertical: 8,
-                  paddingHorizontal: 15
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Next Prompt</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#2c3e50' }}>
-                Your Thoughts ({reframeAnswers.length}):
-              </Text>
-              <ScrollView style={{ flex: 1, maxHeight: 200 }}>
-                {reframeAnswers.map((answer, index) => (
-                  <View key={index} style={{
-                    backgroundColor: '#f0f8ff',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
-                    borderLeftWidth: 4,
-                    borderLeftColor: '#0984e3'
-                  }}>
-                    <Text style={{ fontSize: 14, color: '#2c3e50', lineHeight: 20 }}>{answer}</Text>
+            {/* Q&A Examples */}
+            <ScrollView style={{ flex: 1, padding: 20 }}>
+              <Text style={styles.examplesTitle}>Reframe</Text>
+              
+              {reframingExamples.map((ex, i) => (
+                <View key={i} style={styles.exampleCard}>
+                  <View style={styles.questionContainer}>
+                    <Text style={styles.questionLabel}> Instead of:</Text>
+                    <Text style={styles.questionText}>"{ex.q}"</Text>
                   </View>
-                ))}
-              </ScrollView>
-            </View>
+                  <View style={styles.answerContainer}>
+                    <Text style={styles.answerLabel}> Reframe to:</Text>
+                    <Text style={styles.answerText}>"{ex.a}"</Text>
+                  </View>
+                </View>
+              ))}
 
-            <TouchableOpacity
-              onPress={() => {
-                saveSession('reframe', { prompt: reframePrompts[currentPrompt], answers: reframeAnswers });
-                Alert.alert('Saved!', 'Your reframing thoughts have been saved. Great work on shifting perspective!');
-              }}
-              style={{
-                backgroundColor: '#0984e3',
-                borderRadius: 12,
-                padding: 15,
-                alignItems: 'center',
-                marginTop: 10
-              }}
-            >
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>💾 Save Thoughts</Text>
-            </TouchableOpacity>
+              <View style={{ height: 40 }} />
+            </ScrollView>
           </View>
         </View>
       </Modal>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  // Cognitive Reframe Examples Styles
+  examplesContainer: {
+    marginBottom: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 12,
+  },
+  examplesTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  examplesScrollView: {
+    maxHeight: 280,
+  },
+  exampleCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+    borderLeftWidth: 5,
+    borderLeftColor: '#0984e3',
+  },
+  questionContainer: {
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#f1f3f5',
+  },
+  questionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#e74c3c',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  questionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#c0392b',
+    lineHeight: 24,
+    fontStyle: 'italic',
+  },
+  answerContainer: {
+    paddingTop: 4,
+  },
+  answerLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#27ae60',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  answerText: {
+    fontSize: 16,
+    color: '#2c3e50',
+    lineHeight: 24,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+});

@@ -1,4 +1,4 @@
-import { ResizeMode, Video } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -14,6 +14,17 @@ export default function ToolkitMovement() {
 
   // Dance and Movement Art State
   const [showDanceArt, setShowDanceArt] = useState(false);
+
+  // Create video players for each video
+  const video1Player = useVideoPlayer(require('@/assets/videos/video1.mp4'), player => {
+    player.loop = false;
+  });
+  const video2Player = useVideoPlayer(require('@/assets/videos/video2.mp4'), player => {
+    player.loop = false;
+  });
+  const video3Player = useVideoPlayer(require('@/assets/videos/video3.mp4'), player => {
+    player.loop = false;
+  });
 
   // Shake it out steps
   const shakeSteps = [
@@ -144,31 +155,34 @@ export default function ToolkitMovement() {
             <ScrollView style={{ maxHeight: 400 }}>
               <View style={{ marginBottom: 20 }}>
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 1</Text>
-                <Video
+                <VideoView
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('@/assets/videos/video1.mp4')}
-                  useNativeControls={true}
-                  resizeMode={ResizeMode.CONTAIN}
+                  player={video1Player}
+                  allowsFullscreen
+                  allowsPictureInPicture
+                  contentFit="contain"
                 />
               </View>
 
               <View style={{ marginBottom: 20 }}>
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 2</Text>
-                <Video
+                <VideoView
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('@/assets/videos/video2.mp4')}
-                  useNativeControls={true}
-                  resizeMode={ResizeMode.CONTAIN}
+                  player={video2Player}
+                  allowsFullscreen
+                  allowsPictureInPicture
+                  contentFit="contain"
                 />
               </View>
 
               <View style={{ marginBottom: 20 }}>
                 <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#9b59b6' }}>Video 3</Text>
-                <Video
+                <VideoView
                   style={{ width: '100%', height: 200, borderRadius: 10 }}
-                  source={require('@/assets/videos/video3.mp4')}
-                  useNativeControls={true}
-                  resizeMode={ResizeMode.CONTAIN}
+                  player={video3Player}
+                  allowsFullscreen
+                  allowsPictureInPicture
+                  contentFit="contain"
                 />
               </View>
             </ScrollView>

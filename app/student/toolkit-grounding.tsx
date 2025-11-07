@@ -76,7 +76,7 @@ export default function ToolkitGrounding() {
         userReg: studentRegNo
       };
       await AsyncStorage.setItem(`grounding_54321_${Date.now()}`, JSON.stringify(data));
-      Alert.alert('Saved!', 'Your 5-4-3-2-1 grounding session has been saved.');
+      Alert.alert('Completed', 'Your 5-4-3-2-1 grounding session has been completed.');
       setShow54321(false);
       resetStates();
     } catch (error) {
@@ -93,13 +93,13 @@ export default function ToolkitGrounding() {
         userReg: studentRegNo
       };
       await AsyncStorage.setItem(`grounding_world_${Date.now()}`, JSON.stringify(data));
-      Alert.alert('Saved!', 'Your world description has been saved.');
+      Alert.alert('completed', 'Your world description has been completed.');
       setShowDescribeWorld(false);
       setWorldDescription({
         sounds: '', smells: '', textures: '', temperature: '', colors: '', emotions: ''
       });
     } catch (error) {
-      Alert.alert('Error', 'Failed to save your description.');
+      Alert.alert('Error', 'Failed to show your description.');
     }
   };
 
