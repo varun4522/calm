@@ -27,9 +27,12 @@ const profilePics = [
   require('@/assets/images/profile/pic13.png'),
 ];
 
-// Helper: Try multiple query variants to find a student in user_requests
+// Helper: Try multiple query variants across possible tables to find a student record
 async function fetchStudentFromUserRequests(regNo: string) {
-  // Try strict match first (most specific)
+  // Candidate tables to try when the expected `user_requests` table is missing
+  const tablesToTry = ['user_requests', 'book_request', 'students', 'profiles'];
+
+  // Attempts describe optional filters we may want to apply when the table has those columns
   const attempts = [
     { filters: { user_type: 'Student', status: 'approved' } },
     { filters: { user_type: 'Student' } },
@@ -38,49 +41,82 @@ async function fetchStudentFromUserRequests(regNo: string) {
     { filters: {} },
   ];
 
-  for (const attempt of attempts) {
-    try {
-      let query = supabase
-        .from('user_requests')
-        .select('*')
-        .eq('registration_number', regNo)
-        .limit(1)
-        .maybeSingle();
+  // Helper to normalize different possible column names into a common shape
+  const normalize = (data: any) => {
+    if (!data) return null;
+    const registration = data.registration_number ?? data.registration ?? data.reg_no ?? data.reg ?? data.regno ?? '';
+    const name = data.name ?? data.user_name ?? data.full_name ?? data.username ?? 'Unknown Student';
+    return {
+      name,
+      user_name: name,
+      username: data.username ?? '',
+      registration,
+      registration_number: registration,
+      email: data.email ?? data.user_email ?? '',
+      course: data.course ?? data.program ?? '',
+      phone: data.phone ?? data.phone_number ?? data.contact ?? '',
+      year: data.year ?? data.academic_year ?? '',
+      user_type: data.user_type ?? data.type ?? '',
+      status: data.status ?? '',
+      created_at: data.created_at ?? data.created ?? null,
+      updated_at: data.updated_at ?? data.modified ?? null,
+    };
+  };
 
-      // Apply optional filters
-      const { user_type, status } = attempt.filters as any;
-      // We need to re-build the query with filters because chaining after maybeSingle() isn't allowed
-      let q = supabase.from('user_requests').select('*').eq('registration_number', regNo).limit(1);
-      if (user_type) q = q.eq('user_type', user_type);
-      if (status) q = q.eq('status', status);
-      const { data, error } = await q.maybeSingle();
-      if (error) {
-        // If it's a not-found or no-rows error, continue attempts; otherwise surface
-        // PostgREST returns null data without error when maybeSingle finds 0 rows, so error likely means different issue
-        console.log('fetch attempt error (will try next if null):', error.message);
+  for (const table of tablesToTry) {
+    for (const attempt of attempts) {
+      try {
+        const { user_type, status } = attempt.filters as any;
+
+        let q = supabase.from(table).select('*').eq('registration_number', regNo).limit(1);
+        // some tables may not have registration_number column; also try 'registration' as a fallback
+        // We'll additionally try a query on 'registration' if the first returns no rows
+
+        if (user_type) q = q.eq('user_type', user_type);
+        if (status) q = q.eq('status', status);
+
+        const { data, error } = await q.maybeSingle();
+
+        // If PostgREST signals the table doesn't exist, break out to try the next table
+        if (error) {
+          const msg = (error?.message ?? '').toString();
+          if (msg.includes("Could not find the table 'public.")) {
+            console.log(`Table ${table} not found, trying next table`);
+            break; // break out of attempts loop and try next table
+          }
+          // Other errors: log and continue to next attempt
+          console.log('fetch attempt error (will try next if null):', error.message);
+        }
+
+        if (data) {
+          return normalize(data);
+        }
+
+        // If no data and we attempted registration_number, try 'registration' column as fallback
+        if (!data && table) {
+          const { data: data2, error: error2 } = await supabase
+            .from(table)
+            .select('*')
+            .eq('registration', regNo)
+            .limit(1)
+            .maybeSingle();
+          if (error2) {
+            const msg = (error2?.message ?? '').toString();
+            if (msg.includes("Could not find the table 'public.")) {
+              console.log(`Table ${table} not found on second attempt, trying next table`);
+              break;
+            }
+            console.log('Second fetch attempt error (will try next):', error2.message);
+          }
+          if (data2) return normalize(data2);
+        }
+      } catch (e: any) {
+        // If a filter or column caused an issue, just try next attempt
+        console.log('fetch attempt threw, continuing:', e?.message ?? e);
       }
-      if (data) {
-        return {
-          name: data.name || data.user_name || 'Unknown Student',
-          user_name: data.name || data.user_name || 'Unknown Student',
-          username: data.username || '',
-          registration: data.registration_number,
-          registration_number: data.registration_number,
-          email: data.email || '',
-          course: data.course || '',
-          phone: data.phone || '',
-          year: data.year || '',
-          user_type: data.user_type,
-          status: data.status,
-          created_at: data.created_at,
-          updated_at: data.updated_at,
-        };
-      }
-    } catch (e: any) {
-      // If a filter or column caused an issue, just try next attempt
-      console.log('fetch attempt threw, continuing:', e?.message ?? e);
     }
   }
+
   return null;
 }
 
@@ -172,36 +208,12 @@ export default function StudentSetting() {
           // Save to persistent storage for future use
           await saveStudentDataToPersistentStorage(regNo, studentData);
         } else {
-          console.log("No cached data found, fetching from Supabase user_requests table");
-          // Fetch fresh student data from user_requests table in Supabase
-          const { data, error } = await supabase
-            .from('user_requests')
-            .select('*')
-            .eq('registration_number', regNo)
-            .eq('user_type', 'Student')
-            .eq('status', 'approved')
-            .maybeSingle();
+          console.log("No cached data found, attempting to fetch student data from known tables");
+          // Try fetching the student record from a set of candidate tables
+          const formattedData = await fetchStudentFromUserRequests(regNo);
 
-          if (error) {
-            console.error('Error fetching student data from user_requests:', error);
-            Alert.alert('Database Error', `Failed to load student data: ${error.message}`);
-          } else if (data) {
-            console.log('Successfully fetched student data from user_requests table:', data);
-            const formattedData = {
-              name: data.name || data.user_name || 'Unknown Student',
-              user_name: data.name || data.user_name || 'Unknown Student',
-              username: data.username || '',
-              registration: data.registration_number,
-              registration_number: data.registration_number,
-              email: data.email || '',
-              course: data.course || '',
-              phone: data.phone || '',
-              year: data.year || '',
-              user_type: data.user_type,
-              status: data.status,
-              created_at: data.created_at,
-              updated_at: data.updated_at
-            };
+          if (formattedData) {
+            console.log('Successfully fetched student data:', formattedData);
             setStudentName(formattedData.name);
             setStudentUsername(formattedData.username);
             setStudentEmail(formattedData.email);
@@ -213,7 +225,7 @@ export default function StudentSetting() {
             // Save fetched data to persistent storage
             await saveStudentDataToPersistentStorage(regNo, formattedData);
           } else {
-            console.log('No student data found in user_requests table for registration:', regNo);
+            console.log('No student data found in known tables for registration:', regNo);
             Alert.alert('No Data', 'No student record found in the database');
           }
         }
