@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -278,45 +279,91 @@ export default function ConsultationPage() {
         }
     };
 
-    const renderConversationItem = ({ item }: { item: GroupedConversation }) => (
-        <TouchableOpacity
-            style={styles.messageListItem}
-            onPress={() => {
-                // Navigate to chat with the student
-                router.push({
-                    pathname: './expert-chat',
-                    params: {
-                        studentId: item.sender_id,
-                        studentName: item.sender_name,
-                        expertReg: profile?.registration_number,
-                        expertName: profile?.name, 
-                        expertId: profile?.id
+    const deleteConversation = async (senderId: string, senderName: string) => {
+        Alert.alert(
+            'Delete Conversation',
+            `Are you sure you want to delete all messages with ${senderName}? This action cannot be undone.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            // Delete all messages between expert and this student
+                            const { error } = await supabase
+                                .from('messages')
+                                .delete()
+                                .or(`and(sender_id.eq.${senderId},receiver_id.eq.${profile?.id}),and(sender_id.eq.${profile?.id},receiver_id.eq.${senderId})`);
+
+                            if (error) {
+                                console.error('Error deleting conversation:', error);
+                                Alert.alert('Error', 'Failed to delete conversation. Please try again.');
+                            } else {
+                                // Reload messages to update the UI
+                                await loadMessages();
+                                Alert.alert('Success', 'Conversation deleted successfully.');
+                            }
+                        } catch (error) {
+                            console.error('Error deleting conversation:', error);
+                            Alert.alert('Error', 'An unexpected error occurred.');
+                        }
                     }
-                });
-            }}
-        >
-            <View style={styles.messageListHeader}>
-                <View style={styles.messageInfo}>
-                    <Text style={styles.messageSender}>
-                        👨‍🎓 {item.sender_name}
-                    </Text>
-                    <Text style={styles.messageTime}>
-                        {formatTimestamp(item.latest_timestamp)}
-                    </Text>
+                }
+            ]
+        );
+    };
+
+    const renderConversationItem = ({ item }: { item: GroupedConversation }) => (
+        <View style={styles.conversationItemWrapper}>
+            <TouchableOpacity
+                style={styles.messageListItem}
+                onPress={() => {
+                    // Navigate to chat with the student
+                    router.push({
+                        pathname: './expert-chat',
+                        params: {
+                            studentId: item.sender_id,
+                            studentName: item.sender_name,
+                            expertReg: profile?.registration_number,
+                            expertName: profile?.name, 
+                            expertId: profile?.id
+                        }
+                    });
+                }}
+            >
+                <View style={styles.messageListHeader}>
+                    <View style={styles.messageInfo}>
+                        <Text style={styles.messageSender}>
+                            👨‍🎓 {item.sender_name}
+                        </Text>
+                        <Text style={styles.messageTime}>
+                            {formatTimestamp(item.latest_timestamp)}
+                        </Text>
+                    </View>
+                    <View style={styles.messageActions}>
+                        <Text style={styles.messageCount}>
+                            {item.message_count > 1 ? `${item.message_count} msgs` : '1 msg'}
+                        </Text>
+                        <Text style={styles.messageType}>
+                            {item.sender_type === 'STUDENT' ? '💬' : '👥'}
+                        </Text>
+                    </View>
                 </View>
-                <View style={styles.messageActions}>
-                    <Text style={styles.messageCount}>
-                        {item.message_count > 1 ? `${item.message_count} msgs` : '1 msg'}
-                    </Text>
-                    <Text style={styles.messageType}>
-                        {item.sender_type === 'STUDENT' ? '💬' : '👥'}
-                    </Text>
-                </View>
-            </View>
-            <Text style={styles.messagePreview} numberOfLines={2}>
-                {item.latest_message}
-            </Text>
-        </TouchableOpacity>
+                <Text style={styles.messagePreview} numberOfLines={2}>
+                    {item.latest_message}
+                </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={(e) => {
+                    deleteConversation(item.sender_id, item.sender_name);
+                }}
+                activeOpacity={0.7}
+            >
+                <Ionicons name="trash-outline" size={20} color="#dc2626" />
+            </TouchableOpacity>
+        </View>
     );
 
     return (
@@ -944,9 +991,8 @@ const styles = StyleSheet.create({
     },
     // Message List Item Styles
     messageListItem: {
+        flex: 1,
         backgroundColor: '#ffffff',
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
         paddingHorizontal: 20,
         paddingVertical: 15,
         marginVertical: 2,
@@ -992,5 +1038,19 @@ const styles = StyleSheet.create({
         color: '#7b1fa2',
         fontWeight: 'bold',
         marginBottom: 4,
+    },
+    conversationItemWrapper: {
+        flexDirection: 'row',
+        backgroundColor: '#ffffff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    deleteButton: {
+        backgroundColor: '#fee2e2',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        borderLeftWidth: 1,
+        borderLeftColor: '#fecaca',
     },
 });

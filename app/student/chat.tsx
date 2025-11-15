@@ -64,6 +64,58 @@ export default function Chat() {
   const { session } = useAuth();
   const { data: profile } = useProfile(session?.user.id);
 
+  // State to store the resolved participant UUID (in case participantId is a registration number)
+  const [resolvedParticipantId, setResolvedParticipantId] = useState<string | null>(null);
+  const [isResolvingId, setIsResolvingId] = useState(true);
+
+  // Resolve participantId - if it's a registration number, look up the UUID
+  useEffect(() => {
+    const resolveParticipantId = async () => {
+      if (!participantId) {
+        setIsResolvingId(false);
+        return;
+      }
+
+      // Check if participantId is already a UUID (UUIDs have hyphens)
+      if (participantId.includes('-')) {
+        setResolvedParticipantId(participantId);
+        setIsResolvingId(false);
+        return;
+      }
+
+      // It's likely a registration number, look up the UUID
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('registration_number', participantId)
+          .single();
+
+        if (error) {
+          console.error('Error resolving participant ID:', error);
+          Alert.alert('Error', 'Could not find participant. Please try again.');
+          router.back();
+          return;
+        }
+
+        if (data) {
+          setResolvedParticipantId(data.id);
+        } else {
+          Alert.alert('Error', 'Participant not found.');
+          router.back();
+        }
+      } catch (err) {
+        console.error('Error in resolveParticipantId:', err);
+        Alert.alert('Error', 'Failed to load participant information.');
+        router.back();
+      } finally {
+        setIsResolvingId(false);
+      }
+    };
+
+    resolveParticipantId();
+  }, [participantId]);
+
   // Validation check
   useEffect(() => {
     if (!participantId) {
@@ -126,7 +178,7 @@ export default function Chat() {
       return;
     }
 
-    if (!participantId) {
+    if (!resolvedParticipantId) {
       Alert.alert('Error', 'Cannot send message. Recipient information is missing.');
       return;
     }
@@ -137,7 +189,7 @@ export default function Chat() {
     const tempMessage = {
       id: `temp_${Date.now()}`,
       sender_id: profile.id,
-      receiver_id: participantId,
+      receiver_id: resolvedParticipantId,
       message: newMessage.trim(),
       created_at: new Date().toISOString(),
       sender_name: profile.name,
@@ -161,7 +213,7 @@ export default function Chat() {
         setIsSending(false);
       }
     });
-  }, [newMessage, profile, participantId, isSending]);
+  }, [newMessage, profile, resolvedParticipantId, isSending]);
 
   // Memoized profile image getter
   const getProfileImageMemo = useMemo(() => {
@@ -184,7 +236,7 @@ export default function Chat() {
   }, []);
 
   useEffect(() => {
-    if (profile && participantId) {
+    if (profile && resolvedParticipantId) {
       loadChatMessages();
       const cleanup = setupRealtimeSubscription();
       // compute initial online/last-seen from recent messages
@@ -193,7 +245,7 @@ export default function Chat() {
       loadAlias();
       return cleanup;
     }
-  }, [profile, participantId]);
+  }, [profile, resolvedParticipantId]);
 
   const loadAlias = async () => {
     try {
@@ -218,11 +270,11 @@ export default function Chat() {
   // Determine participant online / last seen using latest message timestamp
   const updateParticipantStatusFromMessages = async () => {
     try {
-      if (!participantId) return;
+      if (!resolvedParticipantId) return;
       const { data, error } = await supabase
         .from('messages')
         .select('created_at')
-        .eq('sender_id', participantId)
+        .eq('sender_id', resolvedParticipantId)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
@@ -264,12 +316,12 @@ export default function Chat() {
 
   const loadChatMessages = async () => {
     try {
-      if (!participantId || !profile) return;
+      if (!resolvedParticipantId || !profile) return;
 
       const { data: messages, error } = await supabase
         .from('messages')
         .select('*')
-        .or(`and(sender_id.eq.${profile.id},receiver_id.eq.${participantId}),and(sender_id.eq.${participantId},receiver_id.eq.${profile.id})`)
+        .or(`and(sender_id.eq.${profile.id},receiver_id.eq.${resolvedParticipantId}),and(sender_id.eq.${resolvedParticipantId},receiver_id.eq.${profile.id})`)
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -288,7 +340,7 @@ export default function Chat() {
   };
 
   const setupRealtimeSubscription = () => {
-    if (!profile || !participantId) return;
+    if (!profile || !resolvedParticipantId) return;
 
     const channel = supabase
       .channel('chat_messages')
@@ -298,7 +350,7 @@ export default function Chat() {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `or(and(sender_id.eq.${participantId},receiver_id.eq.${profile.id}),and(sender_id.eq.${profile.id},receiver_id.eq.${participantId}))`,
+          filter: `or(and(sender_id.eq.${resolvedParticipantId},receiver_id.eq.${profile.id}),and(sender_id.eq.${profile.id},receiver_id.eq.${resolvedParticipantId}))`,
         },
         (payload) => {
           const newMessage = payload.new as ChatMessage;
@@ -309,7 +361,7 @@ export default function Chat() {
           });
 
           // If the incoming message is from the participant, mark them online briefly
-          if (newMessage.sender_id === participantId) {
+          if (newMessage.sender_id === resolvedParticipantId) {
             setParticipantOnline(true);
             setParticipantLastSeen(null);
 
@@ -346,8 +398,8 @@ export default function Chat() {
       return;
     }
 
-    if (!participantId) {
-      console.error('No participantId available');
+    if (!resolvedParticipantId) {
+      console.error('No resolvedParticipantId available');
       Alert.alert('Error', 'Recipient information is missing');
       if (tempId) {
         setChatMessages(prev => prev.filter(msg => msg.id !== tempId));
@@ -357,7 +409,7 @@ export default function Chat() {
 
     const messageData = {
       sender_id: profile.id,
-      receiver_id: participantId,
+      receiver_id: resolvedParticipantId,
       sender_name: profile.name,
       sender_type: 'STUDENT' as const,
       message: textToSend,
@@ -523,7 +575,7 @@ export default function Chat() {
   // Optimized memoized message renderer
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     const isSentByMe = item.sender_id === profile?.id;
-    const displayName = item.sender_id === participantId && alias ? alias : item.sender_name;
+    const displayName = item.sender_id === resolvedParticipantId && alias ? alias : item.sender_name;
     const profileImage = getProfileImageMemo(item.sender_type, isSentByMe);
 
     return (
@@ -535,10 +587,21 @@ export default function Chat() {
         formatTime={formatTime}
       />
     );
-  }, [profile, participantId, alias, getProfileImageMemo]);
+  }, [profile, resolvedParticipantId, alias, getProfileImageMemo]);
 
   // Memoized message key extractor for better FlatList performance
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
+
+  // Show loading while resolving participant ID
+  if (isResolvingId || !resolvedParticipantId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, color: '#666' }}>Loading chat...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView

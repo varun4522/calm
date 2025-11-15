@@ -6,14 +6,18 @@ import * as FileSystem from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {  ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform,
-  SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
+  SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/api/Profile';
 import Toast from 'react-native-toast-message';
 import { useInsertNotification } from '@/api/Notifications';
+import { formatRelativeTime, uploadMediaToSupabase, pickMediaFromGallery } from '@/lib/utils';
+import { profilePics } from '@/constants/ProfilePhotos';
 
 // Mood tracking constants
 const MOOD_EMOJIS = [
@@ -33,7 +37,21 @@ function getTodayKey() {
 export default function ExpertHome() {
   const router = useRouter();
   const [expertRegNo, setExpertRegNo] = useState('');
-  const [activeTab, setActiveTab] = useState<'home' | 'mood'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'mood' | 'community'>('home');
+
+  // Community states
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [postText, setPostText] = useState('');
+  const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
+  const [isPosting, setIsPosting] = useState(false);
+  
+  // Comment states
+  const [commentsModalVisible, setCommentsModalVisible] = useState(false);
+  const [selectedPostForComments, setSelectedPostForComments] = useState<any>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -61,10 +79,13 @@ export default function ExpertHome() {
   const [moodHistory, setMoodHistory] = useState<{ [key: string]: string }>({});
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-  const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string }[] }>({});
-  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, notes?: string }[]>([]);
+  const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string, scheduled?: string, scheduleKey?: string }[] }>({});
+  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, scheduled?: string, scheduleKey?: string, notes?: string }[]>([]);
   const [nextMoodPrompt, setNextMoodPrompt] = useState<Date | null>(null);
   const [currentPromptInfo, setCurrentPromptInfo] = useState<{ timeLabel: string, scheduleKey: string } | null>(null);
+  const [todayMoodProgress, setTodayMoodProgress] = useState<{ completed: number, total: number }>({ completed: 0, total: 6 });
+  const [moodPromptsToday, setMoodPromptsToday] = useState<number>(0);
+  const [missedPromptsQueue, setMissedPromptsQueue] = useState<{ label: string, scheduleKey: string }[]>([]);
 
   // Notification states
   const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -252,6 +273,32 @@ export default function ExpertHome() {
     }
   };
 
+  // Fixed mood prompt schedule (6 times a day at specific times)
+  const generateMoodPromptTimes = (referenceDate: Date): { time: Date, label: string, intervalNumber: number }[] => {
+    const prompts = [];
+    // Fixed times: 8 AM, 11 AM, 2 PM, 5 PM, 8 PM, 11 PM
+    const scheduledHours = [8, 11, 14, 17, 20, 23];
+    const labels = ['Morning Check-in', 'Late Morning', 'Afternoon', 'Evening', 'Night', 'Before Sleep'];
+
+    for (let i = 0; i < 6; i++) {
+      const promptTime = new Date(referenceDate);
+      promptTime.setHours(scheduledHours[i], 0, 0, 0);
+
+      prompts.push({
+        time: promptTime,
+        label: labels[i],
+        intervalNumber: i + 1
+      });
+    }
+
+    return prompts;
+  };
+
+  // Helper function to format time nicely
+  const formatTimeOnly = (date: Date) => {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
   // Mood tracking functions
   const loadMoodData = async () => {
     try {
@@ -275,15 +322,50 @@ export default function ExpertHome() {
         setDetailedMoodEntries(JSON.parse(detailedEntriesData));
       }
 
-      // Load next mood prompt; if not present, schedule the next one
-      const nextPromptData = await AsyncStorage.getItem(`expertNextMoodPrompt_${regNo}`);
-      if (nextPromptData) {
-        setNextMoodPrompt(new Date(nextPromptData));
-      } else {
-        await setNextMoodPromptTime(regNo);
-      }
+      // Initialize mood prompt system with 6-times daily schedule
+      await initializeMoodPromptSystem(regNo);
     } catch (error) {
       console.error('Error loading mood data:', error);
+    }
+  };
+
+  // Initialize mood prompt system with fixed daily times
+  const initializeMoodPromptSystem = async (regNo: string) => {
+    try {
+      const today = getTodayKey();
+      const now = new Date();
+
+      // Get or create today's mood schedule
+      const scheduleKey = `expertMoodSchedule_${regNo}_${today}`;
+      let scheduleData = await AsyncStorage.getItem(scheduleKey);
+
+      let dailySchedule;
+      if (!scheduleData) {
+        // Create new schedule with fixed times for today
+        const todayDate = new Date();
+        todayDate.setHours(0, 0, 0, 0);
+        
+        dailySchedule = {
+          date: today,
+          promptTimes: generateMoodPromptTimes(todayDate),
+          completedPrompts: [],
+          count: 0,
+          lastChecked: now.toISOString()
+        };
+        await AsyncStorage.setItem(scheduleKey, JSON.stringify(dailySchedule));
+        console.log('📅 Created new expert mood schedule for', today, 'with 6 prompts at fixed times');
+      } else {
+        dailySchedule = JSON.parse(scheduleData);
+        console.log(`📊 Loaded expert mood schedule: ${dailySchedule.count}/6 completed`);
+      }
+
+      setMoodPromptsToday(dailySchedule.count);
+      setTodayMoodProgress({ completed: dailySchedule.count, total: 6 });
+
+      // Check if it's time for any prompts
+      await checkForMoodPrompt(regNo, dailySchedule);
+    } catch (error) {
+      console.error('Error initializing expert mood prompt system:', error);
     }
   };
 
@@ -304,10 +386,15 @@ export default function ExpertHome() {
 
       // Update daily mood entries (multiple per day)
       const moodData = MOOD_EMOJIS.find(m => m.emoji === mood);
+      const timeLabel = currentPromptInfo?.timeLabel || 'Unscheduled';
+      const scheduleKey = currentPromptInfo?.scheduleKey || '';
+      
       const newEntry = {
         emoji: mood,
         label: moodData?.label || 'Unknown',
         time: currentTime,
+        scheduled: timeLabel,
+        scheduleKey
       };
 
       const updatedDailyEntries = {
@@ -323,18 +410,25 @@ export default function ExpertHome() {
         emoji: mood,
         label: moodData?.label || 'Unknown',
         time: currentTime,
+        scheduled: timeLabel,
+        scheduleKey
       };
 
       const updatedDetailedEntries = [...detailedMoodEntries, detailedEntry];
       setDetailedMoodEntries(updatedDetailedEntries);
       await AsyncStorage.setItem(`expertDetailedMoodEntries_${regNo}`, JSON.stringify(updatedDetailedEntries));
 
-      console.log(`✅ Expert mood saved for ${regNo}: ${mood} at ${currentTime}`);
+      console.log(`✅ Expert mood saved for ${regNo}: ${mood} at ${currentTime} (${timeLabel})`);
       setMoodModalVisible(false);
       setSelectedMood(null);
 
-      // Set next mood prompt (6 times daily)
-      await setNextMoodPromptTime(regNo);
+      // Record that this prompt was completed
+      if (currentPromptInfo && currentPromptInfo.scheduleKey !== 'welcome') {
+        await recordMoodPromptCompleted(regNo, currentPromptInfo.scheduleKey);
+      }
+
+      // Clear current prompt info
+      setCurrentPromptInfo(null);
 
     } catch (error) {
       console.error('Error saving expert mood:', error);
@@ -342,48 +436,108 @@ export default function ExpertHome() {
     }
   };
 
-  const setNextMoodPromptTime = async (regNo: string) => {
-    const now = new Date();
-    const moodTimes = [
-      { hour: 8, minute: 0 },   // 8:00 AM
-      { hour: 11, minute: 0 },  // 11:00 AM
-      { hour: 14, minute: 0 },  // 2:00 PM
-      { hour: 17, minute: 0 },  // 5:00 PM
-      { hour: 20, minute: 0 },  // 8:00 PM
-      { hour: 22, minute: 0 },  // 10:00 PM
-    ];
+  // Check if it's time for a mood prompt - now shows persistently until completed
+  const checkForMoodPrompt = async (regNo: string, dailySchedule?: any) => {
+    try {
+      const now = new Date();
+      const today = getTodayKey();
 
-    let nextPrompt = null;
-
-    // Find the next mood prompt time today
-    for (const time of moodTimes) {
-      const promptTime = new Date();
-      promptTime.setHours(time.hour, time.minute, 0, 0);
-
-      if (promptTime > now) {
-        nextPrompt = promptTime;
-        break;
+      // Load schedule if not provided
+      let schedule = dailySchedule;
+      if (!schedule) {
+        const scheduleKey = `expertMoodSchedule_${regNo}_${today}`;
+        const scheduleData = await AsyncStorage.getItem(scheduleKey);
+        if (!scheduleData) {
+          console.log('⚠️ No expert mood schedule found for today, creating new one');
+          await initializeMoodPromptSystem(regNo);
+          return;
+        }
+        schedule = JSON.parse(scheduleData);
       }
-    }
 
-    // If no more prompts today, set first prompt tomorrow
-    if (!nextPrompt) {
-      nextPrompt = new Date();
-      nextPrompt.setDate(nextPrompt.getDate() + 1);
-      nextPrompt.setHours(8, 0, 0, 0);
-    }
+      // Update last checked time
+      schedule.lastChecked = now.toISOString();
+      const scheduleKey = `expertMoodSchedule_${regNo}_${today}`;
+      await AsyncStorage.setItem(scheduleKey, JSON.stringify(schedule));
 
-    setNextMoodPrompt(nextPrompt);
-    await AsyncStorage.setItem(`expertNextMoodPrompt_${regNo}`, nextPrompt.toISOString());
+      // Check which prompts should be shown now (all overdue prompts)
+      const missedPrompts: { label: string, intervalNumber: number, time: Date, timeLabel: string }[] = [];
+
+      for (let i = 0; i < schedule.promptTimes.length; i++) {
+        const promptInfo = schedule.promptTimes[i];
+        const promptTime = new Date(promptInfo.time);
+        const isTimeForPrompt = now >= promptTime;
+        const hasCompleted = schedule.completedPrompts.includes(promptInfo.intervalNumber);
+
+        if (isTimeForPrompt && !hasCompleted) {
+          missedPrompts.push({
+            label: promptInfo.label,
+            intervalNumber: promptInfo.intervalNumber,
+            time: promptTime,
+            timeLabel: `${promptInfo.label} (${formatTimeOnly(promptTime)})`
+          });
+        }
+      }
+
+      if (missedPrompts.length > 0) {
+        // Show the earliest missed prompt with time info
+        const nextPrompt = missedPrompts[0];
+        console.log(`🎯 Showing expert mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6) - ${missedPrompts.length} pending`);
+        
+        setCurrentPromptInfo({
+          timeLabel: nextPrompt.timeLabel,
+          scheduleKey: nextPrompt.intervalNumber.toString()
+        });
+        setMissedPromptsQueue(missedPrompts.map(p => ({ label: p.timeLabel, scheduleKey: p.intervalNumber.toString() })));
+        setMoodModalVisible(true);
+      } else {
+        console.log(`✅ All ${schedule.count}/6 expert prompts completed for today!`);
+      }
+
+    } catch (error) {
+      console.error('Error checking for expert mood prompt:', error);
+    }
   };
 
-  const checkMoodPrompt = () => {
-    if (!nextMoodPrompt) return;
+  // Record that mood prompt was completed
+  const recordMoodPromptCompleted = async (regNo: string, intervalNumber: string) => {
+    try {
+      const today = getTodayKey();
+      const scheduleKey = `expertMoodSchedule_${regNo}_${today}`;
+      const scheduleData = await AsyncStorage.getItem(scheduleKey);
 
-    const now = new Date();
-    if (now >= nextMoodPrompt) {
-      setMoodModalVisible(true);
-      setCurrentPromptInfo({ timeLabel: 'Scheduled Check', scheduleKey: 'scheduled' });
+      if (!scheduleData) return;
+
+      const schedule = JSON.parse(scheduleData);
+      const interval = parseInt(intervalNumber);
+
+      if (!schedule.completedPrompts.includes(interval)) {
+        schedule.completedPrompts.push(interval);
+        schedule.count = schedule.completedPrompts.length;
+        schedule.lastCompleted = new Date().toISOString();
+
+        await AsyncStorage.setItem(scheduleKey, JSON.stringify(schedule));
+        setMoodPromptsToday(schedule.count);
+        setTodayMoodProgress({ completed: schedule.count, total: 6 });
+
+        console.log(`✅ Expert mood prompt completed: ${schedule.count}/6 (Interval ${interval})`);
+        
+        // Show completion message
+        if (schedule.count === 6) {
+          Alert.alert(
+            '🎉 Amazing!',
+            'You\'ve completed all 6 mood check-ins for today! Great job tracking your emotional wellness.',
+            [{ text: 'Awesome!', style: 'default' }]
+          );
+        } else {
+          // Check for next pending prompt immediately
+          setTimeout(() => {
+            checkForMoodPrompt(regNo, schedule);
+          }, 1000);
+        }
+      }
+    } catch (error) {
+      console.error('Error recording expert mood prompt completion:', error);
     }
   };
 
@@ -427,13 +581,17 @@ export default function ExpertHome() {
         year: 'numeric'
       });
 
-      let entriesText = `Mood entries for this day:\n\n`;
+      let entriesText = `📊 Mood check-ins for this day (${dayEntries.length}/6):\n\n`;
       dayEntries.forEach((entry, index) => {
-        entriesText += `${index + 1}. ${entry.emoji} ${entry.label} at ${entry.time}\n`;
+        const scheduledInfo = entry.scheduled ? `\n   ${entry.scheduled}` : '';
+        entriesText += `${index + 1}. ${entry.emoji} ${entry.label} at ${entry.time}${scheduledInfo}\n`;
       });
 
       if (isToday) {
-        entriesText += `\n🌟 This is today's mood journey!`;
+        entriesText += `\n🌟 Today's progress: ${dayEntries.length}/6 check-ins completed!`;
+        if (dayEntries.length < 6) {
+          entriesText += `\n💪 Keep it up! ${6 - dayEntries.length} more to go.`;
+        }
       }
 
       Alert.alert(
@@ -455,7 +613,7 @@ export default function ExpertHome() {
 
       Alert.alert(
         `${isToday ? '🌟 Today' : '📅'} ${dayName}, ${formattedDate}`,
-        `😔 No mood entries found for this date.\n\n💡 ${isToday ? 'Start tracking your mood today!' : 'You can add mood entries for any day.'}`,
+        `😔 No mood entries found for this date (0/6).\n\n💡 ${isToday ? 'Start tracking your mood today! We recommend 6 check-ins throughout the day.' : 'You can add mood entries for any day.'}`,
         [
           { text: 'Close', style: 'cancel' }
         ]
@@ -470,16 +628,15 @@ export default function ExpertHome() {
     }
   }, [expertRegNo]);
 
-  // Check for mood prompts every minute
+  // Check for mood prompts every 30 minutes
   useEffect(() => {
-    const interval = setInterval(checkMoodPrompt, 60000);
-    return () => clearInterval(interval);
-  }, [nextMoodPrompt]);
-
-  // Immediately check if a prompt is due when nextMoodPrompt changes (no waiting for interval)
-  useEffect(() => {
-    checkMoodPrompt();
-  }, [nextMoodPrompt]);
+    if (expertRegNo) {
+      const interval = setInterval(async () => {
+        await checkForMoodPrompt(expertRegNo);
+      }, 30 * 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [expertRegNo]);
 
   const handleFileSelection = async () => {
     try {
@@ -724,6 +881,33 @@ export default function ExpertHome() {
           <Text style={{ color: Colors.primary, fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginTop: 8, textShadowColor: 'rgba(0,0,0,0.30)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>
             Most Selected Mood This Month: {mostSelectedEmoji}
           </Text>
+          
+          {/* Today's Progress */}
+          <View style={{ marginTop: 12, backgroundColor: Colors.white, padding: 12, borderRadius: 15, borderWidth: 1, borderColor: Colors.primary }}>
+            <Text style={{ color: Colors.text, fontSize: 14, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>
+              📅 Today's Progress: {todayMoodProgress.completed}/6 Check-ins
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+              {[1, 2, 3, 4, 5, 6].map((num) => (
+                <View
+                  key={num}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor: todayMoodProgress.completed >= num ? Colors.primary : Colors.backgroundLight,
+                    marginHorizontal: 2,
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}
+                >
+                  {todayMoodProgress.completed >= num && (
+                    <Text style={{ color: Colors.white, fontSize: 12 }}>✓</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
 
         {/* Month Navigation */}
@@ -766,28 +950,372 @@ export default function ExpertHome() {
         {/* Calendar Grid */}
         <View style={{ alignItems: 'center', justifyContent: 'center', width: '100%', maxWidth: 350 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5 }}>
-            {calendar.map((day, index) => (
-              <TouchableOpacity
-                key={index}
-                style={{ width: 45, height: 55, alignItems: 'center', justifyContent: 'center', margin: 3, backgroundColor: Colors.white, borderRadius: 12, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2, borderWidth: 1, borderColor: Colors.border }}
-                onPress={() => day && handleCalendarPress(day)}
-                disabled={!day}
-              >
-                {day && (
-                  <View style={{ alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
-                    {getMoodForDate(day) && (
-                      <Text style={{ fontSize: 18, marginBottom: 2, textAlign: 'center' }}>{getMoodForDate(day)}</Text>
-                    )}
-                    <Text style={{ color: Colors.text, fontSize: 12, fontWeight: '600', textAlign: 'center' }}>{day}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))}
+            {calendar.map((day, index) => {
+              const dateKey = day ? `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
+              const dayEntries = dateKey ? dailyMoodEntries[dateKey] : null;
+              const entryCount = dayEntries ? dayEntries.length : 0;
+              const isToday = dateKey === getTodayKey();
+              
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={{ 
+                    width: 45, 
+                    height: 55, 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    margin: 3, 
+                    backgroundColor: isToday ? Colors.accent + '30' : Colors.white, 
+                    borderRadius: 12, 
+                    shadowColor: Colors.shadow, 
+                    shadowOffset: { width: 0, height: 2 }, 
+                    shadowOpacity: 0.2, 
+                    shadowRadius: 4, 
+                    elevation: 2, 
+                    borderWidth: isToday ? 2 : 1, 
+                    borderColor: isToday ? Colors.primary : Colors.border 
+                  }}
+                  onPress={() => day && handleCalendarPress(day)}
+                  disabled={!day}
+                >
+                  {day && (
+                    <View style={{ alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                      {getMoodForDate(day) && (
+                        <Text style={{ fontSize: 18, marginBottom: 2, textAlign: 'center' }}>{getMoodForDate(day)}</Text>
+                      )}
+                      <Text style={{ color: Colors.text, fontSize: 12, fontWeight: '600', textAlign: 'center' }}>{day}</Text>
+                      {entryCount > 0 && (
+                        <View style={{ 
+                          position: 'absolute', 
+                          bottom: 2, 
+                          right: 2, 
+                          backgroundColor: entryCount >= 6 ? '#4caf50' : Colors.primary, 
+                          borderRadius: 8, 
+                          minWidth: 16, 
+                          height: 16, 
+                          justifyContent: 'center', 
+                          alignItems: 'center' 
+                        }}>
+                          <Text style={{ color: 'white', fontSize: 8, fontWeight: 'bold' }}>{entryCount}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </View>
     );
   };
+
+  // Community functions
+  const pickMedia = async () => {
+    try {
+      const result = await pickMediaFromGallery();
+      if (result) {
+        setSelectedMedia(result);
+      }
+    } catch (error) {
+      console.error('Error picking media:', error);
+      Alert.alert('Error', 'Failed to open gallery. Please try again.');
+    }
+  };
+
+  const createPost = async () => {
+    if (!postText.trim() && !selectedMedia) {
+      Alert.alert('Error', 'Please add some text or media to your post.');
+      return;
+    }
+
+    setIsPosting(true);
+    try {
+      let mediaUrl = null;
+
+      if (selectedMedia) {
+        try {
+          mediaUrl = await uploadMediaToSupabase(selectedMedia.uri, selectedMedia.type);
+        } catch (mediaError) {
+          Alert.alert('Error', `Failed to upload media: ${mediaError instanceof Error ? mediaError.message : 'Unknown error'}`);
+          return;
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('community_post')
+        .insert([
+          {
+            user_id: expertRegNo || profile?.registration_number || 'expert',
+            content: postText.trim(),
+            media_url: mediaUrl,
+            media_type: selectedMedia?.type || null,
+            created_at: new Date().toISOString(),
+          },
+        ])
+        .select();
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Post created successfully!');
+      setModalVisible(false);
+      setPostText('');
+      setSelectedMedia(null);
+      fetchPosts();
+
+    } catch (error) {
+      console.error('Error creating post:', error);
+      Alert.alert('Error', `Failed to create post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  const fetchPosts = async () => {
+    try {
+      setLoadingPosts(true);
+      const { data, error } = await supabase
+        .from('community_post')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching posts:', error);
+        Alert.alert('Error', 'Failed to load posts');
+        return;
+      }
+
+      const postsWithUserData = await Promise.all(
+        (data || []).map(async (post) => {
+          try {
+            let username = `User ${post.user_id}`;
+            let userLabel = 'USER';
+            
+            // Check if it's admin
+            if (post.user_id === 'admin' || String(post.user_id).toLowerCase().includes('admin')) {
+              username = 'Admin';
+              userLabel = 'ADMIN';
+            } else {
+              // Try to find user in profiles/user_requests table
+              const { data: userData } = await supabase
+                .from('profiles')
+                .select('name, type, registration_number')
+                .eq('registration_number', post.user_id)
+                .single();
+
+              if (userData) {
+                username = userData.name || `User ${post.user_id}`;
+                // Determine user type label
+                if (userData.type === 'EXPERT') {
+                  userLabel = 'EXPERT';
+                } else if (userData.type === 'PEER') {
+                  userLabel = 'PEER LISTENER';
+                } else {
+                  userLabel = `USER (${post.user_id})`;
+                }
+              } else {
+                userLabel = `USER (${post.user_id})`;
+              }
+            }
+
+            return {
+              ...post,
+              username,
+              userLabel,
+              profilePicIndex: Math.floor(Math.random() * profilePics.length)
+            };
+          } catch (error) {
+            return {
+              ...post,
+              username: `User ${post.user_id}`,
+              userLabel: `USER (${post.user_id})`,
+              profilePicIndex: 0
+            };
+          }
+        })
+      );
+
+      setPosts(postsWithUserData);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+    } finally {
+      setLoadingPosts(false);
+    }
+  };
+
+  const deletePost = async (post: any) => {
+    // Only allow deleting own posts
+    if (post.user_id !== expertRegNo && post.user_id !== profile?.registration_number) {
+      Alert.alert('Error', 'You can only delete your own posts');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('community_post')
+                .delete()
+                .eq('id', post.id);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'Post deleted successfully');
+              fetchPosts();
+            } catch (error) {
+              console.error('Error deleting post:', error);
+              Alert.alert('Error', 'Failed to delete post');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Comment functions
+  const openComments = async (post: any) => {
+    setSelectedPostForComments(post);
+    setCommentsModalVisible(true);
+    await fetchComments(post.id);
+  };
+
+  const fetchComments = async (postId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('post_comment')
+        .select('*')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Fetch user data for each comment
+      const commentsWithUserData = await Promise.all(
+        (data || []).map(async (comment) => {
+          try {
+            let username = 'Unknown User';
+            let userLabel = 'USER';
+
+            if (comment.user_id === 'admin') {
+              username = 'Admin';
+              userLabel = 'ADMIN';
+            } else {
+              // Try to get user data from profiles table
+              const { data: profileData } = await supabase
+                .from('profiles')
+                .select('username, name, type, registration_number')
+                .eq('registration_number', comment.user_id)
+                .single();
+
+              if (profileData) {
+                username = profileData.username || profileData.name || `User ${comment.user_id}`;
+                
+                if (profileData.type === 'EXPERT') {
+                  userLabel = 'EXPERT';
+                } else if (profileData.type === 'PEER') {
+                  userLabel = 'PEER LISTENER';
+                } else {
+                  userLabel = profileData.registration_number ? `USER (${profileData.registration_number})` : 'USER';
+                }
+              }
+            }
+
+            return {
+              ...comment,
+              username,
+              userLabel
+            };
+          } catch (userError) {
+            console.log('Error fetching user data for comment:', comment.id);
+            return {
+              ...comment,
+              username: `User ${comment.user_id}`,
+              userLabel: 'USER'
+            };
+          }
+        })
+      );
+
+      setComments(commentsWithUserData);
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      Alert.alert('Error', 'Failed to load comments');
+    }
+  };
+
+  const addComment = async () => {
+    if (!newComment.trim() || !selectedPostForComments) return;
+
+    try {
+      const { error } = await supabase
+        .from('post_comment')
+        .insert({
+          post_id: selectedPostForComments.id,
+          user_id: profile?.registration_number || expertRegNo,
+          content: newComment.trim(),
+          created_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+
+      setNewComment('');
+      await fetchComments(selectedPostForComments.id);
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      Alert.alert('Error', 'Failed to add comment');
+    }
+  };
+
+  const deleteComment = async (commentId: string, comment: any) => {
+    // Only allow deleting own comments
+    if (comment.user_id !== expertRegNo && comment.user_id !== profile?.registration_number) {
+      Alert.alert('Error', 'You can only delete your own comments');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Comment',
+      'Are you sure you want to delete this comment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('post_comment')
+                .delete()
+                .eq('id', commentId);
+
+              if (error) throw error;
+
+              if (selectedPostForComments) {
+                await fetchComments(selectedPostForComments.id);
+              }
+            } catch (error) {
+              console.error('Error deleting comment:', error);
+              Alert.alert('Error', 'Failed to delete comment');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Fetch posts when community tab is active
+  useEffect(() => {
+    if (activeTab === 'community') {
+      fetchPosts();
+    }
+  }, [activeTab]);
 
   let Content: React.ReactNode = null;
 
@@ -827,6 +1355,41 @@ export default function ExpertHome() {
 
         {/* Top Right Actions - Notification Bell and AI Button */}
         <View style={{ position: 'absolute', top: 42, right: 20, zIndex: 20, flexDirection: 'row', gap: 12 }}>
+          {/* Mood Progress Indicator */}
+          <TouchableOpacity
+            style={{ 
+              height: 40, 
+              borderRadius: 22, 
+              backgroundColor: Colors.white, 
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              elevation: 8, 
+              shadowColor: Colors.shadow, 
+              shadowOffset: { width: 0, height: 3 }, 
+              shadowOpacity: 0.22, 
+              shadowRadius: 5, 
+              borderWidth: 2, 
+              borderColor: Colors.primary, 
+              paddingHorizontal: 12,
+              flexDirection: 'row'
+            }}
+            onPress={() => {
+              Alert.alert(
+                '📊 Today\'s Mood Tracking',
+                `You've completed ${todayMoodProgress.completed} out of 6 mood check-ins today.\n\n${todayMoodProgress.completed === 6 ? '🎉 Amazing! You\'ve completed all check-ins!' : `Keep going! ${6 - todayMoodProgress.completed} more to go.`}\n\nScheduled times:\n• 8:00 AM - Morning Check-in\n• 11:00 AM - Late Morning\n• 2:00 PM - Afternoon\n• 5:00 PM - Evening\n• 8:00 PM - Night\n• 11:00 PM - Before Sleep`,
+                [
+                  { text: 'Close', style: 'cancel' },
+                  ...(todayMoodProgress.completed < 6 ? [{ text: '✏️ Add Mood Now', onPress: () => setMoodModalVisible(true) }] : [])
+                ]
+              );
+            }}
+          >
+            <Text style={{ fontSize: 18, marginRight: 4 }}>😊</Text>
+            <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold' }}>
+              {todayMoodProgress.completed}/6
+            </Text>
+          </TouchableOpacity>
+
           {/* Notification Bell */}
           <TouchableOpacity
             style={{
@@ -1161,7 +1724,47 @@ export default function ExpertHome() {
             style={{ backgroundColor: Colors.white, borderRadius: 25, padding: 30, alignItems: 'center', width: 360, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.accent }}
           >
             <Text style={{ fontSize: 28, marginBottom: 10, color: Colors.text, fontWeight: 'bold', textAlign: 'center' }}>🌟 Expert Mood Check-In</Text>
-            <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 25 }}>
+            
+            {/* Progress Indicator */}
+            {currentPromptInfo && (
+              <View style={{ width: '100%', marginBottom: 15 }}>
+                <Text style={{ fontSize: 14, color: Colors.primary, textAlign: 'center', fontWeight: 'bold', marginBottom: 8 }}>
+                  {currentPromptInfo.timeLabel}
+                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 5 }}>
+                  {[1, 2, 3, 4, 5, 6].map((num) => (
+                    <View
+                      key={num}
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 15,
+                        backgroundColor: todayMoodProgress.completed >= num ? Colors.primary : Colors.backgroundLight,
+                        marginHorizontal: 3,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        borderWidth: 2,
+                        borderColor: currentPromptInfo.scheduleKey === num.toString() ? Colors.accent : 'transparent'
+                      }}
+                    >
+                      <Text style={{ color: todayMoodProgress.completed >= num ? Colors.white : Colors.textSecondary, fontSize: 12, fontWeight: 'bold' }}>
+                        {num}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, textAlign: 'center' }}>
+                  Check-in {todayMoodProgress.completed + 1} of 6 today
+                </Text>
+                {missedPromptsQueue.length > 1 && (
+                  <Text style={{ fontSize: 11, color: '#ff9800', textAlign: 'center', marginTop: 5 }}>
+                    ⏰ {missedPromptsQueue.length} pending check-ins
+                  </Text>
+                )}
+              </View>
+            )}
+            
+            <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 15 }}>
               Hi {profile?.name}! How are you feeling right now?
             </Text>
             <Text style={{ fontSize: 14, color: Colors.primary, textAlign: 'center', marginBottom: 20, fontWeight: 'bold' }}>
@@ -1388,6 +1991,367 @@ export default function ExpertHome() {
         </View>
       </Modal>
 
+      {/* Community Tab Content */}
+      {activeTab === 'community' && (
+        <View style={{ flex: 1, backgroundColor: Colors.background }}>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 20,
+            paddingTop: 50,
+            paddingBottom: 15,
+            backgroundColor: Colors.primary,
+          }}>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: Colors.white }}>Community</Text>
+            <TouchableOpacity
+              style={{ padding: 8 }}
+              onPress={() => setModalVisible(true)}
+            >
+              <Ionicons name="add" size={28} color={Colors.white} />
+            </TouchableOpacity>
+          </View>
+
+          <FlatList
+            data={posts}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={{
+                backgroundColor: Colors.surface,
+                margin: 10,
+                borderRadius: 15,
+                padding: 15,
+              }}>
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 10,
+                }}>
+                  <Image
+                    source={profilePics[item.profilePicIndex || 0]}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      marginRight: 10,
+                      borderWidth: 2,
+                      borderColor: Colors.primary,
+                    }}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: Colors.text }}>
+                      {item.username}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '600' }}>
+                      {item.userLabel}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: Colors.textSecondary }}>
+                      {formatRelativeTime(item.created_at)}
+                    </Text>
+                  </View>
+                  {(item.user_id === expertRegNo || item.user_id === profile?.registration_number) && (
+                    <TouchableOpacity
+                      style={{
+                        padding: 8,
+                        borderRadius: 20,
+                        backgroundColor: Colors.error,
+                      }}
+                      onPress={() => deletePost(item)}
+                    >
+                      <Ionicons name="trash" size={16} color={Colors.white} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {item.content && (
+                  <Text style={{
+                    fontSize: 16,
+                    color: Colors.text,
+                    marginBottom: 10,
+                    lineHeight: 22,
+                  }}>
+                    {item.content}
+                  </Text>
+                )}
+
+                {item.media_url && (
+                  <View style={{ marginBottom: 10 }}>
+                    {item.media_type === 'image' ? (
+                      <Image
+                        source={{ uri: item.media_url }}
+                        style={{
+                          width: '100%',
+                          height: 200,
+                          borderRadius: 10,
+                        }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={{
+                        width: '100%',
+                        height: 200,
+                        backgroundColor: '#000',
+                        borderRadius: 10,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <Ionicons name="videocam" size={48} color={Colors.white} />
+                        <Text style={{ color: Colors.white, marginTop: 10, fontSize: 14 }}>Video</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 8,
+                    backgroundColor: '#111',
+                    borderRadius: 8,
+                    alignSelf: 'flex-start',
+                    marginTop: 5
+                  }}
+                  onPress={() => openComments(item)}
+                >
+                  <Ionicons name="chatbubble-outline" size={16} color="#FFB347" />
+                  <Text style={{ marginLeft: 5, color: '#FFB347', fontSize: 14, fontWeight: '600' }}>
+                    Comments
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            ListEmptyComponent={
+              loadingPosts ? (
+                <View style={{ alignItems: 'center', padding: 50 }}>
+                  <Text style={{ color: Colors.textSecondary, fontSize: 16 }}>Loading posts...</Text>
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', padding: 50 }}>
+                  <Text style={{ color: Colors.textSecondary, fontSize: 16 }}>No posts yet. Be the first to share!</Text>
+                </View>
+              )
+            }
+            contentContainerStyle={{ paddingBottom: 20 }}
+          />
+
+          {/* Create Post Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={modalVisible}
+            onRequestClose={() => setModalVisible(false)}
+          >
+            <View style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              backgroundColor: 'rgba(0,0,0,0.7)',
+            }}>
+              <View style={{
+                backgroundColor: Colors.surface,
+                borderRadius: 20,
+                padding: 20,
+                width: '90%',
+                maxHeight: '80%',
+              }}>
+                <Text style={{
+                  fontSize: 18,
+                  fontWeight: 'bold',
+                  color: Colors.primary,
+                  marginBottom: 20,
+                  textAlign: 'center',
+                }}>
+                  Create New Post
+                </Text>
+                
+                <TextInput
+                  style={{
+                    borderWidth: 1,
+                    borderColor: Colors.border,
+                    borderRadius: 10,
+                    padding: 15,
+                    fontSize: 16,
+                    color: Colors.text,
+                    minHeight: 100,
+                    textAlignVertical: 'top',
+                    marginBottom: 20,
+                    backgroundColor: Colors.background,
+                  }}
+                  placeholder="Share your thoughts..."
+                  placeholderTextColor={Colors.textSecondary}
+                  multiline
+                  value={postText}
+                  onChangeText={setPostText}
+                />
+                
+                {selectedMedia && (
+                  <View style={{
+                    marginBottom: 20,
+                    padding: 10,
+                    backgroundColor: Colors.background,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                  }}>
+                    <Text style={{ color: Colors.text, fontSize: 14, marginBottom: 10 }}>
+                      Selected {selectedMedia.type}:
+                    </Text>
+                    <Text style={{ color: Colors.textSecondary, fontSize: 12 }}>
+                      {selectedMedia.uri.split('/').pop()}
+                    </Text>
+                    <TouchableOpacity
+                      style={{ marginTop: 10, padding: 5 }}
+                      onPress={() => setSelectedMedia(null)}
+                    >
+                      <Ionicons name="close" size={20} color={Colors.error} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                
+                <TouchableOpacity
+                  style={{
+                    alignItems: 'center',
+                    padding: 15,
+                    backgroundColor: Colors.background,
+                    borderRadius: 15,
+                    marginBottom: 20,
+                  }}
+                  onPress={pickMedia}
+                >
+                  <Ionicons name="images" size={24} color={Colors.primary} />
+                  <Text style={{ color: Colors.text, marginTop: 5 }}>Add Photo/Video</Text>
+                </TouchableOpacity>
+                
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      backgroundColor: Colors.border,
+                      padding: 15,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      setModalVisible(false);
+                      setPostText('');
+                      setSelectedMedia(null);
+                    }}
+                  >
+                    <Text style={{ color: Colors.text, fontWeight: 'bold' }}>Cancel</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      backgroundColor: isPosting ? Colors.border : Colors.primary,
+                      padding: 15,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                    }}
+                    onPress={createPost}
+                    disabled={isPosting}
+                  >
+                    <Text style={{ color: Colors.white, fontWeight: 'bold' }}>
+                      {isPosting ? 'Posting...' : 'Post'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Comments Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={commentsModalVisible}
+            onRequestClose={() => setCommentsModalVisible(false)}
+          >
+            <View style={{
+              flex: 1,
+              justifyContent: 'flex-end',
+              backgroundColor: 'rgba(0,0,0,0.7)',
+            }}>
+              <View style={{
+                backgroundColor: Colors.surface,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                padding: 20,
+                maxHeight: '80%',
+              }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: Colors.primary }}>Comments</Text>
+                  <TouchableOpacity onPress={() => setCommentsModalVisible(false)}>
+                    <Ionicons name="close" size={28} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={{ maxHeight: 400, marginBottom: 15 }}>
+                  {comments.length === 0 ? (
+                    <Text style={{ color: Colors.textSecondary, textAlign: 'center', paddingVertical: 20 }}>No comments yet</Text>
+                  ) : (
+                    comments.map((comment) => (
+                      <View key={comment.id} style={{
+                        backgroundColor: Colors.background,
+                        padding: 12,
+                        borderRadius: 10,
+                        marginBottom: 10
+                      }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: Colors.text, fontWeight: 'bold', fontSize: 14 }}>{comment.username}</Text>
+                            <Text style={{ color: Colors.primary, fontSize: 11, fontWeight: '600' }}>{comment.userLabel}</Text>
+                            <Text style={{ color: Colors.textSecondary, fontSize: 11 }}>{formatRelativeTime(comment.created_at)}</Text>
+                          </View>
+                          {(comment.user_id === expertRegNo || comment.user_id === profile?.registration_number) && (
+                            <TouchableOpacity
+                              onPress={() => deleteComment(comment.id, comment)}
+                              style={{ padding: 5 }}
+                            >
+                              <Ionicons name="trash" size={16} color={Colors.error} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <Text style={{ color: Colors.text, marginTop: 8, lineHeight: 20 }}>{comment.content}</Text>
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background, borderRadius: 10, padding: 8 }}>
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      color: Colors.text,
+                      padding: 10,
+                      fontSize: 14
+                    }}
+                    placeholder="Add a comment..."
+                    placeholderTextColor={Colors.textSecondary}
+                    value={newComment}
+                    onChangeText={setNewComment}
+                    multiline
+                  />
+                  <TouchableOpacity
+                    onPress={addComment}
+                    disabled={!newComment.trim()}
+                    style={{
+                      backgroundColor: newComment.trim() ? Colors.primary : Colors.border,
+                      paddingHorizontal: 15,
+                      paddingVertical: 10,
+                      borderRadius: 8,
+                      marginLeft: 8
+                    }}
+                  >
+                    <Ionicons name="send" size={20} color={Colors.white} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        </View>
+      )}
+
       {/* Bottom Tab Bar */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 15, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
         <TouchableOpacity
@@ -1409,6 +2373,15 @@ export default function ExpertHome() {
         >
           <View style={{ alignItems: 'center', justifyContent: 'center', width: 56, height: 40, borderRadius: 20, backgroundColor: 'transparent' }}>
             <Image source={require('../../assets/images/mood calender.png')} style={{ width: 48, height: 45 }} />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{ flex: 1, alignItems: 'center', paddingVertical: 12 }}
+          onPress={() => setActiveTab('community')}
+        >
+          <View style={{ alignItems: 'center', justifyContent: 'center', width: 56, height: 40, borderRadius: 20, backgroundColor: 'transparent' }}>
+            <Ionicons name="people" size={36} color={activeTab === 'community' ? Colors.primary : Colors.textSecondary} />
           </View>
         </TouchableOpacity>
 

@@ -82,6 +82,56 @@ export default function ExpertSchedulePage() {
     }
   }, [profile, currentMonth]);
 
+  // Function to automatically remove duplicate time slots
+  const removeDuplicateSlots = async (slots: TimeSlot[]) => {
+    const seen = new Map<string, TimeSlot>();
+    const duplicatesToDelete: string[] = [];
+
+    // Group by date + start_time + end_time to find duplicates
+    slots.forEach(slot => {
+      const key = `${slot.date}_${slot.start_time}_${slot.end_time}`;
+      
+      if (seen.has(key)) {
+        // This is a duplicate, mark for deletion
+        // Keep the first one (or the one that's booked), delete the rest
+        const existing = seen.get(key)!;
+        
+        if (slot.booked_by && !existing.booked_by) {
+          // Current slot is booked but existing isn't, keep current and delete existing
+          if (existing.id) duplicatesToDelete.push(existing.id);
+          seen.set(key, slot);
+        } else if (slot.id) {
+          // Delete the current duplicate
+          duplicatesToDelete.push(slot.id);
+        }
+      } else {
+        seen.set(key, slot);
+      }
+    });
+
+    // Delete duplicates if found
+    if (duplicatesToDelete.length > 0) {
+      console.log(`🗑️ Removing ${duplicatesToDelete.length} duplicate slot(s)...`);
+      
+      try {
+        const { error } = await supabase
+          .from('expert_schedule')
+          .delete()
+          .in('id', duplicatesToDelete);
+
+        if (error) {
+          console.error('Error removing duplicates:', error);
+        } else {
+          console.log(`✅ Successfully removed ${duplicatesToDelete.length} duplicate slot(s)`);
+        }
+      } catch (error) {
+        console.error('Error removing duplicates:', error);
+      }
+    }
+
+    return duplicatesToDelete.length;
+  };
+
 
   const loadAllSchedules = async () => {
     try {
@@ -98,8 +148,24 @@ export default function ExpertSchedulePage() {
       if (error) {
         console.error('Error loading schedules:', error);
       } else if (data) {
+        // Automatically remove duplicates before processing
+        const removedCount = await removeDuplicateSlots(data);
+        
+        // Reload data if duplicates were removed
+        let finalData = data;
+        if (removedCount > 0) {
+          const { data: freshData } = await supabase
+            .from('expert_schedule')
+            .select('*')
+            .eq('expert_id', profile?.id)
+            .gte('date', formatDateToLocalString(startOfMonth))
+            .lte('date', formatDateToLocalString(endOfMonth));
+          
+          finalData = freshData || data;
+        }
+
         const scheduleMap = new Map<string, TimeSlot[]>();
-        data.forEach((slot: TimeSlot) => {
+        finalData.forEach((slot: TimeSlot) => {
           const dateKey = slot.date;
           if (!scheduleMap.has(dateKey)) {
             scheduleMap.set(dateKey, []);
@@ -127,8 +193,25 @@ export default function ExpertSchedulePage() {
       if (error) {
         console.error('Error loading slots:', error);
         setSlots([]);
+      } else if (data) {
+        // Automatically remove duplicates for this date
+        const removedCount = await removeDuplicateSlots(data);
+        
+        // Reload if duplicates were removed
+        if (removedCount > 0) {
+          const { data: freshData } = await supabase
+            .from('expert_schedule')
+            .select('*')
+            .eq('expert_id', profile?.id)
+            .eq('date', dateString)
+            .order('start_time', { ascending: true });
+          
+          setSlots(freshData || []);
+        } else {
+          setSlots(data);
+        }
       } else {
-        setSlots(data || []);
+        setSlots([]);
       }
     } catch (error) {
       console.error('Error loading slots:', error);
@@ -147,9 +230,23 @@ export default function ExpertSchedulePage() {
     const existingSlots = allSchedules.get(dateString);
 
     if (!existingSlots || existingSlots.length === 0) {
-      // Automatically add default slots
+      // Automatically add default slots only if none exist
       setLoading(true);
       try {
+        // Double-check no slots exist before inserting
+        const { data: checkExisting } = await supabase
+          .from('expert_schedule')
+          .select('id, start_time, end_time')
+          .eq('expert_id', profile?.id)
+          .eq('date', dateString);
+
+        if (checkExisting && checkExisting.length > 0) {
+          // Slots were just added, reload them
+          await loadSlotsForDate(date);
+          setLoading(false);
+          return;
+        }
+
         const slotsToAdd = DEFAULT_SLOTS.map(slot => ({
           expert_registration_number: profile?.registration_number,
           expert_name: profile?.name,
@@ -194,6 +291,31 @@ export default function ExpertSchedulePage() {
       return;
     }
 
+    // Check for duplicate or overlapping slots
+    const dateString = formatDateToLocalString(selectedDate);
+    const existingSlots = slots.filter(slot => slot.date === dateString);
+    const isDuplicate = existingSlots.some(slot => 
+      slot.start_time === startTime && slot.end_time === endTime
+    );
+    
+    if (isDuplicate) {
+      Alert.alert('Duplicate Slot', 'This exact time slot already exists for this date.');
+      return;
+    }
+
+    // Check for overlapping slots
+    const hasOverlap = existingSlots.some(slot => {
+      const slotStart = slot.start_time;
+      const slotEnd = slot.end_time;
+      // Check if new slot overlaps with existing slot
+      return (startTime < slotEnd && endTime > slotStart);
+    });
+
+    if (hasOverlap) {
+      Alert.alert('Overlapping Slot', 'This time slot overlaps with an existing slot.');
+      return;
+    }
+
     Alert.alert(
       'Add Custom Slot',
       `Add slot from ${formatTime(startTime)} to ${formatTime(endTime)}?`,
@@ -204,7 +326,6 @@ export default function ExpertSchedulePage() {
           onPress: async () => {
             setLoading(true);
             try {
-              const dateString = formatDateToLocalString(selectedDate);
               const slotToAdd = {
                 expert_registration_number: profile?.registration_number,
                 expert_name: profile?.name,
@@ -221,7 +342,7 @@ export default function ExpertSchedulePage() {
 
               if (error) {
                 console.error('Error adding custom slot:', error);
-                Alert.alert('Error', 'Failed to add slot. It may already exist or overlap with another slot.');
+                Alert.alert('Error', 'Failed to add slot.');
               } else {
                 Alert.alert('Success', 'Custom slot added successfully!');
                 setCustomSlotModalVisible(false);
@@ -261,15 +382,35 @@ export default function ExpertSchedulePage() {
             setLoading(true);
             try {
               const dateString = formatDateToLocalString(selectedDate);
-              const slotsToAdd = DEFAULT_SLOTS.map(slot => ({
-                expert_registration_number: profile?.registration_number,
-                expert_name: profile?.name,
-                expert_id: profile?.id,
-                date: dateString,
-                start_time: slot.start,
-                end_time: slot.end,
-                is_available: true
-              }));
+              
+              // Check for existing slots on this date
+              const existingSlots = slots.filter(slot => slot.date === dateString);
+              
+              // Filter out slots that already exist
+              const slotsToAdd = DEFAULT_SLOTS
+                .filter(defaultSlot => {
+                  // Check if this slot already exists
+                  const exists = existingSlots.some(existing => 
+                    existing.start_time === defaultSlot.start && 
+                    existing.end_time === defaultSlot.end
+                  );
+                  return !exists;
+                })
+                .map(slot => ({
+                  expert_registration_number: profile?.registration_number,
+                  expert_name: profile?.name,
+                  expert_id: profile?.id,
+                  date: dateString,
+                  start_time: slot.start,
+                  end_time: slot.end,
+                  is_available: true
+                }));
+
+              if (slotsToAdd.length === 0) {
+                Alert.alert('Info', 'All default slots already exist for this date.');
+                setLoading(false);
+                return;
+              }
 
               const { error } = await supabase
                 .from('expert_schedule')
@@ -277,9 +418,15 @@ export default function ExpertSchedulePage() {
 
               if (error) {
                 console.error('Error adding slots:', error);
-                Alert.alert('Error', 'Failed to add slots. Some slots may already exist.');
+                Alert.alert('Error', 'Failed to add slots.');
               } else {
-                Alert.alert('Success', 'Default slots added successfully!');
+                const addedCount = slotsToAdd.length;
+                const skippedCount = DEFAULT_SLOTS.length - addedCount;
+                let message = `${addedCount} slot${addedCount !== 1 ? 's' : ''} added successfully!`;
+                if (skippedCount > 0) {
+                  message += ` (${skippedCount} duplicate${skippedCount !== 1 ? 's' : ''} skipped)`;
+                }
+                Alert.alert('Success', message);
                 await loadSlotsForDate(selectedDate);
                 await loadAllSchedules();
               }

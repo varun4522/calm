@@ -78,8 +78,9 @@ export default function StudentHome() {
   const [showToolkitPage, setShowToolkitPage] = useState(false);
   const [showToolkitPopup, setShowToolkitPopup] = useState(false);
   const [selectedToolkitItem, setSelectedToolkitItem] = useState<{ name: string, description: string, route: string } | null>(null);
-  const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string }[] }>({});
-  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, notes?: string }[]>([]);
+  const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string, scheduled?: string, scheduleKey?: string }[] }>({});
+  const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, scheduled?: string, scheduleKey?: string, notes?: string }[]>([]);
+  const [todayMoodProgress, setTodayMoodProgress] = useState<{ completed: number, total: number }>({ completed: 0, total: 6 });
 
   const {session } = useAuth();
   const {data:profile } = useProfile(session?.user.id);
@@ -122,6 +123,47 @@ export default function StudentHome() {
   useEffect(() => {
     bubbleAnimations.forEach((_, i) => startBubbleLoop(i));
   }, [bubbleAnimations, startBubbleLoop]);
+
+  // Initialize mood calendar data immediately on mount (for APK builds)
+  useEffect(() => {
+    const initializeMoodData = async () => {
+      try {
+        // Try multiple sources for registration number
+        let regNo = studentRegNo || 
+                    await AsyncStorage.getItem('currentStudentReg') ||
+                    profile?.registration_number;
+
+        if (regNo) {
+          console.log('🎯 Initializing mood calendar for:', regNo);
+          
+          // Load mood history
+          const stored = await AsyncStorage.getItem(`moodHistory_${regNo}`);
+          if (stored) {
+            setMoodHistory(JSON.parse(stored));
+            console.log('✅ Mood history initialized');
+          }
+
+          // Load daily mood entries
+          const dailyStored = await AsyncStorage.getItem(`dailyMoodEntries_${regNo}`);
+          if (dailyStored) {
+            setDailyMoodEntries(JSON.parse(dailyStored));
+            console.log('✅ Mood calendar initialized with', Object.keys(JSON.parse(dailyStored)).length, 'days');
+          }
+
+          // Load detailed entries
+          const detailedStored = await AsyncStorage.getItem(`detailedMoodEntries_${regNo}`);
+          if (detailedStored) {
+            setDetailedMoodEntries(JSON.parse(detailedStored));
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error initializing mood data:', error);
+      }
+    };
+
+    // Run initialization immediately
+    initializeMoodData();
+  }, []); // Empty dependency array - runs once on mount
 
   // Student info state
   const [studentName, setStudentName] = useState('');
@@ -259,39 +301,64 @@ export default function StudentHome() {
     loadStudentSession();
   }, [studentRegNo]);
 
-  // Load mood history from AsyncStorage on mount (per user)
+  // Load mood history from AsyncStorage - use useFocusEffect for APK compatibility
+  useFocusEffect(
+    useCallback(() => {
+      const loadMoodHistory = async () => {
+        let regNo = studentRegNo;
+        if (!regNo) {
+          const storedReg = await AsyncStorage.getItem('currentStudentReg');
+          if (storedReg) regNo = storedReg;
+        }
+
+        // Also try to get from profile
+        if (!regNo && profile?.registration_number) {
+          regNo = profile.registration_number.toString();
+        }
+
+        if (!regNo) {
+          console.log('No registration number available yet for mood data');
+          return;
+        }
+
+        try {
+          const stored = await AsyncStorage.getItem(`moodHistory_${regNo}`);
+          if (stored) setMoodHistory(JSON.parse(stored));
+          else setMoodHistory({});
+
+          // Also load daily mood entries
+          const dailyStored = await AsyncStorage.getItem(`dailyMoodEntries_${regNo}`);
+          if (dailyStored) {
+            setDailyMoodEntries(JSON.parse(dailyStored));
+            console.log('✅ Mood calendar data loaded successfully');
+          } else {
+            setDailyMoodEntries({});
+            console.log('📝 No existing mood calendar data');
+          }
+
+          // Load detailed mood entries for analytics
+          const detailedStored = await AsyncStorage.getItem(`detailedMoodEntries_${regNo}`);
+          if (detailedStored) setDetailedMoodEntries(JSON.parse(detailedStored));
+          else setDetailedMoodEntries([]);
+
+        } catch (error) {
+          console.error('Error loading mood data:', error);
+        }
+      };
+
+      loadMoodHistory();
+    }, [studentRegNo, profile])
+  );
+
+  // Reset calendar to current month when switching to mood tab
   useEffect(() => {
-    const loadMoodHistory = async () => {
-      let regNo = studentRegNo;
-      if (!regNo) {
-        const storedReg = await AsyncStorage.getItem('currentStudentReg');
-        if (storedReg) regNo = storedReg;
-      }
-
-      if (!regNo) return;
-
-      try {
-        const stored = await AsyncStorage.getItem(`moodHistory_${regNo}`);
-        if (stored) setMoodHistory(JSON.parse(stored));
-        else setMoodHistory({});
-
-        // Also load daily mood entries
-        const dailyStored = await AsyncStorage.getItem(`dailyMoodEntries_${regNo}`);
-        if (dailyStored) setDailyMoodEntries(JSON.parse(dailyStored));
-        else setDailyMoodEntries({});
-
-        // Load detailed mood entries for analytics
-        const detailedStored = await AsyncStorage.getItem(`detailedMoodEntries_${regNo}`);
-        if (detailedStored) setDetailedMoodEntries(JSON.parse(detailedStored));
-        else setDetailedMoodEntries([]);
-
-      } catch (error) {
-        console.error('Error loading mood data:', error);
-      }
-    };
-
-    loadMoodHistory();
-  }, [studentRegNo]);
+    if (activeTab === 'mood') {
+      const now = new Date();
+      setCurrentMonth(now.getMonth());
+      setCurrentYear(now.getFullYear());
+      console.log('📅 Calendar reset to current month');
+    }
+  }, [activeTab]);
 
   // Notification functions
   const loadNotifications = async () => {
@@ -519,25 +586,27 @@ export default function StudentHome() {
           date: today,
           promptTimes: generateMoodPromptTimes(todayDate),
           completedPrompts: [],
-          count: 0
+          count: 0,
+          lastChecked: now.toISOString()
         };
         await AsyncStorage.setItem(scheduleKey, JSON.stringify(dailySchedule));
-        console.log('📅 Created new mood schedule for', today, 'with 6 prompts');
+        console.log('📅 Created new mood schedule for', today, 'with 6 prompts at fixed times');
       } else {
         dailySchedule = JSON.parse(scheduleData);
         console.log(`📊 Loaded mood schedule: ${dailySchedule.count}/6 completed`);
       }
 
       setMoodPromptsToday(dailySchedule.count);
+      setTodayMoodProgress({ completed: dailySchedule.count, total: 6 });
 
       // Check if it's time for any prompts
-      checkForMoodPrompt(regNo, dailySchedule);
+      await checkForMoodPrompt(regNo, dailySchedule);
     } catch (error) {
       console.error('Error initializing mood prompt system:', error);
     }
   };
 
-  // Check if it's time for a mood prompt based on 4-hour intervals
+  // Check if it's time for a mood prompt - now shows persistently until completed
   const checkForMoodPrompt = async (regNo: string, dailySchedule?: any) => {
     try {
       const now = new Date();
@@ -549,14 +618,20 @@ export default function StudentHome() {
         const scheduleKey = `moodSchedule_${regNo}_${today}`;
         const scheduleData = await AsyncStorage.getItem(scheduleKey);
         if (!scheduleData) {
-          console.log('No mood schedule found for today');
+          console.log('⚠️ No mood schedule found for today, creating new one');
+          await initializeMoodPromptSystem(regNo);
           return;
         }
         schedule = JSON.parse(scheduleData);
       }
 
-      // Check which prompts should be shown now
-      const missed: { label: string, intervalNumber: number, time: Date }[] = [];
+      // Update last checked time
+      schedule.lastChecked = now.toISOString();
+      const scheduleKey = `moodSchedule_${regNo}_${today}`;
+      await AsyncStorage.setItem(scheduleKey, JSON.stringify(schedule));
+
+      // Check which prompts should be shown now (all overdue prompts)
+      const missedPrompts: { label: string, intervalNumber: number, time: Date, timeLabel: string }[] = [];
 
       for (let i = 0; i < schedule.promptTimes.length; i++) {
         const promptInfo = schedule.promptTimes[i];
@@ -564,29 +639,39 @@ export default function StudentHome() {
         const isTimeForPrompt = now >= promptTime;
         const hasCompleted = schedule.completedPrompts.includes(promptInfo.intervalNumber);
 
-        if (isTimeForPrompt && !hasCompleted && schedule.count < 6) {
-          missed.push({
+        if (isTimeForPrompt && !hasCompleted) {
+          missedPrompts.push({
             label: promptInfo.label,
             intervalNumber: promptInfo.intervalNumber,
-            time: promptTime
+            time: promptTime,
+            timeLabel: `${promptInfo.label} (${formatTimeOnly(promptTime)})`
           });
         }
       }
 
-      if (missed.length > 0) {
-        // Show the earliest missed prompt
-        const nextPrompt = missed[0];
-        console.log(`🎯 Showing mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6)`);
+      if (missedPrompts.length > 0) {
+        // Show the earliest missed prompt with time info
+        const nextPrompt = missedPrompts[0];
+        console.log(`🎯 Showing mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6) - ${missedPrompts.length} pending`);
+        
         setCurrentPromptInfo({
-          timeLabel: nextPrompt.label,
+          timeLabel: nextPrompt.timeLabel,
           scheduleKey: nextPrompt.intervalNumber.toString()
         });
+        setMissedPromptsQueue(missedPrompts.map(p => ({ label: p.timeLabel, scheduleKey: p.intervalNumber.toString() })));
         setMoodModalVisible(true);
+      } else {
+        console.log(`✅ All ${schedule.count}/6 prompts completed for today!`);
       }
 
     } catch (error) {
       console.error('Error checking for mood prompt:', error);
     }
+  };
+
+  // Helper function to format time nicely
+  const formatTimeOnly = (date: Date) => {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   };
 
   // Show welcome mood prompt for new login sessions
@@ -622,11 +707,27 @@ export default function StudentHome() {
       if (!schedule.completedPrompts.includes(interval)) {
         schedule.completedPrompts.push(interval);
         schedule.count = schedule.completedPrompts.length;
+        schedule.lastCompleted = new Date().toISOString();
 
         await AsyncStorage.setItem(scheduleKey, JSON.stringify(schedule));
         setMoodPromptsToday(schedule.count);
+        setTodayMoodProgress({ completed: schedule.count, total: 6 });
 
-        console.log(`✅ Mood prompt completed: ${interval}/6 for ${regNo}`);
+        console.log(`✅ Mood prompt completed: ${schedule.count}/6 (Interval ${interval})`);
+        
+        // Show completion message
+        if (schedule.count === 6) {
+          Alert.alert(
+            '🎉 Amazing!',
+            'You\'ve completed all 6 mood check-ins for today! Great job tracking your emotional wellness.',
+            [{ text: 'Awesome!', style: 'default' }]
+          );
+        } else {
+          // Check for next pending prompt immediately
+          setTimeout(() => {
+            checkForMoodPrompt(regNo, schedule);
+          }, 1000);
+        }
       }
     } catch (error) {
       console.error('Error recording mood prompt completion:', error);
@@ -876,13 +977,17 @@ export default function StudentHome() {
         year: 'numeric'
       });
 
-      let entriesText = `Mood entries for this day:\n\n`;
+      let entriesText = `📊 Mood check-ins for this day (${dayEntries.length}/6):\n\n`;
       dayEntries.forEach((entry, index) => {
-        entriesText += `${index + 1}. ${entry.emoji} ${entry.label} at ${entry.time}\n`;
+        const scheduledInfo = entry.scheduled ? `\n   ${entry.scheduled}` : '';
+        entriesText += `${index + 1}. ${entry.emoji} ${entry.label} at ${entry.time}${scheduledInfo}\n`;
       });
 
       if (isToday) {
-        entriesText += `\n🌟 This is today's mood journey!`;
+        entriesText += `\n🌟 Today's progress: ${dayEntries.length}/6 check-ins completed!`;
+        if (dayEntries.length < 6) {
+          entriesText += `\n💪 Keep it up! ${6 - dayEntries.length} more to go.`;
+        }
       }
 
       Alert.alert(
@@ -891,7 +996,7 @@ export default function StudentHome() {
         [
           { text: 'Close', style: 'cancel' },
           { text: '💾 Export All Data', onPress: exportMoodData },
-          ...(isToday ? [{ text: '➕ Add Mood Now', onPress: () => setMoodModalVisible(true) }] : [])
+          ...(isToday && dayEntries.length < 6 ? [{ text: '➕ Add Mood Now', onPress: () => setMoodModalVisible(true) }] : [])
         ]
       );
     } else {
@@ -906,7 +1011,7 @@ export default function StudentHome() {
 
       Alert.alert(
         `${isToday ? '🌟 Today' : '📅'} ${dayName}, ${formattedDate}`,
-        `😔 No mood entries found for this date.\n\n💡 ${isToday ? 'Start tracking your mood today!' : 'You can add mood entries for any day.'}`,
+        `😔 No mood entries found for this date (0/6).\n\n💡 ${isToday ? 'Start tracking your mood today! We recommend 6 check-ins throughout the day.' : 'You can add mood entries for any day.'}`,
         [
           { text: 'Close', style: 'cancel' },
           { text: '➕ Add Mood Now', onPress: () => setMoodModalVisible(true) }
@@ -915,7 +1020,7 @@ export default function StudentHome() {
     }
   };
 
-  // Mood Calendar Component (Enhanced)
+  // Mood Calendar Component (Enhanced with 6-times daily tracking)
   const MoodCalendar = () => {
     const calendar = generateCalendar();
     const monthNames = [
@@ -950,6 +1055,33 @@ export default function StudentHome() {
           <Text style={{ color: Colors.primary, fontSize: 20, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.30)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>
             Most Selected Mood This Month : {mostSelectedEmoji}
           </Text>
+          
+          {/* Today's Progress */}
+          <View style={{ marginTop: 12, backgroundColor: Colors.white, padding: 12, borderRadius: 15, borderWidth: 1, borderColor: Colors.primary }}>
+            <Text style={{ color: Colors.text, fontSize: 14, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>
+              📅 Today's Progress: {todayMoodProgress.completed}/6 Check-ins
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+              {[1, 2, 3, 4, 5, 6].map((num) => (
+                <View
+                  key={num}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor: todayMoodProgress.completed >= num ? Colors.primary : Colors.backgroundLight,
+                    marginHorizontal: 2,
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}
+                >
+                  {todayMoodProgress.completed >= num && (
+                    <Text style={{ color: Colors.white, fontSize: 12 }}>✓</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
 
         {/* Month Navigation */}
@@ -989,23 +1121,60 @@ export default function StudentHome() {
 
         {/* Calendar Grid */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: 400 }}>
-          {calendar.map((day, index) => (
-            <TouchableOpacity
-              key={index}
-              style={{ width: 50, height: 60, alignItems: 'center', justifyContent: 'center', margin: 4, backgroundColor: Colors.white, borderRadius: 15, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2, borderWidth: 1, borderColor: Colors.border }}
-              onPress={() => day && handleCalendarPress(day)}
-              disabled={!day}
-            >
-              {day && (
-                <>
-                  {getMoodForDate(day) && (
-                    <Text style={{ fontSize: 20 }}>{getMoodForDate(day)}</Text>
-                  )}
-                  <Text style={{ color: Colors.text, fontSize: 10, marginTop: 4, fontWeight: '600' }}>{day}</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          ))}
+          {calendar.map((day, index) => {
+            const dateKey = day ? `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
+            const dayEntries = dateKey ? dailyMoodEntries[dateKey] : null;
+            const entryCount = dayEntries ? dayEntries.length : 0;
+            const isToday = dateKey === getTodayKey();
+            
+            return (
+              <TouchableOpacity
+                key={index}
+                style={{ 
+                  width: 50, 
+                  height: 60, 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  margin: 4, 
+                  backgroundColor: isToday ? Colors.accent + '30' : Colors.white, 
+                  borderRadius: 15, 
+                  shadowColor: Colors.shadow, 
+                  shadowOffset: { width: 0, height: 2 }, 
+                  shadowOpacity: 0.2, 
+                  shadowRadius: 4, 
+                  elevation: 2, 
+                  borderWidth: isToday ? 2 : 1, 
+                  borderColor: isToday ? Colors.primary : Colors.border 
+                }}
+                onPress={() => day && handleCalendarPress(day)}
+                disabled={!day}
+              >
+                {day && (
+                  <>
+                    {getMoodForDate(day) && (
+                      <Text style={{ fontSize: 20 }}>{getMoodForDate(day)}</Text>
+                    )}
+                    <Text style={{ color: Colors.text, fontSize: 10, marginTop: 4, fontWeight: '600' }}>{day}</Text>
+                    {entryCount > 0 && (
+                      <View style={{ 
+                        position: 'absolute', 
+                        bottom: 2, 
+                        right: 2, 
+                        backgroundColor: entryCount >= 6 ? '#4caf50' : Colors.primary, 
+                        borderRadius: 8, 
+                        minWidth: 16, 
+                        height: 16, 
+                        justifyContent: 'center', 
+                        alignItems: 'center' 
+                      }}>
+                        <Text style={{ color: 'white', fontSize: 8, fontWeight: 'bold' }}>{entryCount}</Text>
+                      </View>
+                    )}
+                  </>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
     );
@@ -1046,6 +1215,42 @@ export default function StudentHome() {
       {/* Floating Action Buttons - Only show on Home tab */}
       {activeTab === 'home' && (
         <View style={{ position: 'absolute', top: 42, right: 20, zIndex: 20, flexDirection: 'row', alignItems: 'center' }}>
+          {/* Mood Progress Indicator */}
+          <TouchableOpacity
+            style={{ 
+              height: 40, 
+              borderRadius: 22, 
+              backgroundColor: Colors.white, 
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              elevation: 8, 
+              shadowColor: Colors.shadow, 
+              shadowOffset: { width: 0, height: 3 }, 
+              shadowOpacity: 0.22, 
+              shadowRadius: 5, 
+              borderWidth: 2, 
+              borderColor: Colors.primary, 
+              marginRight: 10,
+              paddingHorizontal: 12,
+              flexDirection: 'row'
+            }}
+            onPress={() => {
+              Alert.alert(
+                '📊 Today\'s Mood Tracking',
+                `You've completed ${todayMoodProgress.completed} out of 6 mood check-ins today.\n\n${todayMoodProgress.completed === 6 ? '🎉 Amazing! You\'ve completed all check-ins!' : `Keep going! ${6 - todayMoodProgress.completed} more to go.`}\n\nScheduled times:\n• 8:00 AM - Morning Check-in\n• 11:00 AM - Late Morning\n• 2:00 PM - Afternoon\n• 5:00 PM - Evening\n• 8:00 PM - Night\n• 11:00 PM - Before Sleep`,
+                [
+                  { text: 'Close', style: 'cancel' },
+                  ...(todayMoodProgress.completed < 6 ? [{ text: '✏️ Add Mood Now', onPress: () => setMoodModalVisible(true) }] : [])
+                ]
+              );
+            }}
+          >
+            <Text style={{ fontSize: 18, marginRight: 4 }}>😊</Text>
+            <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold' }}>
+              {todayMoodProgress.completed}/6
+            </Text>
+          </TouchableOpacity>
+
           {/* Notification Bell */}
           <TouchableOpacity
             style={{ width: 40, height: 40, borderRadius: 22, backgroundColor: hasNewNotification ? '#ffeb3b' : Colors.white, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 5, borderWidth: 2, borderColor: hasNewNotification ? '#ff9800' : Colors.primary, marginRight: 10 }}
@@ -1287,7 +1492,47 @@ export default function StudentHome() {
             style={{ backgroundColor: Colors.white, borderRadius: 25, padding: 30, alignItems: 'center', width: 360, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.accent }}
           >
             <Text style={{ fontSize: 28, marginBottom: 10, color: Colors.text, fontWeight: 'bold', textAlign: 'center' }}>🌟 Mood Check-In</Text>
-            <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 25 }}>
+            
+            {/* Progress Indicator */}
+            {currentPromptInfo && (
+              <View style={{ width: '100%', marginBottom: 15 }}>
+                <Text style={{ fontSize: 14, color: Colors.primary, textAlign: 'center', fontWeight: 'bold', marginBottom: 8 }}>
+                  {currentPromptInfo.timeLabel}
+                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 5 }}>
+                  {[1, 2, 3, 4, 5, 6].map((num) => (
+                    <View
+                      key={num}
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 15,
+                        backgroundColor: todayMoodProgress.completed >= num ? Colors.primary : Colors.backgroundLight,
+                        marginHorizontal: 3,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        borderWidth: 2,
+                        borderColor: currentPromptInfo.scheduleKey === num.toString() ? Colors.accent : 'transparent'
+                      }}
+                    >
+                      <Text style={{ color: todayMoodProgress.completed >= num ? Colors.white : Colors.textSecondary, fontSize: 12, fontWeight: 'bold' }}>
+                        {num}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, textAlign: 'center' }}>
+                  Check-in {todayMoodProgress.completed + 1} of 6 today
+                </Text>
+                {missedPromptsQueue.length > 1 && (
+                  <Text style={{ fontSize: 11, color: '#ff9800', textAlign: 'center', marginTop: 5 }}>
+                    ⏰ {missedPromptsQueue.length} pending check-ins
+                  </Text>
+                )}
+              </View>
+            )}
+            
+            <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 15 }}>
               Hi {studentName || studentUsername}! How are you feeling right now?
             </Text>
             <Text style={{ fontSize: 14, color: Colors.primary, textAlign: 'center', marginBottom: 20, fontWeight: 'bold' }}>

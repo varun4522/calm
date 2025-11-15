@@ -1,20 +1,35 @@
 import { useRouter } from 'expo-router';
 import { JSX, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Modal, Alert } from 'react-native';
-import { supabase } from '@/lib/supabase'; // Corrected import path
+import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Modal, Alert, FlatList, Image } from 'react-native';
+import { supabase } from '@/lib/supabase';
 import Toast from 'react-native-toast-message';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { formatRelativeTime, uploadMediaToSupabase, pickMediaFromGallery } from '@/lib/utils';
+import { profilePics } from '@/constants/ProfilePhotos';
 
 console.log('AdminHome component loaded');
 
 export default function AdminHome() {
-  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'requests' | 'BuddyConnect' | 'ai'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'BuddyConnect' | 'ai'>('home');
   const [users, setUsers] = useState<any[]>([]);
-  const [requests, setRequests] = useState<any[]>([]);
-  const [hasUnreadRequests, setHasUnreadRequests] = useState(false);
+  const [userTypeFilter, setUserTypeFilter] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [buddyMessages, setBuddyMessages] = useState<any[]>([]);
-  const [buddyMessage, setBuddyMessage] = useState('');
-  const [buddySending, setBuddySending] = useState(false);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [postText, setPostText] = useState('');
+  const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
+  const [isPosting, setIsPosting] = useState(false);
+  const [adminRegNo, setAdminRegNo] = useState('');
+  const [commentsModalVisible, setCommentsModalVisible] = useState(false);
+  const [selectedPostForComments, setSelectedPostForComments] = useState<any>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
   const [showUserTypeModal, setShowUserTypeModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [changingType, setChangingType] = useState(false);
@@ -30,6 +45,13 @@ export default function AdminHome() {
   useEffect(() => {
     if (activeTab === 'settings') {
       router.push('./admin-setting');
+    }
+  }, [activeTab]);
+
+  // Fetch posts when community tab is active
+  useEffect(() => {
+    if (activeTab === 'BuddyConnect') {
+      fetchPosts();
     }
   }, [activeTab]);
 
@@ -115,305 +137,328 @@ export default function AdminHome() {
         setLoading(false);
       }
     };
-    if (activeTab === 'home') fetchUsers();
+
+    if (activeTab === 'home') {
+      fetchUsers();
+
+      // Set up real-time subscription for profile changes
+      const profileSubscription = supabase
+        .channel('admin_profiles_realtime')
+        .on('postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'profiles' },
+          (payload) => {
+            console.log('New profile added:', payload.new);
+            const newProfile = payload.new as any;
+            const newUser = {
+              id: newProfile.id,
+              name: newProfile.name,
+              username: newProfile.username || newProfile.registration_number,
+              reg_no: newProfile.registration_number,
+              email: newProfile.email || 'N/A',
+              course: newProfile.course || 'N/A',
+              type: newProfile.type,
+              request_status: 'approved',
+              phone: newProfile.phone_number || 'N/A',
+              dob: newProfile.date_of_birth || 'N/A',
+              details: 'N/A',
+              category: newProfile.type?.toLowerCase()
+            };
+            setUsers(prev => [...prev, newUser]);
+          }
+        )
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'profiles' },
+          (payload) => {
+            console.log('Profile updated:', payload.new);
+            const updatedProfile = payload.new as any;
+            setUsers(prev => prev.map(user =>
+              user.id === updatedProfile.id ? {
+                ...user,
+                name: updatedProfile.name,
+                username: updatedProfile.username || updatedProfile.registration_number,
+                email: updatedProfile.email || 'N/A',
+                course: updatedProfile.course || 'N/A',
+                type: updatedProfile.type,
+                phone: updatedProfile.phone_number || 'N/A',
+                dob: updatedProfile.date_of_birth || 'N/A',
+                category: updatedProfile.type?.toLowerCase()
+              } : user
+            ));
+          }
+        )
+        .on('postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'profiles' },
+          (payload) => {
+            console.log('Profile deleted:', payload.old);
+            setUsers(prev => prev.filter(user => user.id !== (payload.old as any).id));
+          }
+        )
+        .subscribe();
+
+      return () => {
+        profileSubscription.unsubscribe();
+      };
+    }
   }, [activeTab]);
 
-  // Fetch requests from Supabase (profiles table)
-  useEffect(() => {
-    const fetchRequests = async () => {
-      if (activeTab === 'requests') {
-        try {
-          // Fetch all profiles (includes Students, Experts, Peer Listeners, and Admins)
-          const { data: profilesData, error: profileError } = await supabase
-            .from('profiles')
-            .select('id, name, username, type, registration_number, email, course, phone_number, date_of_birth');
-
-          if (profileError) {
-            console.error('Error fetching profiles:', profileError);
-          }
-
-          const allRequests: any[] = [];
-
-          // Add profiles (all registered users are considered "approved")
-          if (profilesData) {
-            profilesData.forEach(profile => {
-              allRequests.push({
-                ...profile,
-                request_type: 'profile',
-                user_name: profile.name,
-                user_type: profile.type,
-                registration_number: profile.registration_number,
-                phone: profile.phone_number,
-                dob: profile.date_of_birth,
-                status: 'approved' // All users in profiles table are approved
-              });
-            });
-          }
-
-          // Sort by creation date
-          allRequests.sort((a, b) => {
-            const dateA = new Date(a.created_at).getTime();
-            const dateB = new Date(b.created_at).getTime();
-            return dateB - dateA;
-          });
-
-          setRequests(allRequests);
-
-          // Set unread flag if there are pending requests
-          const pendingRequests = allRequests.filter(r => r.status === 'pending');
-          setHasUnreadRequests(pendingRequests.length > 0);
-
-        } catch (error) {
-          console.error('Unexpected error fetching requests:', error);
-        }
-      }
-    };
-
-    fetchRequests();
-
-    // Set up real-time subscription for new profiles
-    const profileSubscription = supabase
-      .channel('profiles')
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'profiles' },
-        async (payload) => {
-          const newProfile = {
-            ...payload.new,
-            request_type: 'profile',
-            user_name: payload.new.name,
-            user_type: payload.new.type,
-            registration_number: payload.new.registration_number,
-            phone: payload.new.phone_number,
-            dob: payload.new.date_of_birth,
-            status: 'approved'
-          };
-          setRequests(prev => [newProfile, ...prev]);
-          if (activeTab !== 'requests') {
-            setHasUnreadRequests(true);
-          }
-        }
-      )
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'profiles' },
-        async (payload) => {
-          setRequests(prev => prev.map(req =>
-            req.id === payload.new.id && req.request_type === 'profile' ? {
-              ...payload.new,
-              request_type: 'profile',
-              user_name: payload.new.name,
-              user_type: payload.new.type,
-              registration_number: payload.new.registration_number,
-              phone: payload.new.phone_number,
-              dob: payload.new.date_of_birth,
-              status: 'approved'
-            } : req
-          ));
-        }
-      )
-      .subscribe();
-
-    return () => {
-      profileSubscription.unsubscribe();
-    };
-  }, [activeTab]);
-
-  // Handle request approval/rejection for both user requests and peer listeners
-  const handleRequestAction = async (requestId: number, action: 'approved' | 'rejected', requestType: string) => {
+  // Community functions
+  const pickMedia = async () => {
     try {
-      const tableName = requestType === 'peer_listener' ? 'peer_listeners' : 'user_requests';
-
-      // Update the request status in Supabase
-      const { error: updateError } = await supabase
-        .from(tableName)
-        .update({
-          status: action,
-          processed_at: new Date().toISOString(),
-          processed_by: 'admin' // You can customize this to track which admin processed it
-        })
-        .eq('id', requestId);
-
-      if (updateError) {
-        console.error('Error updating request:', updateError);
-        return;
+      const result = await pickMediaFromGallery();
+      if (result) {
+        setSelectedMedia(result);
       }
-
-      // If approved, create the user account (only for user_requests, not peer_listeners)
-      if (action === 'approved' && requestType === 'user_request') {
-        // Fetch the original request data from user_requests table to get the password
-        const { data: originalRequest, error: fetchError } = await supabase
-          .from('user_requests')
-          .select('*')
-          .eq('id', requestId)
-          .single();
-
-        if (fetchError || !originalRequest) {
-          console.error('Error fetching original request data:', fetchError);
-          return;
-        }
-
-        if (originalRequest.user_type === 'Student') {
-          // Create student account
-          const { error: studentError } = await supabase
-            .from('students')
-            .insert([{
-              user_name: originalRequest.user_name,
-              username: originalRequest.username || originalRequest.registration_number,
-              registration_number: originalRequest.registration_number,
-              email: originalRequest.email,
-              course: originalRequest.course || 'Not Specified',
-              password: originalRequest.password,
-              phone: originalRequest.phone,
-              dob: originalRequest.dob
-            }]);
-
-          if (studentError) {
-            console.error('Error creating student account:', studentError);
-            alert('Error creating student account. Please try again.');
-          } else {
-            console.log('Student account created successfully');
-            alert('Student account created successfully! They can now login.');
-          }
-        } else if (originalRequest.user_type === 'Expert') {
-          // Create expert account
-          const { error: expertError } = await supabase
-            .from('experts')
-            .insert([{
-              user_name: originalRequest.user_name,
-              username: originalRequest.username || originalRequest.registration_number,
-              registration_number: originalRequest.registration_number,
-              email: originalRequest.email,
-              specialization: originalRequest.course || 'General', // Use course as specialization
-              password: originalRequest.password,
-              phone: originalRequest.phone,
-              dob: originalRequest.dob
-            }]);
-
-          if (expertError) {
-            console.error('Error creating expert account:', expertError);
-            alert('Error creating expert account. Please try again.');
-          } else {
-            console.log('Expert account created successfully');
-            alert('Expert account created successfully! They can now login.');
-          }
-        } else if (originalRequest.user_type === 'Peer Listener') {
-          // Create peer listener account
-          const { error: peerError } = await supabase
-            .from('peer_listeners')
-            .insert([{
-              user_name: originalRequest.user_name,
-              username: originalRequest.username || originalRequest.registration_number,
-              registration_number: originalRequest.registration_number,
-              email: originalRequest.email,
-              password: originalRequest.password,
-              phone: originalRequest.phone,
-              dob: originalRequest.dob
-            }]);
-
-          if (peerError) {
-            console.error('Error creating peer listener account:', peerError);
-            alert('Error creating peer listener account. Please try again.');
-          } else {
-            console.log('Peer listener account created successfully');
-            alert('Peer listener account created successfully! They can now login.');
-          }
-        }
-      }
-
-      // Update local state
-      setRequests(prev => prev.map(req =>
-        req.id === requestId && req.request_type === requestType ? { ...req, status: action } : req
-      ));
-
-      // Update unread status
-      const updatedRequests = requests.map(req =>
-        req.id === requestId && req.request_type === requestType ? { ...req, status: action } : req
-      );
-      const pendingCount = updatedRequests.filter(r => r.status === 'pending').length;
-      setHasUnreadRequests(pendingCount > 0);
-
-      // Show success message for the action
-      if (action === 'approved') {
-        alert(`Request approved successfully!`);
-      } else if (action === 'rejected') {
-        alert(`Request rejected successfully.`);
-      }
-
     } catch (error) {
-      console.error('Error updating request:', error);
+      console.error('Error picking media:', error);
+      Alert.alert('Error', 'Failed to open gallery. Please try again.');
     }
   };
 
-  // Fetch buddy messages
-  useEffect(() => {
-    const fetchBuddyMessages = async () => {
-      if (activeTab === 'BuddyConnect') {
-        try {
-          const { data, error } = await supabase
-            .from('buddy_messages')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-          if (error) {
-            console.error('Error fetching buddy messages:', error);
-          } else if (data) {
-            setBuddyMessages(data);
-          }
-        } catch (error) {
-          console.error('Unexpected error fetching buddy messages:', error);
-        }
-      }
-    };
-
-    fetchBuddyMessages();
-
-    // Set up real-time subscription for buddy messages
-    const subscription = supabase
-      .channel('buddy_messages')
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'buddy_messages' },
-        async (payload) => {
-          setBuddyMessages(prev => [payload.new, ...prev]);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [activeTab]);
-
-  const handleSendBuddyMessage = async () => {
-    if (!buddyMessage.trim()) {
-      console.log('Cannot send admin message - empty input');
+  const createPost = async () => {
+    if (!postText.trim() && !selectedMedia) {
+      Alert.alert('Error', 'Please add some text or media to your post.');
       return;
     }
 
-    setBuddySending(true);
-    console.log('Admin sending buddy message:', buddyMessage.trim());
-
+    setIsPosting(true);
     try {
-      const messageData = {
-        sender_type: 'admin',
-        sender_reg: 'admin_001',
-        sender_name: 'Admin',
-        content: buddyMessage.trim(),
-        created_at: new Date().toISOString(),
-        is_global: true
-      };
+      let mediaUrl = null;
 
-      const { data, error } = await supabase.from('buddy_messages').insert([messageData]);
+      if (selectedMedia) {
+        try {
+          mediaUrl = await uploadMediaToSupabase(selectedMedia.uri, selectedMedia.type);
+        } catch (mediaError) {
+          Alert.alert('Error', `Failed to upload media: ${mediaError instanceof Error ? mediaError.message : 'Unknown error'}`);
+          return;
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('community_post')
+        .insert([
+          {
+            user_id: adminRegNo || 'admin',
+            content: postText.trim(),
+            media_url: mediaUrl,
+            media_type: selectedMedia?.type || null,
+            created_at: new Date().toISOString(),
+          },
+        ])
+        .select();
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Post created successfully!');
+      setModalVisible(false);
+      setPostText('');
+      setSelectedMedia(null);
+      fetchPosts();
+
+    } catch (error) {
+      console.error('Error creating post:', error);
+      Alert.alert('Error', `Failed to create post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  const fetchPosts = async () => {
+    try {
+      setLoadingPosts(true);
+      const { data, error } = await supabase
+        .from('community_post')
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error sending admin buddy message:', error);
-      } else {
-        console.log('Admin buddy message sent successfully:', data);
-        setBuddyMessage('');
+        console.error('Error fetching posts:', error);
+        Alert.alert('Error', 'Failed to load posts');
+        return;
       }
+
+      const postsWithUserData = await Promise.all(
+        (data || []).map(async (post) => {
+          try {
+            let username = `User ${post.user_id}`;
+            
+            const { data: userData } = await supabase
+              .from('user_requests')
+              .select('username, name')
+              .eq('registration_number', post.user_id)
+              .single();
+
+            if (userData) {
+              username = userData.name || userData.username || `User ${post.user_id}`;
+            }
+
+            return {
+              ...post,
+              username,
+              profilePicIndex: Math.floor(Math.random() * profilePics.length)
+            };
+          } catch (error) {
+            return {
+              ...post,
+              username: `User ${post.user_id}`,
+              profilePicIndex: 0
+            };
+          }
+        })
+      );
+
+      setPosts(postsWithUserData);
     } catch (error) {
-      console.error('Unexpected error sending admin buddy message:', error);
+      console.error('Error fetching posts:', error);
     } finally {
-      setBuddySending(false);
+      setLoadingPosts(false);
     }
+  };
+
+  const deletePost = async (post: any) => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('community_post')
+                .delete()
+                .eq('id', post.id);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'Post deleted successfully');
+              fetchPosts();
+            } catch (error) {
+              console.error('Error deleting post:', error);
+              Alert.alert('Error', 'Failed to delete post');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const openComments = async (post: any) => {
+    setSelectedPostForComments(post);
+    setCommentsModalVisible(true);
+    await fetchComments(post.id);
+  };
+
+  const fetchComments = async (postId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('post_comment')
+        .select('*')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching comments:', error);
+        return;
+      }
+
+      const commentsWithUserData = await Promise.all(
+        (data || []).map(async (comment) => {
+          let username = `User ${comment.user_id}`;
+          let userLabel = 'USER';
+
+          if (comment.user_id === 'admin' || String(comment.user_id).toLowerCase().includes('admin')) {
+            username = 'Admin';
+            userLabel = 'ADMIN';
+          } else {
+            const { data: userData } = await supabase
+              .from('profiles')
+              .select('name, username, type, registration_number')
+              .eq('registration_number', comment.user_id)
+              .single();
+
+            if (userData) {
+              username = userData.username || userData.name || `User ${comment.user_id}`;
+              
+              if (userData.type === 'EXPERT') {
+                userLabel = 'EXPERT';
+              } else if (userData.type === 'PEER') {
+                userLabel = 'PEER LISTENER';
+              } else {
+                userLabel = userData.registration_number ? `USER (${userData.registration_number})` : 'USER';
+              }
+            } else {
+              userLabel = `USER (${comment.user_id})`;
+            }
+          }
+
+          return {
+            ...comment,
+            username,
+            userLabel
+          };
+        })
+      );
+
+      setComments(commentsWithUserData);
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+    }
+  };
+
+  const addComment = async () => {
+    if (!newComment.trim() || !selectedPostForComments) return;
+
+    try {
+      const { error } = await supabase
+        .from('post_comment')
+        .insert([{
+          post_id: selectedPostForComments.id,
+          user_id: adminRegNo || 'admin',
+          content: newComment.trim(),
+          created_at: new Date().toISOString()
+        }]);
+
+      if (error) throw error;
+
+      setNewComment('');
+      await fetchComments(selectedPostForComments.id);
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      Alert.alert('Error', 'Failed to add comment');
+    }
+  };
+
+  const deleteComment = async (commentId: string) => {
+    Alert.alert(
+      'Delete Comment',
+      'Are you sure you want to delete this comment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('post_comment')
+                .delete()
+                .eq('id', commentId);
+
+              if (error) throw error;
+
+              if (selectedPostForComments) {
+                await fetchComments(selectedPostForComments.id);
+              }
+            } catch (error) {
+              console.error('Error deleting comment:', error);
+              Alert.alert('Error', 'Failed to delete comment');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleChangeUserType = async (newType: string) => {
@@ -448,12 +493,6 @@ export default function AdminHome() {
         u.id === selectedUser.id 
           ? { ...u, type: newType, category: newType.toLowerCase() }
           : u
-      ));
-      
-      setRequests(prev => prev.map(r => 
-        r.id === selectedUser.id 
-          ? { ...r, type: newType, user_type: newType }
-          : r
       ));
 
       Toast.show({
@@ -495,7 +534,42 @@ export default function AdminHome() {
     Content = (
       <View style={{ flex: 1 }}>
         <ScrollView style={{ flex: 1, padding: 16 }}>
-          <Text style={{ color: '#FFB347', fontSize: 28, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>Admin Home</Text>
+          <Text style={{ color: '#FFB347', fontSize: 28, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' }}>Admin Home</Text>
+
+          {/* Search Input */}
+          <View style={{ marginBottom: 16 }}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search by name, email, registration number..."
+              placeholderTextColor="#888"
+              style={{
+                backgroundColor: '#222',
+                color: 'white',
+                padding: 14,
+                borderRadius: 12,
+                fontSize: 16,
+                borderWidth: 2,
+                borderColor: searchQuery ? '#FFB347' : '#444'
+              }}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: 12,
+                  backgroundColor: '#e74c3c',
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 8
+                }}
+              >
+                <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>Clear</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* Debug Button */}
           <View style={{ alignItems: 'center', marginVertical: 10 }}>
@@ -531,33 +605,92 @@ export default function AdminHome() {
 
           {/* User Statistics */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 20, backgroundColor: '#111', borderRadius: 12, padding: 16 }}>
-            <View style={{ alignItems: 'center' }}>
+            <TouchableOpacity 
+              style={{ 
+                alignItems: 'center', 
+                backgroundColor: userTypeFilter === 'STUDENT' ? '#1e90ff30' : 'transparent',
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderRadius: 8,
+                borderWidth: userTypeFilter === 'STUDENT' ? 2 : 0,
+                borderColor: '#1e90ff'
+              }}
+              onPress={() => setUserTypeFilter(userTypeFilter === 'STUDENT' ? null : 'STUDENT')}
+            >
               <Text style={{ color: '#1e90ff', fontSize: 24, fontWeight: 'bold' }}>
-                {users.filter(u => u.type === 'Student').length}
+                {users.filter(u => u.type === 'STUDENT').length}
               </Text>
               <Text style={{ color: 'white', fontSize: 12 }}>Students</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={{ 
+                alignItems: 'center',
+                backgroundColor: userTypeFilter === 'EXPERT' ? '#7965AF30' : 'transparent',
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderRadius: 8,
+                borderWidth: userTypeFilter === 'EXPERT' ? 2 : 0,
+                borderColor: '#7965AF'
+              }}
+              onPress={() => setUserTypeFilter(userTypeFilter === 'EXPERT' ? null : 'EXPERT')}
+            >
               <Text style={{ color: '#7965AF', fontSize: 24, fontWeight: 'bold' }}>
-                {users.filter(u => u.type === 'Expert').length}
+                {users.filter(u => u.type === 'EXPERT').length}
               </Text>
               <Text style={{ color: 'white', fontSize: 12 }}>Experts</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={{ 
+                alignItems: 'center',
+                backgroundColor: userTypeFilter === 'PEER' ? '#8b5cf630' : 'transparent',
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderRadius: 8,
+                borderWidth: userTypeFilter === 'PEER' ? 2 : 0,
+                borderColor: '#8b5cf6'
+              }}
+              onPress={() => setUserTypeFilter(userTypeFilter === 'PEER' ? null : 'PEER')}
+            >
               <Text style={{ color: '#8b5cf6', fontSize: 24, fontWeight: 'bold' }}>
-                {users.filter(u => u.type === 'Peer Listener').length}
+                {users.filter(u => u.type === 'PEER').length}
               </Text>
               <Text style={{ color: 'white', fontSize: 12 }}>Peer Listeners</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={{ 
+                alignItems: 'center',
+                backgroundColor: userTypeFilter === 'ALL' ? '#2ecc7130' : 'transparent',
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderRadius: 8,
+                borderWidth: userTypeFilter === 'ALL' ? 2 : 0,
+                borderColor: '#2ecc71'
+              }}
+              onPress={() => setUserTypeFilter(null)}
+            >
               <Text style={{ color: '#2ecc71', fontSize: 24, fontWeight: 'bold' }}>
-                {users.filter(u => u.request_status === 'approved').length}
+                {users.length}
               </Text>
-              <Text style={{ color: 'white', fontSize: 12 }}>Approved</Text>
-            </View>
+              <Text style={{ color: 'white', fontSize: 12 }}>All Users</Text>
+            </TouchableOpacity>
           </View>
 
-          <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold', marginBottom: 16 }}>All User ({users.length})</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold' }}>
+              {userTypeFilter === 'STUDENT' ? 'Students' : 
+               userTypeFilter === 'EXPERT' ? 'Experts' : 
+               userTypeFilter === 'PEER' ? 'Peer Listeners' : 
+               'All Users'} ({userTypeFilter ? users.filter(u => u.type === userTypeFilter).length : users.length})
+            </Text>
+            {userTypeFilter && (
+              <TouchableOpacity
+                onPress={() => setUserTypeFilter(null)}
+                style={{ backgroundColor: '#e74c3c', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+              >
+                <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>Clear Filter</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {loading ? (
             <View style={{ alignItems: 'center', marginTop: 40, backgroundColor: '#111', borderRadius: 12, padding: 20 }}>
@@ -570,7 +703,20 @@ export default function AdminHome() {
               <Text style={{ color: '#666', fontSize: 14 }}>User registration requests will appear here</Text>
             </View>
           ) : (
-            users.map((user, idx) => (
+            users
+              .filter(u => !userTypeFilter || u.type === userTypeFilter)
+              .filter(u => {
+                if (!searchQuery) return true;
+                const query = searchQuery.toLowerCase().trim();
+                return (
+                  (u.name && u.name.toLowerCase().includes(query)) ||
+                  (u.email && u.email.toLowerCase().includes(query)) ||
+                  (u.reg_no && String(u.reg_no).toLowerCase().includes(query)) ||
+                  (u.username && u.username.toLowerCase().includes(query)) ||
+                  (u.phone && String(u.phone).includes(query))
+                );
+              })
+              .map((user, idx) => (
               <View key={`${user.type}-${user.id}`} style={{
                 backgroundColor: '#222',
                 borderRadius: 12,
@@ -588,12 +734,14 @@ export default function AdminHome() {
                 {/* Header Row with Profile Info */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#FFB347', fontWeight: 'bold', fontSize: 20, marginBottom: 2 }}>{user.user_name}</Text>
+                    <Text style={{ color: '#FFB347', fontWeight: 'bold', fontSize: 20, marginBottom: 2 }}>{user.name}</Text>
                     <Text style={{ color: '#888', fontSize: 13 }}>User ID: {user.id}</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <View style={{
-                      backgroundColor: user.type === 'Student' ? '#1e90ff' : '#7965AF',
+                      backgroundColor: user.type === 'STUDENT' ? '#1e90ff' : 
+                                      user.type === 'EXPERT' ? '#7965AF' : 
+                                      user.type === 'PEER' ? '#8b5cf6' : '#FFB347',
                       paddingHorizontal: 12,
                       paddingVertical: 6,
                       borderRadius: 16,
@@ -772,223 +920,357 @@ export default function AdminHome() {
 
   } else if (activeTab === 'settings') {
     Content = null; // Navigation handled in useEffect
-  } else if (activeTab === 'requests') {
-    Content = (
-      <View style={{ flex: 1, padding: 16 }}>
-        <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold', marginBottom: 16 }}>User Requests</Text>
-
-        {/* Request Statistics */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 20, backgroundColor: '#111', borderRadius: 12, padding: 16 }}>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: '#f39c12', fontSize: 24, fontWeight: 'bold' }}>
-              {requests.filter(r => r.status === 'pending').length}
-            </Text>
-            <Text style={{ color: 'white', fontSize: 12 }}>Pending</Text>
-          </View>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: '#2ecc71', fontSize: 24, fontWeight: 'bold' }}>
-              {requests.filter(r => r.status === 'approved').length}
-            </Text>
-            <Text style={{ color: 'white', fontSize: 12 }}>Approved</Text>
-          </View>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: '#e74c3c', fontSize: 24, fontWeight: 'bold' }}>
-              {requests.filter(r => r.status === 'rejected').length}
-            </Text>
-            <Text style={{ color: 'white', fontSize: 12 }}>Rejected</Text>
-          </View>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: '#FFB347', fontSize: 24, fontWeight: 'bold' }}>
-              {requests.length}
-            </Text>
-            <Text style={{ color: 'white', fontSize: 12 }}>Total</Text>
-          </View>
-        </View>
-
-        <ScrollView style={{ flex: 1 }}>
-          {requests.length === 0 ? (
-            <Text style={{ color: '#aaa', textAlign: 'center', marginTop: 40 }}>No requests found.</Text>
-          ) : (
-            requests.map((request, idx) => (
-              <View key={`request-${request.id}-${idx}`} style={{
-                backgroundColor: '#222',
-                borderRadius: 12,
-                padding: 16,
-                marginBottom: 12,
-                borderLeftWidth: 4,
-                borderLeftColor: request.status === 'pending' ? '#f39c12' :
-                  request.status === 'approved' ? '#2ecc71' : '#e74c3c'
-              }}>
-                {/* Request Header */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#FFB347', fontWeight: 'bold', fontSize: 18 }}>{request.user_name}</Text>
-                    <Text style={{ color: 'white', fontSize: 14, marginTop: 2 }}>{request.user_type} Registration</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <View style={{
-                      backgroundColor: request.user_type === 'Student' ? '#1e90ff' :
-                        request.user_type === 'Expert' ? '#7965AF' : '#10B981',
-                      paddingHorizontal: 12,
-                      paddingVertical: 4,
-                      borderRadius: 12,
-                      marginBottom: 6
-                    }}>
-                      <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>{request.user_type}</Text>
-                    </View>
-                    <View style={{
-                      backgroundColor: request.status === 'pending' ? '#f39c12' :
-                        request.status === 'approved' ? '#2ecc71' : '#e74c3c',
-                      paddingHorizontal: 8,
-                      paddingVertical: 2,
-                      borderRadius: 8
-                    }}>
-                      <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
-                        {request.status.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Request Details */}
-                <View style={{ backgroundColor: '#111', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                  <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 4 }}>REQUEST DETAILS</Text>
-                  <Text style={{ color: 'white', fontSize: 14, lineHeight: 20 }}>
-                    {request.request_type === 'peer_listener' ? 'Peer Listener application request' : `${request.user_type} account registration request`}
-                  </Text>
-
-                  <View style={{ flexDirection: 'row', marginTop: 8, marginBottom: 8 }}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>REG NUMBER</Text>
-                      <Text style={{ color: 'white', fontSize: 12 }}>{request.registration_number}</Text>
-                    </View>
-                    {((request.user_type === 'Student' && request.email) || (request.request_type === 'peer_listener' && request.email)) && (
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>EMAIL</Text>
-                        <Text style={{ color: 'white', fontSize: 12 }}>{request.email}</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {request.user_type === 'Student' && request.course && (
-                    <View style={{ marginBottom: 8 }}>
-                      <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>COURSE</Text>
-                      <Text style={{ color: 'white', fontSize: 12 }}>{request.course}</Text>
-                    </View>
-                  )}
-
-                  {request.request_type === 'peer_listener' && request.experience && (
-                    <View style={{ marginBottom: 8 }}>
-                      <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>EXPERIENCE</Text>
-                      <Text style={{ color: 'white', fontSize: 12 }}>{request.experience}</Text>
-                    </View>
-                  )}
-
-                  {request.request_type === 'peer_listener' && request.availability && (
-                    <View style={{ marginBottom: 8 }}>
-                      <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>AVAILABILITY</Text>
-                      <Text style={{ color: 'white', fontSize: 12 }}>{request.availability}</Text>
-                    </View>
-                  )}
-
-                  <View style={{ flexDirection: 'row', marginTop: 8 }}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>SUBMITTED</Text>
-                      <Text style={{ color: 'white', fontSize: 12 }}>{new Date(request.created_at).toLocaleDateString()}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>REQUEST ID</Text>
-                      <Text style={{ color: 'white', fontSize: 12 }}>#{request.id}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Action Buttons for Pending Requests */}
-                {request.status === 'pending' && (
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: '#2ecc71',
-                        paddingVertical: 8,
-                        paddingHorizontal: 20,
-                        borderRadius: 8,
-                        flex: 0.48
-                      }}
-                      onPress={() => handleRequestAction(request.id, 'approved', request.request_type)}
-                    >
-                      <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Approve</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: '#e74c3c',
-                        paddingVertical: 8,
-                        paddingHorizontal: 20,
-                        borderRadius: 8,
-                        flex: 0.48
-                      }}
-                      onPress={() => handleRequestAction(request.id, 'rejected', request.request_type)}
-                    >
-                      <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>Reject</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            ))
-          )}
-        </ScrollView>
-      </View>
-    );
   } else if (activeTab === 'BuddyConnect') {
     Content = (
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: 'black' }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-      >
-        <View style={{ flex: 1, padding: 16 }}>
-          <Text style={{ color: '#FFB347', fontSize: 28, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' }}>Buddy Connect</Text>
-          <ScrollView style={{ flex: 1, marginBottom: 16 }}>
-            {buddyMessages && buddyMessages.length === 0 ? (
-              <Text style={{ color: '#aaa', textAlign: 'center', marginTop: 40 }}>No buddy messages yet.</Text>
-            ) : (
-              buddyMessages.map(msg => (
-                <View key={msg.id} style={{ marginBottom: 18, backgroundColor: '#222', borderRadius: 10, padding: 12 }}>
-                  <Text style={{ color: msg.sender_type === 'admin' ? '#FFB347' : msg.sender_type === 'expert' ? '#7965AF' : '#1e90ff', fontWeight: 'bold', fontSize: 16 }}>{msg.sender_name || msg.sender_type} ({msg.sender_reg})</Text>
-                  <Text style={{ color: '#aaa', fontSize: 12, marginTop: 2, marginBottom: 8 }}>{new Date(msg.created_at).toLocaleString()}</Text>
-                  <View style={{ backgroundColor: '#111', borderRadius: 8, padding: 12, minHeight: 60, borderWidth: 1, borderColor: '#444' }}>
-                    <Text style={{ color: 'white', fontSize: 16, lineHeight: 22 }}>{msg.content}</Text>
-                  </View>
-                </View>
-              ))
-            )}
-          </ScrollView>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#222', borderRadius: 8, padding: 8 }}>
-            <TextInput
-              value={buddyMessage}
-              onChangeText={setBuddyMessage}
-              placeholder="Type your message..."
-              placeholderTextColor="#aaa"
-              style={{ flex: 1, color: 'white', padding: 12, fontSize: 16 }}
-              multiline={false}
-              returnKeyType="send"
-              onSubmitEditing={handleSendBuddyMessage}
-            />
-            <TouchableOpacity
-              onPress={handleSendBuddyMessage}
-              disabled={buddySending || !buddyMessage.trim()}
-              style={{
-                backgroundColor: buddySending ? '#aaa' : (buddyMessage.trim() ? '#FFB347' : '#666'),
-                paddingVertical: 12,
-                paddingHorizontal: 18,
-                borderRadius: 8,
-                marginLeft: 8
-              }}
-            >
-              <Text style={{ color: '#222', fontWeight: 'bold' }}>{buddySending ? 'Sending...' : 'Send'}</Text>
-            </TouchableOpacity>
-          </View>
+      <View style={{ flex: 1, backgroundColor: 'black' }}>
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 20,
+          paddingTop: 20,
+          paddingBottom: 15,
+        }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#FFB347' }}>Community</Text>
+          <TouchableOpacity
+            style={{ padding: 8 }}
+            onPress={() => setModalVisible(true)}
+          >
+            <Ionicons name="add" size={28} color="#FFB347" />
+          </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+
+        <FlatList
+          data={posts}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={{
+              backgroundColor: '#222',
+              margin: 10,
+              borderRadius: 15,
+              padding: 15,
+            }}>
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginBottom: 10,
+              }}>
+                <Image
+                  source={profilePics[item.profilePicIndex || 0]}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    marginRight: 10,
+                    borderWidth: 2,
+                    borderColor: '#FFB347',
+                  }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: 'white' }}>
+                    {item.username}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#888' }}>
+                    {formatRelativeTime(item.created_at)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={{
+                    padding: 8,
+                    borderRadius: 20,
+                    backgroundColor: '#e74c3c',
+                  }}
+                  onPress={() => deletePost(item)}
+                >
+                  <Ionicons name="trash" size={16} color="white" />
+                </TouchableOpacity>
+              </View>
+
+              {item.content && (
+                <Text style={{
+                  fontSize: 16,
+                  color: 'white',
+                  marginBottom: 10,
+                  lineHeight: 22,
+                }}>
+                  {item.content}
+                </Text>
+              )}
+
+              {item.media_url && (
+                <View style={{ marginBottom: 10 }}>
+                  {item.media_type === 'image' ? (
+                    <Image
+                      source={{ uri: item.media_url }}
+                      style={{
+                        width: '100%',
+                        height: 200,
+                        borderRadius: 10,
+                      }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={{
+                      width: '100%',
+                      height: 200,
+                      backgroundColor: '#000',
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Ionicons name="videocam" size={48} color="white" />
+                      <Text style={{ color: 'white', marginTop: 10, fontSize: 14 }}>Video</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  padding: 8,
+                  backgroundColor: '#111',
+                  borderRadius: 8,
+                  alignSelf: 'flex-start',
+                  marginTop: 5
+                }}
+                onPress={() => openComments(item)}
+              >
+                <Ionicons name="chatbubble-outline" size={16} color="#FFB347" />
+                <Text style={{ marginLeft: 5, color: '#FFB347', fontSize: 14, fontWeight: '600' }}>
+                  Comments
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          ListEmptyComponent={
+            loadingPosts ? (
+              <View style={{ alignItems: 'center', padding: 50 }}>
+                <Text style={{ color: '#888', fontSize: 16 }}>Loading posts...</Text>
+              </View>
+            ) : (
+              <View style={{ alignItems: 'center', padding: 50 }}>
+                <Text style={{ color: '#888', fontSize: 16 }}>No posts yet. Be the first to share!</Text>
+              </View>
+            )
+          }
+          contentContainerStyle={{ paddingBottom: 20 }}
+        />
+
+        {/* Create Post Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={modalVisible}
+          onRequestClose={() => setModalVisible(false)}
+        >
+          <View style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.7)',
+          }}>
+            <View style={{
+              backgroundColor: '#222',
+              borderRadius: 20,
+              padding: 20,
+              width: '90%',
+              maxHeight: '80%',
+            }}>
+              <Text style={{
+                fontSize: 18,
+                fontWeight: 'bold',
+                color: '#FFB347',
+                marginBottom: 20,
+                textAlign: 'center',
+              }}>
+                Create New Post
+              </Text>
+              
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#444',
+                  borderRadius: 10,
+                  padding: 15,
+                  fontSize: 16,
+                  color: 'white',
+                  minHeight: 100,
+                  textAlignVertical: 'top',
+                  marginBottom: 20,
+                  backgroundColor: '#111',
+                }}
+                placeholder="Share your thoughts..."
+                placeholderTextColor="#666"
+                multiline
+                value={postText}
+                onChangeText={setPostText}
+              />
+              
+              {selectedMedia && (
+                <View style={{
+                  marginBottom: 20,
+                  padding: 10,
+                  backgroundColor: '#111',
+                  borderRadius: 10,
+                  alignItems: 'center',
+                }}>
+                  <Text style={{ color: 'white', fontSize: 14, marginBottom: 10 }}>
+                    Selected {selectedMedia.type}:
+                  </Text>
+                  <Text style={{ color: '#888', fontSize: 12 }}>
+                    {selectedMedia.uri.split('/').pop()}
+                  </Text>
+                  <TouchableOpacity
+                    style={{ marginTop: 10, padding: 5 }}
+                    onPress={() => setSelectedMedia(null)}
+                  >
+                    <Ionicons name="close" size={20} color="#e74c3c" />
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              <TouchableOpacity
+                style={{
+                  alignItems: 'center',
+                  padding: 15,
+                  backgroundColor: '#111',
+                  borderRadius: 15,
+                  marginBottom: 20,
+                }}
+                onPress={pickMedia}
+              >
+                <Ionicons name="images" size={24} color="#FFB347" />
+                <Text style={{ color: 'white', marginTop: 5 }}>Add Photo/Video</Text>
+              </TouchableOpacity>
+              
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#444',
+                    padding: 15,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                  }}
+                  onPress={() => {
+                    setModalVisible(false);
+                    setPostText('');
+                    setSelectedMedia(null);
+                  }}
+                >
+                  <Text style={{ color: 'white', fontWeight: 'bold' }}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    backgroundColor: isPosting ? '#666' : '#FFB347',
+                    padding: 15,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                  }}
+                  onPress={createPost}
+                  disabled={isPosting}
+                >
+                  <Text style={{ color: '#222', fontWeight: 'bold' }}>
+                    {isPosting ? 'Posting...' : 'Post'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Comments Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={commentsModalVisible}
+          onRequestClose={() => setCommentsModalVisible(false)}
+        >
+          <View style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(0,0,0,0.7)',
+          }}>
+            <View style={{
+              backgroundColor: '#222',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 20,
+              maxHeight: '80%',
+            }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FFB347' }}>Comments</Text>
+                <TouchableOpacity onPress={() => setCommentsModalVisible(false)}>
+                  <Ionicons name="close" size={28} color="#FFB347" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 400, marginBottom: 15 }}>
+                {comments.length === 0 ? (
+                  <Text style={{ color: '#888', textAlign: 'center', paddingVertical: 20 }}>No comments yet</Text>
+                ) : (
+                  comments.map((comment) => (
+                    <View key={comment.id} style={{
+                      backgroundColor: '#111',
+                      padding: 12,
+                      borderRadius: 10,
+                      marginBottom: 10
+                    }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{comment.username}</Text>
+                          <Text style={{ color: '#FFB347', fontSize: 11, fontWeight: '600' }}>{comment.userLabel}</Text>
+                          <Text style={{ color: '#888', fontSize: 11 }}>{formatRelativeTime(comment.created_at)}</Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => deleteComment(comment.id)}
+                          style={{ padding: 5 }}
+                        >
+                          <Ionicons name="trash" size={16} color="#e74c3c" />
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={{ color: 'white', marginTop: 8, lineHeight: 20 }}>{comment.content}</Text>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', borderRadius: 10, padding: 8 }}>
+                <TextInput
+                  style={{
+                    flex: 1,
+                    color: 'white',
+                    padding: 10,
+                    fontSize: 14
+                  }}
+                  placeholder="Add a comment..."
+                  placeholderTextColor="#666"
+                  value={newComment}
+                  onChangeText={setNewComment}
+                  multiline
+                />
+                <TouchableOpacity
+                  onPress={addComment}
+                  disabled={!newComment.trim()}
+                  style={{
+                    backgroundColor: newComment.trim() ? '#FFB347' : '#444',
+                    paddingHorizontal: 15,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    marginLeft: 8
+                  }}
+                >
+                  <Ionicons name="send" size={20} color="#222" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </View>
     );
   } else if (activeTab === 'ai') {
     // Show placeholder while redirecting
@@ -1020,18 +1302,6 @@ export default function AdminHome() {
           <Text style={[styles.tabLabel, activeTab === 'ai' && styles.activeTabLabel]}>AI</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'requests' && styles.activeTabItem]}
-          onPress={() => setActiveTab('requests')}
-        >
-          <View style={styles.tabIconContainer}>
-            <Text style={[styles.tabIcon, activeTab === 'requests' && styles.activeTabIcon]}>📋</Text>
-            {hasUnreadRequests && (
-              <View style={styles.redDot} />
-            )}
-          </View>
-          <Text style={[styles.tabLabel, activeTab === 'requests' && styles.activeTabLabel]}>Requests</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
           style={[styles.tabItem, activeTab === 'settings' && styles.activeTabItem]}
           onPress={() => setActiveTab('settings')}
         >
@@ -1042,8 +1312,8 @@ export default function AdminHome() {
           style={[styles.tabItem, activeTab === 'BuddyConnect' && styles.activeTabItem]}
           onPress={() => setActiveTab('BuddyConnect')}
         >
-          <Text style={[styles.tabIcon, activeTab === 'BuddyConnect' && styles.activeTabIcon]}>💬</Text>
-          <Text style={[styles.tabLabel, activeTab === 'BuddyConnect' && styles.activeTabLabel]}>Buddy</Text>
+          <Text style={[styles.tabIcon, activeTab === 'BuddyConnect' && styles.activeTabIcon]}>👥</Text>
+          <Text style={[styles.tabLabel, activeTab === 'BuddyConnect' && styles.activeTabLabel]}>Community</Text>
         </TouchableOpacity>
       </View>
 
@@ -1231,20 +1501,6 @@ const styles = StyleSheet.create({
   activeTabLabel: {
     color: '#FFB347',
     fontWeight: 'bold',
-  },
-  tabIconContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  redDot: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'red',
   },
 });
 

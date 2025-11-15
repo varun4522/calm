@@ -401,9 +401,13 @@ export const saveAdminPromptToSupabase = async (prompt: AdminPrompt): Promise<bo
       is_active: prompt.is_active !== false // default to true
     };
 
+    // Use upsert to handle duplicates - update if exists, insert if new
     const { error } = await supabase
       .from('admin_prompts')
-      .insert([supabasePrompt]);
+      .upsert([supabasePrompt], { 
+        onConflict: 'prompt_id',
+        ignoreDuplicates: false 
+      });
 
     if (error) {
       console.error('Error saving admin prompt to Supabase:', error);
@@ -429,17 +433,23 @@ export const updateAdminPromptInSupabase = async (prompt: AdminPrompt): Promise<
       return false;
     }
 
+    // Use upsert instead of update to avoid replica identity issues
+    const supabasePrompt: Omit<SupabaseAdminPrompt, 'id' | 'created_at' | 'updated_at'> = {
+      prompt_id: prompt.id,
+      question: prompt.question,
+      answer: prompt.answer,
+      category: prompt.category || 'general',
+      created_by: user.id,
+      created_by_name: user.name || 'Admin',
+      is_active: prompt.is_active !== false
+    };
+
     const { error } = await supabase
       .from('admin_prompts')
-      .update({
-        question: prompt.question,
-        answer: prompt.answer,
-        category: prompt.category || 'general',
-        is_active: prompt.is_active !== false,
-        updated_at: new Date().toISOString()
-      })
-      .eq('prompt_id', prompt.id)
-      .eq('created_by', user.id); // Ensure user can only update their own prompts
+      .upsert([supabasePrompt], { 
+        onConflict: 'prompt_id',
+        ignoreDuplicates: false 
+      });
 
     if (error) {
       console.error('Error updating admin prompt in Supabase:', error);

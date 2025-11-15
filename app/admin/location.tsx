@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { formatDateTime } from '@/lib/utils';
 
 interface StudentLocation {
   id: number;
@@ -96,18 +97,6 @@ export default function AdminLocation() {
     fetchStudentLocations();
   };
 
-  const formatDateTime = (dateTimeString: string) => {
-    const date = new Date(dateTimeString);
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
-  };
-
   const openInMaps = (latitude: number, longitude: number, name: string) => {
     Alert.alert(
       'Open Location',
@@ -184,8 +173,8 @@ export default function AdminLocation() {
             <Text style={{ fontSize: 16, color: 'gray' }}>Loading student locations...</Text>
           </View>
         ) : studentLocations.length > 0 ? (
-          studentLocations.map((location) => (
-            <View key={location.id} style={{
+          studentLocations.map((location, index) => (
+            <View key={`location-${location.id}-${index}`} style={{
               backgroundColor: 'white',
               padding: 16,
               borderRadius: 12,

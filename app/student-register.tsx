@@ -23,6 +23,42 @@ export default function StudentRegister() {
   const [courseModalVisible, setCourseModalVisible] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Helper function to capitalize first letter of each word
+  const capitalizeWords = (text: string) => {
+    return text.replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  // Handler for name input - capitalize first letter of each word
+  const handleNameChange = (text: string) => {
+    const capitalized = capitalizeWords(text);
+    setName(capitalized);
+  };
+
+  // Handler for email input - enforce lowercase and validate format
+  const handleEmailChange = (text: string) => {
+    setEmail(text.toLowerCase().trim());
+  };
+
+  // Handler for phone input - only allow 10 digits
+  const handlePhoneChange = (text: string) => {
+    const numbers = text.replace(/[^0-9]/g, '');
+    if (numbers.length <= 10) {
+      setPhone(numbers);
+    }
+  };
+
+  // Handler for username - lowercase without spaces
+  const handleUsernameChange = (text: string) => {
+    const formatted = text.toLowerCase().replace(/\s/g, '');
+    setUsername(formatted);
+  };
+
+  // Handler for registration number - only numbers
+  const handleRegistrationChange = (text: string) => {
+    const numbers = text.replace(/[^0-9]/g, '');
+    setRegistrationNumber(numbers);
+  };
+
   const validateStudentData = async ({
     name,
     username,
@@ -50,7 +86,41 @@ export default function StudentRegister() {
     const allRegistrationNumbers = await getAllRegistrationNumbers();
 
     if (!name || !username || !registrationNumber || !course || !phone || !dob || !email || !password) {
-      Alert.alert("All fields are required.");
+      Alert.alert("Missing Fields", "All fields are required.");
+      return false;
+    }
+
+    // Validate phone number - must be exactly 10 digits
+    if (phone.length !== 10) {
+      Alert.alert("Invalid Phone Number", "Phone number must be exactly 10 digits.");
+      return false;
+    }
+
+    // Validate email format and domain
+    if (!emailRegex.test(email)) {
+      Alert.alert("Invalid Email", "Please enter a valid email address (e.g., name@example.com).");
+      return false;
+    }
+
+    if (!email.includes('@') || !email.split('@')[1].includes('.')) {
+      Alert.alert("Invalid Email Domain", "Email must include a valid domain (e.g., @gmail.com, @sgtuniversity.org).");
+      return false;
+    }
+
+    // Validate username - no spaces, lowercase
+    if (username.includes(' ')) {
+      Alert.alert("Invalid Username", "Username cannot contain spaces.");
+      return false;
+    }
+
+    if (username !== username.toLowerCase()) {
+      Alert.alert("Invalid Username", "Username must be all lowercase.");
+      return false;
+    }
+
+    // Validate registration number - numbers only
+    if (!/^\d+$/.test(registrationNumber)) {
+      Alert.alert("Invalid Registration Number", "Registration number must contain only numbers.");
       return false;
     }
 
@@ -61,11 +131,6 @@ export default function StudentRegister() {
 
     if (!passwordRegex.test(password)) {
       Alert.alert("Invalid Password", "Password must include letters, numbers, and special characters.");
-      return false;
-    }
-
-    if (!emailRegex.test(email)) {
-      Alert.alert("Invalid Email", "Please enter a valid email address.");
       return false;
     }
 
@@ -179,7 +244,15 @@ export default function StudentRegister() {
               {/* Name */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Full Name *</Text>
-                <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Enter your full name" placeholderTextColor="#a8a8a8" />
+                <TextInput 
+                  style={styles.input} 
+                  value={name} 
+                  onChangeText={handleNameChange} 
+                  placeholder="Enter your full name" 
+                  placeholderTextColor="#a8a8a8"
+                  autoCapitalize="words"
+                />
+                
               </View>
 
               {/* Email */}
@@ -188,12 +261,13 @@ export default function StudentRegister() {
                 <TextInput
                   style={styles.input}
                   value={email}
-                  onChangeText={setEmail}
-                  placeholder="Enter your email"
+                  onChangeText={handleEmailChange}
+                  placeholder="e.g., name@gmail.com"
                   placeholderTextColor="#a8a8a8"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
+                
               </View>
 
               {/* Phone */}
@@ -202,23 +276,41 @@ export default function StudentRegister() {
                 <TextInput
                   style={styles.input}
                   value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Enter your phone number"
+                  onChangeText={handlePhoneChange}
+                  placeholder="Enter 10-digit phone number"
                   placeholderTextColor="#a8a8a8"
                   keyboardType="phone-pad"
+                  maxLength={10}
                 />
+                
               </View>
 
               {/* Username */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Username *</Text>
-                <TextInput style={styles.input} value={username} onChangeText={setUsername} placeholder="Choose a username" placeholderTextColor="#a8a8a8" autoCapitalize="none" />
+                <TextInput 
+                  style={styles.input} 
+                  value={username} 
+                  onChangeText={handleUsernameChange} 
+                  placeholder="Choose a username" 
+                  placeholderTextColor="#a8a8a8" 
+                  autoCapitalize="none"
+                />
+                
               </View>
 
               {/* Registration Number */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Registration Number *</Text>
-                <TextInput style={styles.input} value={registrationNumber} onChangeText={setRegistrationNumber} placeholder="Enter your registration number" placeholderTextColor="#a8a8a8" />
+                <TextInput 
+                  style={styles.input} 
+                  value={registrationNumber} 
+                  onChangeText={handleRegistrationChange} 
+                  placeholder="Enter your registration number" 
+                  placeholderTextColor="#a8a8a8"
+                  keyboardType="numeric"
+                />
+                
               </View>
 
               {/* Course */}
@@ -309,6 +401,7 @@ const styles = StyleSheet.create({
   inputWrapper: { marginBottom: 20 },
   label: { fontSize: 14, fontWeight: '600', color: Colors.primary, marginBottom: 8 },
   input: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1, borderColor: '#e0e0e0' },
+  hint: { fontSize: 11, color: '#666', marginTop: 4, fontStyle: 'italic' },
   selectCourseButton: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: '#e0e0e0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   inputText: { fontSize: 16, flex: 1 },
   passwordWrapper: { position: 'relative' },

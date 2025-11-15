@@ -1,14 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/api/Profile';
-import Toast from 'react-native-toast-message';
 import { handleLogout } from '@/api/OtherMethods';
 
 const profilePics = [
@@ -27,276 +25,44 @@ const profilePics = [
   require('@/assets/images/profile/pic13.png'),
 ];
 
-// Helper: Try multiple query variants across possible tables to find a student record
-async function fetchStudentFromUserRequests(regNo: string) {
-  // Candidate tables to try when the expected `user_requests` table is missing
-  const tablesToTry = ['user_requests', 'book_request', 'students', 'profiles'];
-
-  // Attempts describe optional filters we may want to apply when the table has those columns
-  const attempts = [
-    { filters: { user_type: 'Student', status: 'approved' } },
-    { filters: { user_type: 'Student' } },
-    { filters: { user_type: 'student', status: 'approved' } },
-    { filters: { user_type: 'student' } },
-    { filters: {} },
-  ];
-
-  // Helper to normalize different possible column names into a common shape
-  const normalize = (data: any) => {
-    if (!data) return null;
-    const registration = data.registration_number ?? data.registration ?? data.reg_no ?? data.reg ?? data.regno ?? '';
-    const name = data.name ?? data.user_name ?? data.full_name ?? data.username ?? 'Unknown Student';
-    return {
-      name,
-      user_name: name,
-      username: data.username ?? '',
-      registration,
-      registration_number: registration,
-      email: data.email ?? data.user_email ?? '',
-      course: data.course ?? data.program ?? '',
-      phone: data.phone ?? data.phone_number ?? data.contact ?? '',
-      year: data.year ?? data.academic_year ?? '',
-      user_type: data.user_type ?? data.type ?? '',
-      status: data.status ?? '',
-      created_at: data.created_at ?? data.created ?? null,
-      updated_at: data.updated_at ?? data.modified ?? null,
-    };
-  };
-
-  for (const table of tablesToTry) {
-    for (const attempt of attempts) {
-      try {
-        const { user_type, status } = attempt.filters as any;
-
-        let q = supabase.from(table).select('*').eq('registration_number', regNo).limit(1);
-        // some tables may not have registration_number column; also try 'registration' as a fallback
-        // We'll additionally try a query on 'registration' if the first returns no rows
-
-        if (user_type) q = q.eq('user_type', user_type);
-        if (status) q = q.eq('status', status);
-
-        const { data, error } = await q.maybeSingle();
-
-        // If PostgREST signals the table doesn't exist, break out to try the next table
-        if (error) {
-          const msg = (error?.message ?? '').toString();
-          if (msg.includes("Could not find the table 'public.")) {
-            console.log(`Table ${table} not found, trying next table`);
-            break; // break out of attempts loop and try next table
-          }
-          // Other errors: log and continue to next attempt
-          console.log('fetch attempt error (will try next if null):', error.message);
-        }
-
-        if (data) {
-          return normalize(data);
-        }
-
-        // If no data and we attempted registration_number, try 'registration' column as fallback
-        if (!data && table) {
-          const { data: data2, error: error2 } = await supabase
-            .from(table)
-            .select('*')
-            .eq('registration', regNo)
-            .limit(1)
-            .maybeSingle();
-          if (error2) {
-            const msg = (error2?.message ?? '').toString();
-            if (msg.includes("Could not find the table 'public.")) {
-              console.log(`Table ${table} not found on second attempt, trying next table`);
-              break;
-            }
-            console.log('Second fetch attempt error (will try next):', error2.message);
-          }
-          if (data2) return normalize(data2);
-        }
-      } catch (e: any) {
-        // If a filter or column caused an issue, just try next attempt
-        console.log('fetch attempt threw, continuing:', e?.message ?? e);
-      }
-    }
-  }
-
-  return null;
-}
-
 export default function StudentSetting() {
-  const params = useLocalSearchParams<{ registration: string }>();
   const [selectedProfilePic, setSelectedProfilePic] = useState(0);
   const [choosePicModal, setChoosePicModal] = useState(false);
-  const [studentName, setStudentName] = useState('');
-  const [studentUsername, setStudentUsername] = useState('');
-  const [studentCourse, setStudentCourse] = useState('');
-  const [studentEmail, setStudentEmail] = useState('');
-  const [studentPhone, setStudentPhone] = useState('');
-  const [studentYear, setStudentYear] = useState('');
-  const [studentStatus, setStudentStatus] = useState('');
-  const [accountCreatedAt, setAccountCreatedAt] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [studentRegNo, setStudentRegNo] = useState(params.registration || '');
   const router = useRouter();
-  const fadeAnim = useRef(new Animated.Value(0)).current; // Initial value for opacity: 0
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const {session, loading} = useAuth();
-  const {data: profile} = useProfile(session?.user.id);
-  
-  // Save student data to persistent storage
-  const saveStudentDataToPersistentStorage = async (regNo: string, data: any) => {
-    try {
-      // Save to user-specific storage (persistent across sessions)
-      await AsyncStorage.setItem(`persistentStudentData_${regNo}`, JSON.stringify(data));
-      // Also update current session data
-      await AsyncStorage.setItem('currentStudentData', JSON.stringify(data));
-      console.log("Student data saved to persistent storage");
-    } catch (error) {
-      console.error('Error saving student data to persistent storage:', error);
-    }
-  };
+  const { session } = useAuth();
+  const { data: profile, isLoading } = useProfile(session?.user.id);
 
-  // Load all user data using the registration number from params
+  // Load profile picture from AsyncStorage
   useEffect(() => {
-    let regNo = params.registration;
-    const loadStudentData = async () => {
-      if (!regNo) {
-        // Try to get from AsyncStorage if not in params
-        regNo = (await AsyncStorage.getItem('currentStudentReg')) ?? '';
-      }
-      if (!regNo) {
-        console.log("No registration number provided in params or AsyncStorage");
-        setStudentRegNo('');
-        setIsLoading(false);
-        return;
-      }
-      setStudentRegNo(regNo);
-      setIsLoading(true);
-      try {
-        console.log(`Loading data for student: ${regNo}`);
-        // Batch load from AsyncStorage - check persistent data first
-        const [picIdx, persistentData, sessionData] = await Promise.all([
-          AsyncStorage.getItem(`profilePic_${regNo}`),
-          AsyncStorage.getItem(`persistentStudentData_${regNo}`),
-          AsyncStorage.getItem('currentStudentData')
-        ]);
-
-        if (picIdx !== null) {
-          setSelectedProfilePic(parseInt(picIdx, 10));
-        }
-
-        // Use persistent data first, then session data, then fetch from Supabase
-        let studentData = null;
-        if (persistentData) {
-          studentData = JSON.parse(persistentData);
-          console.log("Loaded student data from persistent storage");
-        } else if (sessionData) {
-          studentData = JSON.parse(sessionData);
-          console.log("Loaded student data from session storage");
-        }
-
-        if (studentData) {
-          setStudentName(studentData.name || studentData.user_name || '');
-          setStudentUsername(studentData.username || '');
-          setStudentEmail(studentData.email || '');
-          setStudentCourse(studentData.course || '');
-          setStudentPhone(studentData.phone || '');
-          setStudentYear(studentData.year || '');
-          setStudentStatus(studentData.status || '');
-          setAccountCreatedAt(studentData.created_at || '');
-          // Ensure registration number is correctly set
-          if (studentData.registration_number && !studentData.registration) {
-            studentData.registration = studentData.registration_number;
+    const loadProfilePic = async () => {
+      if (profile?.id) {
+        try {
+          const picIdx = await AsyncStorage.getItem(`profilePic_${profile.id}`);
+          if (picIdx !== null) {
+            setSelectedProfilePic(parseInt(picIdx, 10));
           }
-          // Save to persistent storage for future use
-          await saveStudentDataToPersistentStorage(regNo, studentData);
-        } else {
-          console.log("No cached data found, attempting to fetch student data from known tables");
-          // Try fetching the student record from a set of candidate tables
-          const formattedData = await fetchStudentFromUserRequests(regNo);
-
-          if (formattedData) {
-            console.log('Successfully fetched student data:', formattedData);
-            setStudentName(formattedData.name);
-            setStudentUsername(formattedData.username);
-            setStudentEmail(formattedData.email);
-            setStudentCourse(formattedData.course);
-            setStudentPhone(formattedData.phone);
-            setStudentYear(formattedData.year);
-            setStudentStatus(formattedData.status);
-            setAccountCreatedAt(formattedData.created_at);
-            // Save fetched data to persistent storage
-            await saveStudentDataToPersistentStorage(regNo, formattedData);
-          } else {
-            console.log('No student data found in known tables for registration:', regNo);
-            Alert.alert('No Data', 'No student record found in the database');
-          }
+        } catch (error) {
+          console.error('Error loading profile pic:', error);
         }
-      } catch (error) {
-        console.error('Error loading student data:', error);
-        Alert.alert('Error', 'Failed to load student data');
-      } finally {
-        setIsLoading(false);
       }
     };
-
-    loadStudentData();
-  }, [params.registration]);
+    loadProfilePic();
+  }, [profile?.id]);
 
   // Handle profile picture selection and save to AsyncStorage
   const handleSelectProfilePic = async (index: number) => {
     setSelectedProfilePic(index);
     setChoosePicModal(false);
     try {
-      const regNo = studentRegNo; // Use the state value instead of params
-      if (regNo) {
-        // Save profile picture index
-        await AsyncStorage.setItem(`profilePic_${regNo}`, index.toString());
-
-        // Update persistent student data with current profile picture
-        const persistentData = await AsyncStorage.getItem(`persistentStudentData_${regNo}`);
-        if (persistentData) {
-          const data = JSON.parse(persistentData);
-          data.profilePicIndex = index;
-          await saveStudentDataToPersistentStorage(regNo, data);
-        }
-
+      if (profile?.id) {
+        await AsyncStorage.setItem(`profilePic_${profile.id}`, index.toString());
         console.log("Profile picture saved successfully");
-        // Navigate to home page after changing profile picture
-        router.replace(`./student-home?registration=${regNo}`);
       }
     } catch (error) {
       console.error('Error saving profile pic:', error);
       Alert.alert('Error', 'Failed to save profile picture');
-    }
-  };
-
-  // Refresh data from user_requests table
-  const refreshStudentData = async () => {
-    if (!studentRegNo) return;
-
-    setIsLoading(true);
-    try {
-      console.log('Refreshing student data from user_requests table...');
-      const formattedData = await fetchStudentFromUserRequests(studentRegNo);
-      if (formattedData) {
-        console.log('Successfully refreshed student data:', formattedData);
-        setStudentName(formattedData.user_name);
-        setStudentUsername(formattedData.username);
-        setStudentEmail(formattedData.email);
-        setStudentCourse(formattedData.course);
-        setStudentPhone(formattedData.phone);
-        setStudentYear(formattedData.year);
-        setStudentStatus(formattedData.status);
-        setAccountCreatedAt(formattedData.created_at);
-        // Save refreshed data to storage
-        await saveStudentDataToPersistentStorage(studentRegNo, formattedData);
-        Alert.alert('Success', 'Student data refreshed successfully!');
-      } else {
-        Alert.alert('No Data', 'No student record found in the database');
-      }
-    } catch (error) {
-      console.error('Error refreshing student data:', error);
-      Alert.alert('Error', 'An error occurred while refreshing data');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -336,13 +102,7 @@ export default function StudentSetting() {
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={refreshStudentData}
-          disabled={isLoading}
-        >
-          <Ionicons name="refresh" size={20} color={Colors.primary} />
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
       {/* Profile Section with ScrollView */}
@@ -353,14 +113,7 @@ export default function StudentSetting() {
       >
         <View style={styles.settingContainer}>
         <Animated.View style={[styles.profilePicContainer, { opacity: fadeAnim }]}>
-          <View style={{
-            shadowColor: Colors.shadow,
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 0.3,
-            shadowRadius: 10,
-          }}>
-            <Image source={profilePics[selectedProfilePic]} style={styles.profilePic} />
-          </View>
+          <Image source={profilePics[selectedProfilePic]} style={styles.profilePic} />
         </Animated.View>
         <Text style={styles.welcomeText}>Welcome, {profile?.name}!</Text>
 
@@ -385,7 +138,7 @@ export default function StudentSetting() {
             </View>
           </View>
 
-          {studentUsername && (
+          {profile?.username && (
             <View style={styles.infoRow}>
               <View style={styles.statIcon}>
                 <Ionicons name="at-outline" size={22} color={Colors.primary} />
@@ -436,54 +189,11 @@ export default function StudentSetting() {
               <Text style={styles.infoValue}>{profile?.phone_number}</Text>
             </View>
           </View>
-
-          {studentYear && (
-            <View style={styles.infoRow}>
-              <View style={styles.statIcon}>
-                <Ionicons name="calendar-outline" size={22} color={Colors.primary} />
-              </View>
-              <View style={styles.statContent}>
-                <Text style={styles.infoLabel}>Year</Text>
-                <Text style={styles.infoValue}>{studentYear}</Text>
-              </View>
-            </View>
-          )}
-
-          {/* <View style={styles.infoRow}>
-            <View style={styles.statIcon}>
-              <Ionicons name="checkmark-circle-outline" size={22} color={Colors.success} />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.infoLabel}>Account Status</Text>
-              <Text style={[styles.infoValue, styles.statusText]}>
-                {studentStatus ? studentStatus.charAt(0).toUpperCase() + studentStatus.slice(1) : 'Active'}
-              </Text>
-            </View>
-          </View> 
-
-          {accountCreatedAt && (
-            <View style={styles.infoRow}>
-              <View style={styles.statIcon}>
-                <Ionicons name="time-outline" size={22} color={Colors.primary} />
-              </View>
-              <View style={styles.statContent}>
-                <Text style={styles.infoLabel}>Member Since</Text>
-                <Text style={styles.infoValue}>
-                  {new Date(accountCreatedAt).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </Text>
-              </View>
-            </View>
-          )}
-            */}
         </View>
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color="#d84315" style={{marginRight: 8}} />
+          <Ionicons name="log-out-outline" size={20} color={Colors.error} />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
@@ -524,7 +234,7 @@ export default function StudentSetting() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background, // Light purple background
+    backgroundColor: Colors.background,
   },
   scrollView: {
     flex: 1,
@@ -568,24 +278,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  refreshButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.white,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    shadowColor: Colors.shadow,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   backButtonText: {
     color: Colors.primary,
     fontSize: 16,
@@ -602,7 +294,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   headerSpacer: {
-    width: 60, // Same width as the back button to balance the layout
+    width: 80,
   },
   settingContainer: {
     flex: 1,
@@ -634,12 +326,6 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 65,
     resizeMode: 'cover',
-  },
-  username: {
-    color: '#60a5fa', // Vibrant blue
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 16,
   },
   welcomeText: {
     color: Colors.primary,
@@ -714,6 +400,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     borderWidth: 2,
     borderColor: Colors.error,
     shadowColor: Colors.shadow,
@@ -827,25 +514,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 1,
   },
-  statRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  statLabel: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 2,
-  },
-  statValue: {
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -873,27 +541,5 @@ const styles = StyleSheet.create({
   statContent: {
     flex: 1,
     justifyContent: 'center',
-  },
-  dataSourceInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.backgroundLight,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  dataSourceText: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: '500',
-    marginLeft: 6,
-    fontStyle: 'italic',
-  },
-  statusText: {
-    color: '#4caf50',
-    fontWeight: '600',
   },
 });
