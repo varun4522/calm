@@ -147,6 +147,12 @@ export default function ExpertSetting() {
             </View>
           </View>
 
+          {/* Change password Button */}
+          <TouchableOpacity style={styles.logoutBtn} onPress={()=> {router.push('/expert/change-password')}}>
+            <Ionicons name="key-outline" size={20} color="#d84315" style={{marginRight: 8}} />
+            <Text style={styles.logoutText}>Change Password</Text>
+          </TouchableOpacity>
+
           {/* Logout Button */}
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={20} color="#d84315" style={{marginRight: 8}} />
