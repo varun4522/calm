@@ -127,6 +127,10 @@ export default function ExpertHome() {
   const [moodPromptsToday, setMoodPromptsToday] = useState<number>(0);
   const [missedPromptsQueue, setMissedPromptsQueue] = useState<{ label: string, scheduleKey: string }[]>([]);
 
+  const [showToolkitPage, setShowToolkitPage] = useState(false);
+  const [showToolkitPopup, setShowToolkitPopup] = useState(false);
+  const [selectedToolkitItem, setSelectedToolkitItem] = useState<{ name: string, description: string, route: string } | null>(null);
+
   // Notification states
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -1487,8 +1491,6 @@ export default function ExpertHome() {
           })}
         </View>
 
-        {/* Help Floating Button removed as per requirement: Help only on Select page */}
-
         {/* Top Right Actions - Notification Bell */}
         <View style={{ position: 'absolute', top: 42, right: 20, zIndex: 20, flexDirection: 'row', gap: 12 }}>
           {/* Mood Progress Indicator */}
@@ -1618,6 +1620,25 @@ export default function ExpertHome() {
               >
                 <Text style={styles.buttonIcon}>📅</Text>
                 <Text style={styles.matrixButtonText}>Schedule</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Third Row */}
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.matrixButton}
+                onPress={()=> {router.push(`/expert/support`)}}
+              >
+                <Text style={styles.buttonIcon}>📚</Text>
+                <Text style={styles.matrixButtonText}>Support Shelf</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.matrixButton}
+                onPress={() => router.push("/expert/schedule")}
+              >
+                <Text style={styles.buttonIcon}>🛠️</Text>
+                <Text style={styles.matrixButtonText}>Self Help Toolkit</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2528,6 +2549,8 @@ export default function ExpertHome() {
           </View>
         </TouchableOpacity>
       </View>
+
+      
     </SafeAreaView>
   );
 }
