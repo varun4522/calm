@@ -10,6 +10,8 @@ import { useProfile } from '@/api/Profile';
 import { useAuth } from '@/providers/AuthProvider';
 import PeerScreen from './peer-screen';
 import { Notification } from '@/types/Notification';
+import { registerForPushNotificationsAsync, setupNotificationListeners, removeNotificationListeners, sendLocalNotification } from '@/lib/notificationService';
+import * as Notifications from 'expo-notifications';
 
 const profilePics = [
   require('@/assets/images/profile/pic1.png'),
@@ -329,6 +331,33 @@ export default function StudentHome() {
           // Load notifications after session is established
           await loadNotifications();
 
+          // Register for push notifications
+          await registerForPushNotificationsAsync(regNo);
+
+          // Setup notification listeners
+          const listeners = setupNotificationListeners(
+            (notification) => {
+              // Notification received while app is open
+              console.log('📬 New notification:', notification.request.content);
+              setHasNewNotification(true);
+              loadNotifications(); // Reload notifications list
+            },
+            (response) => {
+              // User tapped on notification
+              const data = response.notification.request.content.data;
+              console.log('👆 Notification tapped with data:', data);
+              
+              // Navigate based on notification type
+              if (data.type === 'community_post') {
+                router.push('/student/buddy-connect');
+              } else if (data.type === 'message') {
+                router.push('/student/message');
+              } else if (data.type === 'learning_resource') {
+                router.push('/student/learning');
+              }
+            }
+          );
+
           // Check for mood prompts after login with slight delay
           setTimeout(async () => {
             await checkForMoodPrompt(regNo);
@@ -342,6 +371,9 @@ export default function StudentHome() {
           // Clean up interval on unmount
           return () => {
             clearInterval(moodCheckInterval);
+            if (listeners) {
+              removeNotificationListeners(listeners);
+            }
           };
         }
       } catch (error) {
@@ -539,11 +571,106 @@ export default function StudentHome() {
       )
       .subscribe();
 
-    // Cleanup subscription on unmount
+    // Set up real-time subscription for community posts
+    const communityPostSubscription = supabase
+      .channel('community_posts_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'community_post'
+        },
+        async (payload) => {
+          console.log('📝 New community post created:', payload.new);
+          
+          // Send local notification
+          await sendLocalNotification(
+            '🎉 New Community Post',
+            'Check out the latest post in BuddyConnect!',
+            { type: 'community_post', postId: payload.new.id }
+          );
+        }
+      )
+      .subscribe();
+
+    // Set up real-time subscription for messages
+    const messageSubscription = supabase
+      .channel('messages_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages'
+        },
+        async (payload) => {
+          // Only notify if message is for current user
+          if (payload.new.receiver_id === studentReg) {
+            console.log('💬 New message received:', payload.new);
+            
+            // Send local notification
+            await sendLocalNotification(
+              '💬 New Message',
+              'You have received a new message',
+              { type: 'message', messageId: payload.new.id }
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // Set up real-time subscription for learning resources
+    const learningResourceSubscription = supabase
+      .channel('learning_resources_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'learning_resource'
+        },
+        async (payload) => {
+          console.log('📚 New learning resource added:', payload.new);
+          
+          // Send local notification
+          await sendLocalNotification(
+            '📚 New Learning Resource',
+            payload.new.title || 'A new learning resource is available!',
+            { type: 'learning_resource', resourceId: payload.new.id }
+          );
+        }
+      )
+      .subscribe();
+
+    // Set up real-time subscription for mood entries (for streak tracking and support notifications)
+    const moodEntriesSubscription = supabase
+      .channel('mood_entries_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'mood_entries'
+        },
+        async (payload) => {
+          // Only notify if it's another device of same user (for multi-device sync)
+          if (payload.new.user_id === studentReg) {
+            console.log('😊 Mood entry synced from another device:', payload.new);
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscriptions on unmount
     return () => {
       supabase.removeChannel(notificationSubscription);
+      supabase.removeChannel(communityPostSubscription);
+      supabase.removeChannel(messageSubscription);
+      supabase.removeChannel(learningResourceSubscription);
+      supabase.removeChannel(moodEntriesSubscription);
     };
-  }, [profile]);
+  }, [profile, studentReg]);
 
   useFocusEffect(
     useCallback(() => {
@@ -704,6 +831,13 @@ export default function StudentHome() {
         // Show the earliest missed prompt with time info
         const nextPrompt = missedPrompts[0];
         console.log(`🎯 Showing mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6) - ${missedPrompts.length} pending`);
+        
+        // Send push notification for mood check-in reminder
+        await sendLocalNotification(
+          '😊 Time for Mood Check-in',
+          `${nextPrompt.label} - How are you feeling right now?`,
+          { type: 'mood_reminder', label: nextPrompt.label, intervalNumber: nextPrompt.intervalNumber }
+        );
         
         setCurrentPromptInfo({
           timeLabel: nextPrompt.timeLabel,
@@ -927,7 +1061,38 @@ export default function StudentHome() {
       const updatedDetailedEntries = [...detailedMoodEntries, detailedEntry];
       setDetailedMoodEntries(updatedDetailedEntries);
       await AsyncStorage.setItem(`detailedMoodEntries_${regNo}`, JSON.stringify(updatedDetailedEntries));
+      
+      // Save mood entry to Supabase for cross-device sync and analytics
+      const now = new Date();
+      const { error: dbError } = await supabase
+        .from('mood_entries')
+        .insert({
+          user_id: regNo,
+          mood_emoji: mood,
+          mood_label: moodData?.label || 'Unknown',
+          entry_date: now.toISOString().split('T')[0], // YYYY-MM-DD
+          entry_time: now.toTimeString().split(' ')[0], // HH:MM:SS
+          scheduled_label: timeLabel,
+          schedule_key: scheduleKey,
+          notes: input || null
+        });
+      
+      if (dbError) {
+        console.error('⚠️ Error saving mood to database:', dbError);
+        // Don't block user - AsyncStorage still works
+      } else {
+        console.log('✅ Mood saved to database');
+      }
+      
       console.log(`✅ Mood saved for ${regNo}: ${mood} at ${currentTime} (${timeLabel})`);
+      
+      // Send push notification for mood entry
+      await sendLocalNotification(
+        '🎯 Mood Logged!',
+        `You're feeling ${moodData?.label || 'good'} today. Keep tracking your emotional journey!`,
+        { type: 'mood_entry', mood: mood, label: moodData?.label, time: currentTime }
+      );
+      
       setMoodModalVisible(false);
       setSelectedMood(null);
       setInput('');

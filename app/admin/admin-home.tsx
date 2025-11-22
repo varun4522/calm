@@ -7,6 +7,7 @@ import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { formatRelativeTime, uploadMediaToSupabase, pickMediaFromGallery } from '@/lib/utils';
 import { profilePics } from '@/constants/ProfilePhotos';
+import { registerForPushNotificationsAsync, setupNotificationListeners } from '@/lib/notificationService';
 
 console.log('AdminHome component loaded');
 
