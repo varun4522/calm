@@ -354,6 +354,12 @@ export default function StudentHome() {
                 router.push('/student/message');
               } else if (data.type === 'learning_resource') {
                 router.push('/student/learning');
+              } else if (data.type === 'mood_reminder') {
+                // Open mood modal when tapping reminder
+                setMoodModalVisible(true);
+              } else if (data.type === 'mood_entry') {
+                // Could navigate to mood history or analytics
+                console.log('Mood entry notification tapped');
               }
             }
           );

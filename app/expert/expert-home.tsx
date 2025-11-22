@@ -17,6 +17,13 @@ import Toast from 'react-native-toast-message';
 import { useInsertNotification } from '@/api/Notifications';
 import { formatRelativeTime, uploadMediaToSupabase, pickMediaFromGallery } from '@/lib/utils';
 import { profilePics } from '@/constants/ProfilePhotos';
+import * as Notifications from 'expo-notifications';
+import { 
+  registerForPushNotificationsAsync, 
+  setupNotificationListeners, 
+  removeNotificationListeners,
+  sendLocalNotification 
+} from '@/lib/notificationService';
 
 // Mood tracking constants
 const MOOD_EMOJIS = [
@@ -187,6 +194,54 @@ export default function ExpertHome() {
     if (expertRegNo) {
       loadNotifications();
     }
+  }, [expertRegNo]);
+
+  // Register for push notifications and setup listeners
+  useEffect(() => {
+    if (!expertRegNo) return;
+
+    let notificationSubscriptions: { receivedSubscription: any; responseSubscription: any } | null = null;
+
+    const initNotifications = async () => {
+      try {
+        console.log('📱 Registering expert for push notifications...');
+        await registerForPushNotificationsAsync(expertRegNo);
+
+        // Setup notification listeners with navigation
+        const subscriptions = setupNotificationListeners(
+          (notification) => {
+            console.log('🔔 Expert received notification:', notification);
+          },
+          (response) => {
+            console.log('👆 Expert tapped notification:', response);
+            const data = response.notification.request.content.data;
+            
+            // Handle different notification types
+            if (data.type === 'mood_reminder') {
+              // Open mood modal when tapping reminder
+              setMoodModalVisible(true);
+            } else if (data.type === 'mood_entry') {
+              // Could navigate to mood history or analytics
+              console.log('Mood entry notification tapped');
+            }
+          }
+        );
+
+        notificationSubscriptions = subscriptions;
+        console.log('✅ Expert push notification setup complete');
+      } catch (error) {
+        console.error('❌ Error setting up expert push notifications:', error);
+      }
+    };
+
+    initNotifications();
+
+    return () => {
+      console.log('🧹 Cleaning up expert notification listeners');
+      if (notificationSubscriptions) {
+        removeNotificationListeners(notificationSubscriptions);
+      }
+    };
   }, [expertRegNo]);
 
 
@@ -451,6 +506,43 @@ export default function ExpertHome() {
       setDetailedMoodEntries(updatedDetailedEntries);
       await AsyncStorage.setItem(`expertDetailedMoodEntries_${regNo}`, JSON.stringify(updatedDetailedEntries));
 
+      // Save to Supabase mood_entries table for cross-device sync and analytics
+      try {
+        const now = new Date();
+        const { error: supabaseError } = await supabase
+          .from('mood_entries')
+          .insert({
+            user_id: regNo,
+            mood_emoji: mood,
+            mood_label: moodData?.label || 'Unknown',
+            entry_date: today,
+            entry_time: currentTime,
+            scheduled_label: timeLabel,
+            schedule_key: scheduleKey,
+            notes: null
+          });
+
+        if (supabaseError) {
+          console.error('❌ Error saving expert mood to Supabase:', supabaseError);
+        } else {
+          console.log('✅ Expert mood saved to Supabase database');
+          
+          // Send confirmation notification
+          await sendLocalNotification(
+            '🎯 Mood Logged!',
+            `You're feeling ${moodData?.label || 'good'} today. Keep tracking your emotional journey!`,
+            { 
+              type: 'mood_entry', 
+              mood, 
+              label: moodData?.label || 'Unknown',
+              time: currentTime 
+            }
+          );
+        }
+      } catch (supabaseError) {
+        console.error('❌ Supabase mood save error:', supabaseError);
+      }
+
       console.log(`✅ Expert mood saved for ${regNo}: ${mood} at ${currentTime} (${timeLabel})`);
       setMoodModalVisible(false);
       setSelectedMood(null);
@@ -516,6 +608,17 @@ export default function ExpertHome() {
         // Show the earliest missed prompt with time info
         const nextPrompt = missedPrompts[0];
         console.log(`🎯 Showing expert mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6) - ${missedPrompts.length} pending`);
+        
+        // Send push notification reminder
+        await sendLocalNotification(
+          '😊 Time for Mood Check-in',
+          `It's time for your ${nextPrompt.label}. Take a moment to reflect on how you're feeling.`,
+          { 
+            type: 'mood_reminder', 
+            label: nextPrompt.label,
+            intervalNumber: nextPrompt.intervalNumber 
+          }
+        );
         
         setCurrentPromptInfo({
           timeLabel: nextPrompt.timeLabel,
