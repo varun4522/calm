@@ -22,12 +22,12 @@ export default function AuthProvider({children}: PropsWithChildren) {
             setLoading(false);
         };
         fetchSession();
-        supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-        });
         
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setSession(session);
+            if (_event === 'INITIAL_SESSION') {
+                setLoading(false);
+            }
         });
 
         return () => {

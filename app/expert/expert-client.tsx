@@ -84,6 +84,9 @@ export default function ExpertClientPage() {
 
       if (error) {
         console.error('Error loading session requests:', error);
+        if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+          Alert.alert('Network Error', 'Unable to load session requests. Please check your internet connection.');
+        }
         setSessionRequests([]);
         setFilteredSessions([]);
       } else if (sessionsData) {

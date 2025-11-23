@@ -14,6 +14,8 @@ export default function FrontPage() {
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isForgotPasswordLoading, setIsForgotPasswordLoading] = useState(false);
   const { session, loading } = useAuth();
 
   const handleForgotPassword = async () => {
@@ -23,96 +25,157 @@ export default function FrontPage() {
     return;
   }
 
-  // If user typed registration number → convert to email first (same logic you already have)
-  let emailToUse = loginInput;
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(loginInput)) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('registration_number', loginInput)
-      .single();
-    if (!data) {
-      Toast.show({ type: 'error', text1: 'Registration number not found'});
-      return;
+  setIsForgotPasswordLoading(true);
+  try {
+    // If user typed registration number → convert to email first (same logic you already have)
+    let emailToUse = loginInput;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(loginInput)) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('registration_number', loginInput)
+        .single();
+      if (!data) {
+        Toast.show({ type: 'error', text1: 'Registration number not found'});
+        setIsForgotPasswordLoading(false);
+        return;
+      }
+      emailToUse = data.email;
     }
-    emailToUse = data.email;
-  }
 
-  const { error } = await supabase.auth.resetPasswordForEmail(emailToUse, {
-    redirectTo: 'calmspace://reset-password',   // ← THIS IS THE ONLY LINE YOU NEED
-  });
-
-  if (error) {
-    Toast.show({ type: 'error', text1: error.message });
-  } else {
-    Toast.show({ 
-      type: 'success', 
-      text1: 'Check your email', 
-      text2: 'Password reset link sent!' 
+    const { error } = await supabase.auth.resetPasswordForEmail(emailToUse, {
+      redirectTo: 'calmspace://reset-password',   // ← THIS IS THE ONLY LINE YOU NEED
     });
+
+    if (error) {
+      if (error.message.includes('network') || error.message.includes('fetch')) {
+        Toast.show({ type: 'error', text1: 'Network error', text2: 'Check your internet connection' });
+      } else {
+        Toast.show({ type: 'error', text1: error.message });
+      }
+    } else {
+      Toast.show({ 
+        type: 'success', 
+        text1: 'Check your email', 
+        text2: 'Password reset link sent!' 
+      });
+    }
+  } catch (err: any) {
+    Toast.show({ 
+      type: 'error', 
+      text1: 'Network error', 
+      text2: 'Please check your internet connection' 
+    });
+  } finally {
+    setIsForgotPasswordLoading(false);
   }
 };
 
   useEffect(() => {
     const redirectUser = async () => {
-      if (session && session.user?.id) {
-        const { data, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        if (error) {
-          Toast.show({ type: 'error', text1: 'Failed to fetch profile', position: 'top' });
-          return;
+      if (!loading && session && session.user?.id && !isRedirecting) {
+        setIsRedirecting(true);
+        try {
+          const { data, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+          if (error) {
+            Toast.show({ type: 'error', text1: 'Failed to fetch profile', position: 'top' });
+            setIsRedirecting(false);
+            return;
+          }
+          
+          // Show loading screen for 2 seconds before redirecting
+          setTimeout(() => {
+            if (data.type === 'STUDENT' || data.type === 'PEER') {
+              router.replace('/student/student-home');
+            } else if (data.type === 'EXPERT') {
+              router.replace('/expert/expert-home');
+            } else {
+              router.replace('/admin/admin-home');
+            }
+          }, 2000);
+        } catch (err) {
+          console.error('Redirect error:', err);
+          setIsRedirecting(false);
         }
-        if (data.type === 'STUDENT' || data.type === 'PEER') router.replace('/student/student-home');
-        else if (data.type === 'EXPERT') router.replace('/expert/expert-home');
-        else router.replace('/admin/admin-home');
       }
     };
     redirectUser();
-  }, [session]);
+  }, [session, loading, isRedirecting]);
 
 
   async function signInWithEmail() {
     setIsLoading(true);
     
-    // Check if input is email or registration number
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const isEmail = emailRegex.test(loginInput);
-    
-    let email = loginInput;
-    
-    // If input is not email, treat it as registration number
-    if (!isEmail) {
-      // Find user by registration number
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('registration_number', loginInput)
-        .single();
+    try {
+      // Check if input is email or registration number
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const isEmail = emailRegex.test(loginInput);
       
-      if (profileError || !profileData) {
-        Toast.show({ 
-          type: 'error', 
-          text1: 'Registration number not found', 
-          text2: 'Please check your registration number',
-          position: 'top', 
-          visibilityTime: 2000 
-        });
+      let email = loginInput;
+      
+      // If input is not email, treat it as registration number
+      if (!isEmail) {
+        // Find user by registration number
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('registration_number', loginInput)
+          .single();
+        
+        if (profileError || !profileData) {
+          Toast.show({ 
+            type: 'error', 
+            text1: 'Registration number not found', 
+            text2: 'Please check your registration number',
+            position: 'top', 
+            visibilityTime: 2000 
+          });
+          setIsLoading(false);
+          return;
+        }
+        
+        email = profileData.email;
+      }
+      
+      // Login with email and password
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        let errorMessage = error.message;
+        if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+          errorMessage = 'Network error. Please check your internet connection.';
+        }
+        Toast.show({ type: 'error', text1: errorMessage, position: 'top', visibilityTime: 2000 });
         setIsLoading(false);
         return;
       }
-      
-      email = profileData.email;
-    }
-    
-    // Login with email and password
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      Toast.show({ type: 'error', text1: error.message, position: 'top', visibilityTime: 2000 });
+      Toast.show({ type: 'success', text1: 'Login successful', position: 'top', visibilityTime: 1500 });
+      setIsRedirecting(true);
       setIsLoading(false);
-      return;
+      setLoginModalVisible(false);
+    } catch (err: any) {
+      Toast.show({ 
+        type: 'error', 
+        text1: 'Network error', 
+        text2: 'Please check your internet connection',
+        position: 'top', 
+        visibilityTime: 2000 
+      });
+      setIsLoading(false);
     }
-    Toast.show({ type: 'success', text1: 'Login successful', position: 'top', visibilityTime: 1500 });
-    setIsLoading(false);
+  }
+
+  // Show loading screen while redirecting
+  if (loading || isRedirecting) {
+    return (
+      <View style={styles.container}>
+        <Image source={require('../assets/images/icon.png')} style={styles.logo} />
+        <Text style={styles.mainTitle}>C.A.L.M</Text>
+        <Text style={styles.subTitle}>Spaces</Text>
+        <ActivityIndicator size="large" color="#4F21A2" style={{ marginTop: 30 }} />
+        <Text style={{ color: '#4F21A2', marginTop: 15, fontSize: 16, fontFamily: 'Tinos' }}>Loading...</Text>
+      </View>
+    );
   }
 
   return (
@@ -166,9 +229,13 @@ export default function FrontPage() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity onPress={handleForgotPassword} style={{ alignSelf: 'flex-end', marginBottom: 20, marginTop: -10 }}>
+            <TouchableOpacity 
+              onPress={handleForgotPassword} 
+              style={{ alignSelf: 'flex-end', marginBottom: 20, marginTop: -10, opacity: isForgotPasswordLoading ? 0.5 : 1 }}
+              disabled={isForgotPasswordLoading}
+            >
               <Text style={{ color: '#4F21A2', fontSize: 15, fontWeight: '600', fontFamily: 'Tinos', textDecorationLine: 'underline' }}>
-                Forgot Password?
+                {isForgotPasswordLoading ? 'Sending...' : 'Forgot Password?'}
               </Text>
             </TouchableOpacity>
 

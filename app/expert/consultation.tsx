@@ -137,6 +137,9 @@ export default function ConsultationPage() {
 
             if (error) {
                 console.error('Error loading messages:', error);
+                if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+                    Alert.alert('Network Error', 'Unable to load messages. Please check your internet connection.');
+                }
                 setMessages([]);
                 setGroupedConversations([]);
             } else if (messagesData) {
@@ -254,7 +257,11 @@ export default function ConsultationPage() {
             }
         } catch (error: any) {
             console.error('❌ Error during search:', error);
-            Alert.alert('Search Error', `An unexpected error occurred: ${error.message || 'Unknown error'}`);
+            if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+                Alert.alert('Network Error', 'Unable to search. Please check your internet connection and try again.');
+            } else {
+                Alert.alert('Search Error', `An unexpected error occurred: ${error.message || 'Unknown error'}`);
+            }
         }
     };
 

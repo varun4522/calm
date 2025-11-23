@@ -25,7 +25,11 @@ export default function AdminSetting() {
 
       if (error) {
         console.error('Error fetching help messages:', error);
-        Alert.alert('Error', 'Failed to fetch help messages.');
+        if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+          Alert.alert('Network Error', 'Unable to fetch help messages. Please check your internet connection.');
+        } else {
+          Alert.alert('Error', 'Failed to fetch help messages.');
+        }
       } else {
         setHelpMessages(data || []);
       }

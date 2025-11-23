@@ -111,7 +111,11 @@ export default function PeerClientsPage() {
       }
     } catch (error) {
       console.error('Error loading clients:', error);
-      Alert.alert('Error', 'An error occurred while loading clients');
+      if (error instanceof Error && (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch'))) {
+        Alert.alert('Network Error', 'Unable to load clients. Please check your internet connection.');
+      } else {
+        Alert.alert('Error', 'An error occurred while loading clients');
+      }
       setClients([]);
     } finally {
       setLoading(false);

@@ -321,18 +321,18 @@ export default function StudentRegister() {
         return;
       }
 
-      // Step 5: Success - show toast and navigate
+      // Step 5: Success - show toast and let AuthProvider handle navigation
       Toast.show({
         type: 'success',
         text1: 'Registration successful!',
         text2: 'Welcome to CALM Space',
         position: 'top',
+        visibilityTime: 2000,
       });
 
-      // Navigate to student home
-      setTimeout(() => {
-        router.replace('/student/student-home');
-      }, 500);
+      // Let AuthProvider detect the new session and redirect automatically
+      // This prevents competing navigation attempts
+      setLoading(false);
 
     } catch (err: any) {
       console.error('Registration error:', err);

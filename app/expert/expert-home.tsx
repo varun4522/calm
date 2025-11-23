@@ -375,20 +375,28 @@ export default function ExpertHome() {
   };
 
   // Fixed mood prompt schedule (6 times a day at specific times)
-  const generateMoodPromptTimes = (referenceDate: Date): { time: Date, label: string, intervalNumber: number }[] => {
+  const generateMoodPromptTimes = (referenceDate: Date): { time: Date, label: string, intervalNumber: number, scheduleKey: string }[] => {
     const prompts = [];
-    // Fixed times: 8 AM, 11 AM, 2 PM, 5 PM, 8 PM, 11 PM
-    const scheduledHours = [8, 11, 14, 17, 20, 23];
-    const labels = ['Morning Check-in', 'Late Morning', 'Afternoon', 'Evening', 'Night', 'Before Sleep'];
+    // Fixed 6 time slots: 8-11 AM, 11 AM-1 PM, 1-3 PM, 3-5 PM, 5-7 PM, 7-9 PM
+    const timeSlots = [
+      { start: 8, end: 11, label: 'Morning (8-11 AM)', scheduleKey: 'slot_1' },
+      { start: 11, end: 13, label: 'Late Morning (11 AM-1 PM)', scheduleKey: 'slot_2' },
+      { start: 13, end: 15, label: 'Afternoon (1-3 PM)', scheduleKey: 'slot_3' },
+      { start: 15, end: 17, label: 'Late Afternoon (3-5 PM)', scheduleKey: 'slot_4' },
+      { start: 17, end: 19, label: 'Evening (5-7 PM)', scheduleKey: 'slot_5' },
+      { start: 19, end: 21, label: 'Night (7-9 PM)', scheduleKey: 'slot_6' }
+    ];
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < timeSlots.length; i++) {
+      const slot = timeSlots[i];
       const promptTime = new Date(referenceDate);
-      promptTime.setHours(scheduledHours[i], 0, 0, 0);
+      promptTime.setHours(slot.start, 0, 0, 0);
 
       prompts.push({
         time: promptTime,
-        label: labels[i],
-        intervalNumber: i + 1
+        label: slot.label,
+        intervalNumber: i + 1,
+        scheduleKey: slot.scheduleKey
       });
     }
 
@@ -403,30 +411,94 @@ export default function ExpertHome() {
   // Mood tracking functions
   const loadMoodData = async () => {
     try {
-      const regNo = expertRegNo || 'expert_default';
+      const userId = session?.user?.id;
+      const regNo = expertRegNo || profile?.registration_number?.toString();
 
-      // Load mood history
-      const moodHistoryData = await AsyncStorage.getItem(`expertMoodHistory_${regNo}`);
-      if (moodHistoryData) {
-        setMoodHistory(JSON.parse(moodHistoryData));
+      if (!userId) {
+        console.log('⏳ Waiting for user session to load expert mood data...');
+        setMoodHistory({});
+        setDailyMoodEntries({});
+        setDetailedMoodEntries([]);
+        return;
       }
 
-      // Load daily mood entries
-      const dailyEntriesData = await AsyncStorage.getItem(`expertDailyMoodEntries_${regNo}`);
-      if (dailyEntriesData) {
-        setDailyMoodEntries(JSON.parse(dailyEntriesData));
-      }
+      // Load from Supabase (primary source)
+      const { data: moodData, error } = await supabase
+        .from('mood_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('entry_date', { ascending: true });
 
-      // Load detailed mood entries
-      const detailedEntriesData = await AsyncStorage.getItem(`expertDetailedMoodEntries_${regNo}`);
-      if (detailedEntriesData) {
-        setDetailedMoodEntries(JSON.parse(detailedEntriesData));
+      if (error) {
+        console.error('❌ Error loading expert mood data from Supabase:', error);
+        // Fall back to AsyncStorage
+        if (regNo) {
+          const moodHistoryData = await AsyncStorage.getItem(`expertMoodHistory_${regNo}`);
+          if (moodHistoryData) setMoodHistory(JSON.parse(moodHistoryData));
+          
+          const dailyEntriesData = await AsyncStorage.getItem(`expertDailyMoodEntries_${regNo}`);
+          if (dailyEntriesData) setDailyMoodEntries(JSON.parse(dailyEntriesData));
+          
+          const detailedEntriesData = await AsyncStorage.getItem(`expertDetailedMoodEntries_${regNo}`);
+          if (detailedEntriesData) setDetailedMoodEntries(JSON.parse(detailedEntriesData));
+        }
+      } else if (moodData && moodData.length > 0) {
+        // Transform Supabase data to local format
+        const history: { [key: string]: string } = {};
+        const dailyEntries: { [key: string]: any[] } = {};
+        const detailed: any[] = [];
+
+        moodData.forEach((entry: any) => {
+          const date = entry.entry_date;
+          // Keep only the latest mood for simple history
+          history[date] = entry.mood_emoji;
+          
+          // Add to daily entries
+          if (!dailyEntries[date]) dailyEntries[date] = [];
+          dailyEntries[date].push({
+            emoji: entry.mood_emoji,
+            label: entry.mood_label,
+            time: entry.entry_time,
+            scheduled: entry.scheduled_label,
+            scheduleKey: entry.schedule_key
+          });
+
+          // Add to detailed entries
+          detailed.push({
+            date: entry.entry_date,
+            emoji: entry.mood_emoji,
+            label: entry.mood_label,
+            time: entry.entry_time,
+            scheduled: entry.scheduled_label,
+            scheduleKey: entry.schedule_key,
+            notes: entry.notes
+          });
+        });
+
+        setMoodHistory(history);
+        setDailyMoodEntries(dailyEntries);
+        setDetailedMoodEntries(detailed);
+        console.log(`✅ Loaded ${moodData.length} expert mood entries from Supabase`);
+
+        // Backup to AsyncStorage
+        if (regNo) {
+          await AsyncStorage.setItem(`expertMoodHistory_${regNo}`, JSON.stringify(history));
+          await AsyncStorage.setItem(`expertDailyMoodEntries_${regNo}`, JSON.stringify(dailyEntries));
+          await AsyncStorage.setItem(`expertDetailedMoodEntries_${regNo}`, JSON.stringify(detailed));
+        }
+      } else {
+        console.log('📝 No expert mood data found in Supabase');
+        setMoodHistory({});
+        setDailyMoodEntries({});
+        setDetailedMoodEntries([]);
       }
 
       // Initialize mood prompt system with 6-times daily schedule
-      await initializeMoodPromptSystem(regNo);
+      if (regNo) {
+        await initializeMoodPromptSystem(regNo);
+      }
     } catch (error) {
-      console.error('Error loading mood data:', error);
+      console.error('Error loading expert mood data:', error);
     }
   };
 
@@ -472,7 +544,13 @@ export default function ExpertHome() {
 
   const saveMood = async (mood: string) => {
     try {
-      const regNo = expertRegNo || 'expert_default';
+      // Use session user ID as primary identifier
+      const userId = session?.user?.id;
+      if (!userId) {
+        Alert.alert('Error', 'Please log in to save mood data');
+        return;
+      }
+
       const today = getTodayKey();
       const currentTime = new Date().toLocaleTimeString('en-US', {
         hour: '2-digit',
@@ -480,16 +558,47 @@ export default function ExpertHome() {
         hour12: true
       });
 
-      // Update simple mood history (one per day)
-      const updatedHistory = { ...moodHistory, [today]: mood };
-      setMoodHistory(updatedHistory);
-      await AsyncStorage.setItem(`expertMoodHistory_${regNo}`, JSON.stringify(updatedHistory));
-
-      // Update daily mood entries (multiple per day)
       const moodData = MOOD_EMOJIS.find(m => m.emoji === mood);
       const timeLabel = currentPromptInfo?.timeLabel || 'Unscheduled';
       const scheduleKey = currentPromptInfo?.scheduleKey || '';
+      const now = new Date();
 
+      // Save to Supabase first (primary storage)
+      const { error: supabaseError } = await supabase
+        .from('mood_entries')
+        .insert({
+          user_id: userId,
+          user_type: profile?.type || 'EXPERT',
+          mood_emoji: mood,
+          mood_label: moodData?.label || 'Unknown',
+          entry_date: now.toISOString().split('T')[0],
+          entry_time: now.toTimeString().split(' ')[0],
+          scheduled_label: timeLabel,
+          schedule_key: scheduleKey,
+          notes: null
+        });
+
+      if (supabaseError) {
+        console.error('❌ Error saving expert mood to Supabase:', supabaseError);
+        Alert.alert('Error', 'Failed to save mood. Please try again.');
+        return;
+      }
+
+      console.log('✅ Expert mood saved to Supabase database');
+
+      // Send confirmation notification
+      await sendLocalNotification(
+        '🎯 Mood Logged!',
+        `You're feeling ${moodData?.label || 'good'} today. Keep tracking your emotional journey!`,
+        {
+          type: 'mood_entry',
+          mood,
+          label: moodData?.label || 'Unknown',
+          time: currentTime
+        }
+      );
+
+      // Update local state for immediate UI update
       const newEntry = {
         emoji: mood,
         label: moodData?.label || 'Unknown',
@@ -498,14 +607,15 @@ export default function ExpertHome() {
         scheduleKey
       };
 
+      const updatedHistory = { ...moodHistory, [today]: mood };
+      setMoodHistory(updatedHistory);
+
       const updatedDailyEntries = {
         ...dailyMoodEntries,
         [today]: [...(dailyMoodEntries[today] || []), newEntry]
       };
       setDailyMoodEntries(updatedDailyEntries);
-      await AsyncStorage.setItem(`expertDailyMoodEntries_${regNo}`, JSON.stringify(updatedDailyEntries));
 
-      // Update detailed mood entries for analytics
       const detailedEntry = {
         date: today,
         emoji: mood,
@@ -514,49 +624,16 @@ export default function ExpertHome() {
         scheduled: timeLabel,
         scheduleKey
       };
-
       const updatedDetailedEntries = [...detailedMoodEntries, detailedEntry];
       setDetailedMoodEntries(updatedDetailedEntries);
+
+      // Backup to AsyncStorage
+      const regNo = expertRegNo || profile?.registration_number?.toString() || userId;
+      await AsyncStorage.setItem(`expertMoodHistory_${regNo}`, JSON.stringify(updatedHistory));
+      await AsyncStorage.setItem(`expertDailyMoodEntries_${regNo}`, JSON.stringify(updatedDailyEntries));
       await AsyncStorage.setItem(`expertDetailedMoodEntries_${regNo}`, JSON.stringify(updatedDetailedEntries));
 
-      // Save to Supabase mood_entries table for cross-device sync and analytics
-      try {
-        const now = new Date();
-        const { error: supabaseError } = await supabase
-          .from('mood_entries')
-          .insert({
-            user_id: regNo,
-            mood_emoji: mood,
-            mood_label: moodData?.label || 'Unknown',
-            entry_date: today,
-            entry_time: currentTime,
-            scheduled_label: timeLabel,
-            schedule_key: scheduleKey,
-            notes: null
-          });
-
-        if (supabaseError) {
-          console.error('❌ Error saving expert mood to Supabase:', supabaseError);
-        } else {
-          console.log('✅ Expert mood saved to Supabase database');
-
-          // Send confirmation notification
-          await sendLocalNotification(
-            '🎯 Mood Logged!',
-            `You're feeling ${moodData?.label || 'good'} today. Keep tracking your emotional journey!`,
-            {
-              type: 'mood_entry',
-              mood,
-              label: moodData?.label || 'Unknown',
-              time: currentTime
-            }
-          );
-        }
-      } catch (supabaseError) {
-        console.error('❌ Supabase mood save error:', supabaseError);
-      }
-
-      console.log(`✅ Expert mood saved for ${regNo}: ${mood} at ${currentTime} (${timeLabel})`);
+      console.log(`✅ Expert mood saved for user ${userId}: ${mood} at ${currentTime} (${timeLabel})`);
       setMoodModalVisible(false);
       setSelectedMood(null);
 
@@ -579,6 +656,28 @@ export default function ExpertHome() {
     try {
       const now = new Date();
       const today = getTodayKey();
+      const userId = session?.user?.id;
+
+      if (!userId) {
+        console.log('⏳ No user session for mood check');
+        return;
+      }
+
+      // Get today's mood entries from Supabase to check which slots are filled
+      const { data: todayMoods, error } = await supabase
+        .from('mood_entries')
+        .select('schedule_key')
+        .eq('user_id', userId)
+        .eq('entry_date', today);
+
+      if (error) {
+        console.error('❌ Error fetching today\'s moods:', error);
+        return;
+      }
+
+      // Get list of completed schedule keys
+      const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
+      console.log(`📊 Expert completed mood slots: ${completedSlots.size}/6`, Array.from(completedSlots));
 
       // Load schedule if not provided
       let schedule = dailySchedule;
@@ -598,29 +697,80 @@ export default function ExpertHome() {
       const scheduleKey = `expertMoodSchedule_${regNo}_${today}`;
       await AsyncStorage.setItem(scheduleKey, JSON.stringify(schedule));
 
-      // Check which prompts should be shown now (all overdue prompts)
-      const missedPrompts: { label: string, intervalNumber: number, time: Date, timeLabel: string }[] = [];
+      // Check which time slots are due and not completed
+      const currentHour = now.getHours();
+      const missedSlots: { label: string, intervalNumber: number, time: Date, timeLabel: string, scheduleKey: string }[] = [];
 
-      for (let i = 0; i < schedule.promptTimes.length; i++) {
-        const promptInfo = schedule.promptTimes[i];
-        const promptTime = new Date(promptInfo.time);
-        const isTimeForPrompt = now >= promptTime;
-        const hasCompleted = schedule.completedPrompts.includes(promptInfo.intervalNumber);
+      // Define time slots with their hour ranges
+      const timeSlots = [
+        { start: 8, end: 11, scheduleKey: 'slot_1', label: 'Morning (8-11 AM)' },
+        { start: 11, end: 13, scheduleKey: 'slot_2', label: 'Late Morning (11 AM-1 PM)' },
+        { start: 13, end: 15, scheduleKey: 'slot_3', label: 'Afternoon (1-3 PM)' },
+        { start: 15, end: 17, scheduleKey: 'slot_4', label: 'Late Afternoon (3-5 PM)' },
+        { start: 17, end: 19, scheduleKey: 'slot_5', label: 'Evening (5-7 PM)' },
+        { start: 19, end: 21, scheduleKey: 'slot_6', label: 'Night (7-9 PM)' }
+      ];
 
-        if (isTimeForPrompt && !hasCompleted) {
-          missedPrompts.push({
-            label: promptInfo.label,
-            intervalNumber: promptInfo.intervalNumber,
+      for (let i = 0; i < timeSlots.length; i++) {
+        const slot = timeSlots[i];
+        const isInTimeSlot = currentHour >= slot.start && currentHour < slot.end;
+        const hasCompleted = completedSlots.has(slot.scheduleKey);
+        const isPast = currentHour >= slot.end;
+
+        // Show prompt if: currently in time slot OR time slot has passed, and not completed
+        if ((isInTimeSlot || isPast) && !hasCompleted) {
+          const promptTime = new Date();
+          promptTime.setHours(slot.start, 0, 0, 0);
+          
+          missedSlots.push({
+            label: slot.label,
+            intervalNumber: i + 1,
             time: promptTime,
-            timeLabel: `${promptInfo.label} (${formatTimeOnly(promptTime)})`
+            timeLabel: slot.label,
+            scheduleKey: slot.scheduleKey
           });
         }
       }
 
-      if (missedPrompts.length > 0) {
-        // Show the earliest missed prompt with time info
-        const nextPrompt = missedPrompts[0];
-        console.log(`🎯 Showing expert mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6) - ${missedPrompts.length} pending`);
+      // Update local progress
+      setTodayMoodProgress({ completed: completedSlots.size, total: 6 });
+
+      // Refresh local state with Supabase data
+      if (todayMoods && todayMoods.length > 0) {
+        const history: { [key: string]: string } = {};
+        const dailyEntries: { [key: string]: any[] } = {};
+        
+        // Get all mood entries to update calendar
+        const { data: allMoods } = await supabase
+          .from('mood_entries')
+          .select('*')
+          .eq('user_id', userId)
+          .order('entry_date', { ascending: true });
+        
+        if (allMoods) {
+          allMoods.forEach((entry: any) => {
+            const date = entry.entry_date;
+            history[date] = entry.mood_emoji;
+            
+            if (!dailyEntries[date]) dailyEntries[date] = [];
+            dailyEntries[date].push({
+              emoji: entry.mood_emoji,
+              label: entry.mood_label,
+              time: entry.entry_time,
+              scheduled: entry.scheduled_label,
+              scheduleKey: entry.schedule_key
+            });
+          });
+          
+          setMoodHistory(history);
+          setDailyMoodEntries(dailyEntries);
+        }
+      }
+
+      if (missedSlots.length > 0) {
+        // Show the earliest missed slot
+        const nextPrompt = missedSlots[0];
+        console.log(`🎯 Showing expert mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6) - ${missedSlots.length} pending`);
 
         // Send push notification reminder
         await sendLocalNotification(
@@ -635,12 +785,12 @@ export default function ExpertHome() {
 
         setCurrentPromptInfo({
           timeLabel: nextPrompt.timeLabel,
-          scheduleKey: nextPrompt.intervalNumber.toString()
+          scheduleKey: nextPrompt.scheduleKey
         });
-        setMissedPromptsQueue(missedPrompts.map(p => ({ label: p.timeLabel, scheduleKey: p.intervalNumber.toString() })));
+        setMissedPromptsQueue(missedSlots.map(p => ({ label: p.timeLabel, scheduleKey: p.scheduleKey })));
         setMoodModalVisible(true);
       } else {
-        console.log(`✅ All ${schedule.count}/6 expert prompts completed for today!`);
+        console.log(`✅ All ${completedSlots.size}/6 expert prompts completed for today!`);
       }
 
     } catch (error) {
@@ -770,22 +920,100 @@ export default function ExpertHome() {
     }
   };
 
-  // Load mood data on component mount
+  // Load mood data on component mount and when switching tabs
   useEffect(() => {
-    if (expertRegNo) {
+    if (session?.user?.id) {
       loadMoodData();
     }
-  }, [expertRegNo]);
+  }, [session?.user?.id, expertRegNo, activeTab]);
+
+  // Set up real-time subscription for expert mood entries
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    console.log('🔄 Setting up real-time mood sync for expert');
+    
+    const channel = supabase
+      .channel(`expert_mood_entries_${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mood_entries',
+          filter: `user_id=eq.${userId}`,
+        },
+        async (payload) => {
+          console.log('🔔 Expert mood entry changed:', payload);
+          
+          // Reload all mood data from Supabase
+          const { data: moodData, error } = await supabase
+            .from('mood_entries')
+            .select('*')
+            .eq('user_id', userId)
+            .order('entry_date', { ascending: true });
+
+          if (!error && moodData) {
+            const history: { [key: string]: string } = {};
+            const dailyEntries: { [key: string]: any[] } = {};
+            const detailed: any[] = [];
+
+            moodData.forEach((entry: any) => {
+              const date = entry.entry_date;
+              history[date] = entry.mood_emoji;
+              
+              if (!dailyEntries[date]) dailyEntries[date] = [];
+              dailyEntries[date].push({
+                emoji: entry.mood_emoji,
+                label: entry.mood_label,
+                time: entry.entry_time,
+                scheduled: entry.scheduled_label,
+                scheduleKey: entry.schedule_key
+              });
+
+              detailed.push({
+                date: entry.entry_date,
+                emoji: entry.mood_emoji,
+                label: entry.mood_label,
+                time: entry.entry_time,
+                scheduled: entry.scheduled_label,
+                scheduleKey: entry.schedule_key,
+                notes: entry.notes
+              });
+            });
+
+            setMoodHistory(history);
+            setDailyMoodEntries(dailyEntries);
+            setDetailedMoodEntries(detailed);
+            
+            // Recheck today's progress
+            const today = getTodayKey();
+            const todayMoods = moodData.filter((m: any) => m.entry_date === today);
+            const completedSlots = new Set(todayMoods.map((m: any) => m.schedule_key).filter(Boolean));
+            setTodayMoodProgress({ completed: completedSlots.size, total: 6 });
+            
+            console.log('✅ Expert mood data synced from real-time update');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('🔌 Unsubscribing from expert mood sync');
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id]);
 
   // Check for mood prompts every 30 minutes
   useEffect(() => {
-    if (expertRegNo) {
+    if (expertRegNo && session?.user?.id) {
       const interval = setInterval(async () => {
         await checkForMoodPrompt(expertRegNo);
       }, 30 * 60 * 1000);
       return () => clearInterval(interval);
     }
-  }, [expertRegNo]);
+  }, [expertRegNo, session?.user?.id]);
 
   const handleFileSelection = async () => {
     try {
@@ -1230,7 +1458,11 @@ export default function ExpertHome() {
 
       if (error) {
         console.error('Error fetching posts:', error);
-        Alert.alert('Error', 'Failed to load posts');
+        if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+          Alert.alert('Network Error', 'Unable to load posts. Please check your internet connection.');
+        } else {
+          Alert.alert('Error', 'Failed to load posts');
+        }
         return;
       }
 

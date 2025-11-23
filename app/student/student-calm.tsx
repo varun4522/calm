@@ -59,6 +59,9 @@ export default function StudentCalm() {
 
       if (error) {
         console.error('Error loading booked sessions:', error);
+        if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+          console.log('Network error while loading booked sessions');
+        }
         return;
       }
 
@@ -86,6 +89,9 @@ export default function StudentCalm() {
 
       if (error) {
         console.error('Error loading session history:', error);
+        if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+          Alert.alert('Network Error', 'Unable to load session history. Please check your internet connection.');
+        }
         setSessionHistory([]);
       } else {
         console.log('Session history loaded:', sessions);

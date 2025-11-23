@@ -282,7 +282,11 @@ export default function BuddyConnect() {
 
       if (error) {
         console.error('Error fetching posts:', error);
-        Alert.alert('Error', 'Failed to load posts');
+        if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+          Alert.alert('Network Error', 'Unable to load posts. Please check your internet connection.');
+        } else {
+          Alert.alert('Error', 'Failed to load posts');
+        }
         return;
       }
 

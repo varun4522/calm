@@ -46,6 +46,8 @@ export default function AdminLocation() {
             'Row Level Security policies need to be configured for the student_locations table. Please contact the administrator.',
             [{ text: 'OK', style: 'default' }]
           );
+        } else if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+          Alert.alert('Network Error', 'Unable to fetch locations. Please check your internet connection.');
         } else {
           Alert.alert('Error', `Failed to fetch student locations: ${error.message}`);
         }

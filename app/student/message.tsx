@@ -246,6 +246,9 @@ export default function MessagesPage() {
       }
     } catch (error) {
       console.error('Error loading messages:', error);
+      if (error instanceof Error && (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch'))) {
+        console.log('Network error while loading messages');
+      }
       setSentMessages([]);
       setFilteredMessages([]);
     }
@@ -295,7 +298,11 @@ export default function MessagesPage() {
                 .in('id', selectedMessages);
 
               if (error) {
-                Alert.alert('Error', 'Failed to delete messages');
+                if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+                  Alert.alert('Network Error', 'Unable to delete messages. Please check your internet connection.');
+                } else {
+                  Alert.alert('Error', 'Failed to delete messages');
+                }
                 console.error('Delete error:', error);
               } else {
                 // Remove deleted messages from local state
