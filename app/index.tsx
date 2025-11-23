@@ -16,6 +16,43 @@ export default function FrontPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { session, loading } = useAuth();
 
+  const handleForgotPassword = async () => {
+    console.log("hello")
+  if (!loginInput.trim()) {
+    Toast.show({ type: 'error', text1: 'Enter your email or registration number first' });
+    return;
+  }
+
+  // If user typed registration number → convert to email first (same logic you already have)
+  let emailToUse = loginInput;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(loginInput)) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('registration_number', loginInput)
+      .single();
+    if (!data) {
+      Toast.show({ type: 'error', text1: 'Registration number not found'});
+      return;
+    }
+    emailToUse = data.email;
+  }
+
+  const { error } = await supabase.auth.resetPasswordForEmail(emailToUse, {
+    redirectTo: 'calmspace://reset-password',   // ← THIS IS THE ONLY LINE YOU NEED
+  });
+
+  if (error) {
+    Toast.show({ type: 'error', text1: error.message });
+  } else {
+    Toast.show({ 
+      type: 'success', 
+      text1: 'Check your email', 
+      text2: 'Password reset link sent!' 
+    });
+  }
+};
 
   useEffect(() => {
     const redirectUser = async () => {
@@ -128,6 +165,12 @@ export default function FrontPage() {
                 <Ionicons name={passwordVisible ? 'eye-off' : 'eye'} size={24} color="#4F21A2" />
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity onPress={handleForgotPassword} style={{ alignSelf: 'flex-end', marginBottom: 20, marginTop: -10 }}>
+              <Text style={{ color: '#4F21A2', fontSize: 15, fontWeight: '600', fontFamily: 'Tinos', textDecorationLine: 'underline' }}>
+                Forgot Password?
+              </Text>
+            </TouchableOpacity>
 
             <View style={styles.modalButtonsRow}>
               <TouchableOpacity style={styles.cancelButton} onPress={() => { setLoginModalVisible(false); setLoginInput(''); setPassword(''); }}>

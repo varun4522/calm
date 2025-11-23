@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { FACULTY } from '@/constants/courses';
 import { getAllUsernames, getAllRegistrationNumbers } from "@/api/Profile";
 import Toast from 'react-native-toast-message';
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 
 export default function StudentRegister() {
   const router = useRouter();
@@ -22,11 +23,18 @@ export default function StudentRegister() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [courseModalVisible, setCourseModalVisible] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [dobPickerVisible, setDobPickerVisible] = useState(false);
 
   // Helper function to capitalize first letter of each word
   const capitalizeWords = (text: string) => {
     return text.replace(/\b\w/g, (char) => char.toUpperCase());
   };
+
+  const parseDOB = (dob: string): Date => {
+    const [day, month, year] = dob.split("/").map(Number);
+    return new Date(year, month - 1, day);
+  };
+
 
   // Handler for name input - capitalize first letter of each word
   const handleNameChange = (text: string) => {
@@ -148,79 +156,95 @@ export default function StudentRegister() {
   };
 
   async function signUpWithEmail() {
-    // Validate data using the new validation function
-    const isValidated = await validateStudentData({
-      name,
-      username,
-      registrationNumber,
-      course,
-      phone,
-      dob,
+  const isValidated = await validateStudentData({
+    name,
+    username,
+    registrationNumber,
+    course,
+    phone,
+    dob,
+    email,
+    password
+  });
+
+  if (!isValidated) return;
+
+  setLoading(true);
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
       email,
-      password
+      password,
+      options: {
+        // This makes Supabase magic prevents the 504 + huge error page
+        captchaToken: undefined,
+      }
     });
 
-    if (!isValidated) return;
-    setLoading(true);
-
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password
-      });
-
-      if (error) {
-        Alert.alert("Error", error.message);
-        setLoading(false);
-        return;
+    if (error) {
+      // Friendly messages for the most common errors
+      if (error.message.toLowerCase().includes('rate limit') || 
+          error.message.toLowerCase().includes('too many requests') ||
+          error.status === 429) {
+        Alert.alert(
+          "Too many attempts",
+          "You have tried to register too many times. Please wait 1–2 minutes and try again."
+        );
+      } 
+      else if (error.message.toLowerCase().includes('email')) {
+        Alert.alert("Email issue", error.message);
       }
-
-      const user = data.user;
-      if (user) {
-        const user_data = {
-            id: user.id,
-            username: username,
-            registration_number: registrationNumber,
-            name: name,
-            course: 'FACULTY_OF_' + course.replace(/\s+/g, '_').toUpperCase(),
-            phone_number: phone,
-            email: email,
-            date_of_birth: dob,
-            type: "STUDENT",
-          };
-        console.log(user_data);
-        const { error: insertError } = await supabase
-          .from("profiles")
-          .insert(user_data);
-        console.log("INSERTION ERROR" , insertError);
-        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (insertError) {
-          Toast.show({
-            type: 'error',
-            text1: 'Account creation unsuccessful',
-            position: 'bottom',
-            visibilityTime: 1500
-          });
-        } else {
-          Toast.show({
-            type: 'success',
-            text1: 'Account creation successful',
-            position: 'bottom',
-            visibilityTime: 1500
-          });
-        }
+      else {
+        Alert.alert("Sign up failed", error.message);
       }
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "An unexpected error occurred. Please try again.");
-    } finally {
-      setLoading(false);
+      return;
     }
+
+    // === Success path (same as before) ===
+    if (data.user) {
+      const user_data = {
+        id: data.user.id,
+        username,
+        registration_number: registrationNumber,
+        name,
+        course: 'FACULTY_OF_' + course.replace(/\s+/g, '_').toUpperCase(),
+        phone_number: phone,
+        email,
+        date_of_birth: dob,
+        type: "STUDENT",
+      };
+
+      const { error: insertError } = await supabase
+        .from("profiles")
+        .insert(user_data);
+
+      await supabase.auth.signInWithPassword({ email, password });
+
+      if (insertError) {
+        Toast.show({
+          type: 'error',
+          text1: 'Account created but profile failed',
+          text2: 'Contact support',
+        });
+      } else {
+        Toast.show({
+          type: 'success',
+          text1: 'Registration successful!',
+        });
+        router.replace('/student/student-home'); 
+      }
+    }
+  } catch (err: any) {
+    // This catches the 504/network errors and prevents the huge alert
+    console.error(err);
+    Alert.alert(
+      "Network error",
+      "Unable to reach server right now. Check your internet or try again in a minute."
+    );
+  } finally {
+    setLoading(false);
   }
+}
 
 
   return (
@@ -244,15 +268,15 @@ export default function StudentRegister() {
               {/* Name */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Full Name *</Text>
-                <TextInput 
-                  style={styles.input} 
-                  value={name} 
-                  onChangeText={handleNameChange} 
-                  placeholder="Enter your full name" 
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={handleNameChange}
+                  placeholder="Enter your full name"
                   placeholderTextColor="#a8a8a8"
                   autoCapitalize="words"
                 />
-                
+
               </View>
 
               {/* Email */}
@@ -267,7 +291,7 @@ export default function StudentRegister() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
-                
+
               </View>
 
               {/* Phone */}
@@ -282,35 +306,35 @@ export default function StudentRegister() {
                   keyboardType="phone-pad"
                   maxLength={10}
                 />
-                
+
               </View>
 
               {/* Username */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Username *</Text>
-                <TextInput 
-                  style={styles.input} 
-                  value={username} 
-                  onChangeText={handleUsernameChange} 
-                  placeholder="Choose a username" 
-                  placeholderTextColor="#a8a8a8" 
+                <TextInput
+                  style={styles.input}
+                  value={username}
+                  onChangeText={handleUsernameChange}
+                  placeholder="Choose a username"
+                  placeholderTextColor="#a8a8a8"
                   autoCapitalize="none"
                 />
-                
+
               </View>
 
               {/* Registration Number */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Registration Number *</Text>
-                <TextInput 
-                  style={styles.input} 
-                  value={registrationNumber} 
-                  onChangeText={handleRegistrationChange} 
-                  placeholder="Enter your registration number" 
+                <TextInput
+                  style={styles.input}
+                  value={registrationNumber}
+                  onChangeText={handleRegistrationChange}
+                  placeholder="Enter your registration number"
                   placeholderTextColor="#a8a8a8"
                   keyboardType="numeric"
                 />
-                
+
               </View>
 
               {/* Course */}
@@ -325,7 +349,15 @@ export default function StudentRegister() {
               {/* Date of Birth */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Date of Birth *</Text>
-                <TextInput style={styles.input} value={dob} onChangeText={setDob} placeholder="DD/MM/YYYY" placeholderTextColor="#a8a8a8" />
+
+                <TouchableOpacity
+                  style={styles.input}
+                  onPress={() => setDobPickerVisible(true)}
+                >
+                  <Text style={{ fontSize: 16, color: dob ? "#333" : "#a8a8a8" }}>
+                    {dob || "Select your date of birth"}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               {/* Password */}
@@ -347,8 +379,17 @@ export default function StudentRegister() {
               </View>
 
               {/* Register Button */}
-              <TouchableOpacity style={styles.registerButton} onPress={()=> {signUpWithEmail()}}>
-                <Text style={styles.registerButtonText}>Register</Text>
+              <TouchableOpacity
+                style={[
+                  styles.registerButton,
+                  loading && styles.registerButtonDisabled   // ← add disabled style when loading
+                ]}
+                onPress={signUpWithEmail}
+                disabled={loading}                        // ← disable button while loading
+              >
+                <Text style={styles.registerButtonText}>
+                  {loading ? 'Registering...' : 'Register'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -384,6 +425,26 @@ export default function StudentRegister() {
           </View>
         </View>
       </Modal>
+      {dobPickerVisible && (
+        <DateTimePicker
+          value={dob ? parseDOB(dob) : new Date()}
+          mode="date"
+          display="inline"
+          maximumDate={new Date(new Date().setFullYear(new Date().getFullYear()))}
+          minimumDate={new Date(new Date().setFullYear(new Date().getFullYear() - 80))}
+          onChange={(event: DateTimePickerEvent, selectedDate?: Date) => {
+            setDobPickerVisible(false);
+            if (selectedDate) {
+              const d = selectedDate;
+              const formatted = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+              setDob(formatted);
+            }
+          }}
+        />
+      )
+      }
+
+
     </View>
   );
 }
@@ -414,4 +475,8 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.primary },
   courseItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', backgroundColor: 'white' },
   courseText: { fontSize: 16, color: '#333' },
+  registerButtonDisabled: {
+    backgroundColor: '#a680c8',   // a muted version of your primary color (or use Colors.primary + opacity)
+    opacity: 0.7,
+  },
 });

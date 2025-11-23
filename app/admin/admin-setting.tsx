@@ -1,25 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { 
-  Alert, 
-  ScrollView, 
-  Text, 
-  TouchableOpacity, 
-  View, 
-  StyleSheet, 
-  ActivityIndicator,
-  Dimensions,
-  StatusBar,
-  RefreshControl
-} from 'react-native';
+import {   Alert,   ScrollView,   Text,   TouchableOpacity,   View,   StyleSheet, 
+  ActivityIndicator,  StatusBar,  RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { Colors } from '@/constants/Colors';
 import { formatDateTime } from '@/lib/utils';
 
-const { width } = Dimensions.get('window');
 
 export default function AdminSetting() {
   const router = useRouter();
@@ -240,7 +229,23 @@ export default function AdminSetting() {
         {/* Account Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
-          
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={()=> {router.push('/admin/change-password')}}
+            activeOpacity={0.8}
+          >
+            <View style={styles.logoutContent}>
+              <View style={styles.logoutIconContainer}>
+                <Ionicons name="log-out-outline" size={24} color="#FF6B6B" />
+              </View>
+              <View style={styles.logoutTextContainer}>
+                <Text style={styles.logoutText}>Change Password</Text>
+                <Text style={styles.logoutSubtext}>Change your account password</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#999" />
+            </View>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.logoutButton}
             onPress={handleLogout}
@@ -456,6 +461,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+    marginBottom: 16,
   },
   logoutContent: {
     flexDirection: 'row',

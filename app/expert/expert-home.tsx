@@ -5,7 +5,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import {  ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform,
+import {
+  ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform,
   SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList
 } from 'react-native';
 import * as Updates from 'expo-updates';
@@ -18,11 +19,11 @@ import { useInsertNotification } from '@/api/Notifications';
 import { formatRelativeTime, uploadMediaToSupabase, pickMediaFromGallery } from '@/lib/utils';
 import { profilePics } from '@/constants/ProfilePhotos';
 import * as Notifications from 'expo-notifications';
-import { 
-  registerForPushNotificationsAsync, 
-  setupNotificationListeners, 
+import {
+  registerForPushNotificationsAsync,
+  setupNotificationListeners,
   removeNotificationListeners,
-  sendLocalNotification 
+  sendLocalNotification
 } from '@/lib/notificationService';
 
 // Mood tracking constants
@@ -52,7 +53,7 @@ export default function ExpertHome() {
   const [postText, setPostText] = useState('');
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
   const [isPosting, setIsPosting] = useState(false);
-  
+
   // Comment states
   const [commentsModalVisible, setCommentsModalVisible] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState<any>(null);
@@ -78,10 +79,10 @@ export default function ExpertHome() {
   useEffect(() => {
     async function checkForUpdates() {
       if (__DEV__) return; // Skip in development
-      
+
       try {
         const update = await Updates.checkForUpdateAsync();
-        
+
         if (update.isAvailable) {
           await Updates.fetchUpdateAsync();
           Alert.alert(
@@ -126,6 +127,13 @@ export default function ExpertHome() {
   const [todayMoodProgress, setTodayMoodProgress] = useState<{ completed: number, total: number }>({ completed: 0, total: 6 });
   const [moodPromptsToday, setMoodPromptsToday] = useState<number>(0);
   const [missedPromptsQueue, setMissedPromptsQueue] = useState<{ label: string, scheduleKey: string }[]>([]);
+
+  // this is the expert registration number but studentReg no is used to not break things
+  const studentRegNo = profile?.registration_number;
+
+  const [showToolkitPage, setShowToolkitPage] = useState(false);
+  const [showToolkitPopup, setShowToolkitPopup] = useState(false);
+  const [selectedToolkitItem, setSelectedToolkitItem] = useState<{ name: string, description: string, route: string } | null>(null);
 
   // Notification states
   const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -215,7 +223,7 @@ export default function ExpertHome() {
           (response) => {
             console.log('👆 Expert tapped notification:', response);
             const data = response.notification.request.content.data;
-            
+
             // Handle different notification types
             if (data.type === 'mood_reminder') {
               // Open mood modal when tapping reminder
@@ -432,7 +440,7 @@ export default function ExpertHome() {
         // Create new schedule with fixed times for today
         const todayDate = new Date();
         todayDate.setHours(0, 0, 0, 0);
-        
+
         dailySchedule = {
           date: today,
           promptTimes: generateMoodPromptTimes(todayDate),
@@ -476,7 +484,7 @@ export default function ExpertHome() {
       const moodData = MOOD_EMOJIS.find(m => m.emoji === mood);
       const timeLabel = currentPromptInfo?.timeLabel || 'Unscheduled';
       const scheduleKey = currentPromptInfo?.scheduleKey || '';
-      
+
       const newEntry = {
         emoji: mood,
         label: moodData?.label || 'Unknown',
@@ -526,16 +534,16 @@ export default function ExpertHome() {
           console.error('❌ Error saving expert mood to Supabase:', supabaseError);
         } else {
           console.log('✅ Expert mood saved to Supabase database');
-          
+
           // Send confirmation notification
           await sendLocalNotification(
             '🎯 Mood Logged!',
             `You're feeling ${moodData?.label || 'good'} today. Keep tracking your emotional journey!`,
-            { 
-              type: 'mood_entry', 
-              mood, 
+            {
+              type: 'mood_entry',
+              mood,
               label: moodData?.label || 'Unknown',
-              time: currentTime 
+              time: currentTime
             }
           );
         }
@@ -608,18 +616,18 @@ export default function ExpertHome() {
         // Show the earliest missed prompt with time info
         const nextPrompt = missedPrompts[0];
         console.log(`🎯 Showing expert mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6) - ${missedPrompts.length} pending`);
-        
+
         // Send push notification reminder
         await sendLocalNotification(
           '😊 Time for Mood Check-in',
           `It's time for your ${nextPrompt.label}. Take a moment to reflect on how you're feeling.`,
-          { 
-            type: 'mood_reminder', 
+          {
+            type: 'mood_reminder',
             label: nextPrompt.label,
-            intervalNumber: nextPrompt.intervalNumber 
+            intervalNumber: nextPrompt.intervalNumber
           }
         );
-        
+
         setCurrentPromptInfo({
           timeLabel: nextPrompt.timeLabel,
           scheduleKey: nextPrompt.intervalNumber.toString()
@@ -657,7 +665,7 @@ export default function ExpertHome() {
         setTodayMoodProgress({ completed: schedule.count, total: 6 });
 
         console.log(`✅ Expert mood prompt completed: ${schedule.count}/6 (Interval ${interval})`);
-        
+
         // Show completion message
         if (schedule.count === 6) {
           Alert.alert(
@@ -1017,7 +1025,7 @@ export default function ExpertHome() {
           <Text style={{ color: Colors.primary, fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginTop: 8, textShadowColor: 'rgba(0,0,0,0.30)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>
             Most Selected Mood This Month: {mostSelectedEmoji}
           </Text>
-          
+
           {/* Today's Progress */}
           <View style={{ marginTop: 12, backgroundColor: Colors.white, padding: 12, borderRadius: 15, borderWidth: 1, borderColor: Colors.primary }}>
             <Text style={{ color: Colors.text, fontSize: 14, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>
@@ -1091,25 +1099,25 @@ export default function ExpertHome() {
               const dayEntries = dateKey ? dailyMoodEntries[dateKey] : null;
               const entryCount = dayEntries ? dayEntries.length : 0;
               const isToday = dateKey === getTodayKey();
-              
+
               return (
                 <TouchableOpacity
                   key={index}
-                  style={{ 
-                    width: 45, 
-                    height: 55, 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    margin: 3, 
-                    backgroundColor: isToday ? Colors.accent + '30' : Colors.white, 
-                    borderRadius: 12, 
-                    shadowColor: Colors.shadow, 
-                    shadowOffset: { width: 0, height: 2 }, 
-                    shadowOpacity: 0.2, 
-                    shadowRadius: 4, 
-                    elevation: 2, 
-                    borderWidth: isToday ? 2 : 1, 
-                    borderColor: isToday ? Colors.primary : Colors.border 
+                  style={{
+                    width: 45,
+                    height: 55,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: 3,
+                    backgroundColor: isToday ? Colors.accent + '30' : Colors.white,
+                    borderRadius: 12,
+                    shadowColor: Colors.shadow,
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 4,
+                    elevation: 2,
+                    borderWidth: isToday ? 2 : 1,
+                    borderColor: isToday ? Colors.primary : Colors.border
                   }}
                   onPress={() => day && handleCalendarPress(day)}
                   disabled={!day}
@@ -1121,16 +1129,16 @@ export default function ExpertHome() {
                       )}
                       <Text style={{ color: Colors.text, fontSize: 12, fontWeight: '600', textAlign: 'center' }}>{day}</Text>
                       {entryCount > 0 && (
-                        <View style={{ 
-                          position: 'absolute', 
-                          bottom: 2, 
-                          right: 2, 
-                          backgroundColor: entryCount >= 6 ? '#4caf50' : Colors.primary, 
-                          borderRadius: 8, 
-                          minWidth: 16, 
-                          height: 16, 
-                          justifyContent: 'center', 
-                          alignItems: 'center' 
+                        <View style={{
+                          position: 'absolute',
+                          bottom: 2,
+                          right: 2,
+                          backgroundColor: entryCount >= 6 ? '#4caf50' : Colors.primary,
+                          borderRadius: 8,
+                          minWidth: 16,
+                          height: 16,
+                          justifyContent: 'center',
+                          alignItems: 'center'
                         }}>
                           <Text style={{ color: 'white', fontSize: 8, fontWeight: 'bold' }}>{entryCount}</Text>
                         </View>
@@ -1226,7 +1234,7 @@ export default function ExpertHome() {
           try {
             let username = `User ${post.user_id}`;
             let userLabel = 'USER';
-            
+
             // Check if it's admin
             if (post.user_id === 'admin' || String(post.user_id).toLowerCase().includes('admin')) {
               username = 'Admin';
@@ -1352,7 +1360,7 @@ export default function ExpertHome() {
 
               if (profileData) {
                 username = profileData.username || profileData.name || `User ${comment.user_id}`;
-                
+
                 if (profileData.type === 'EXPERT') {
                   userLabel = 'EXPERT';
                 } else if (profileData.type === 'PEER') {
@@ -1487,25 +1495,23 @@ export default function ExpertHome() {
           })}
         </View>
 
-        {/* Help Floating Button removed as per requirement: Help only on Select page */}
-
         {/* Top Right Actions - Notification Bell */}
         <View style={{ position: 'absolute', top: 42, right: 20, zIndex: 20, flexDirection: 'row', gap: 12 }}>
           {/* Mood Progress Indicator */}
           <TouchableOpacity
-            style={{ 
-              height: 40, 
-              borderRadius: 22, 
-              backgroundColor: Colors.white, 
-              justifyContent: 'center', 
-              alignItems: 'center', 
-              elevation: 8, 
-              shadowColor: Colors.shadow, 
-              shadowOffset: { width: 0, height: 3 }, 
-              shadowOpacity: 0.22, 
-              shadowRadius: 5, 
-              borderWidth: 2, 
-              borderColor: Colors.primary, 
+            style={{
+              height: 40,
+              borderRadius: 22,
+              backgroundColor: Colors.white,
+              justifyContent: 'center',
+              alignItems: 'center',
+              elevation: 8,
+              shadowColor: Colors.shadow,
+              shadowOffset: { width: 0, height: 3 },
+              shadowOpacity: 0.22,
+              shadowRadius: 5,
+              borderWidth: 2,
+              borderColor: Colors.primary,
               paddingHorizontal: 12,
               flexDirection: 'row'
             }}
@@ -1618,6 +1624,25 @@ export default function ExpertHome() {
               >
                 <Text style={styles.buttonIcon}>📅</Text>
                 <Text style={styles.matrixButtonText}>Schedule</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Third Row */}
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.matrixButton}
+                onPress={() => { router.push(`/expert/support`) }}
+              >
+                <Text style={styles.buttonIcon}>📚</Text>
+                <Text style={styles.matrixButtonText}>Support Shelf</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.matrixButton}
+                onPress={() =>setShowToolkitPage(true)}
+              >
+                <Text style={styles.buttonIcon}>🛠️</Text>
+                <Text style={styles.matrixButtonText}>Self Help Toolkit</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1852,7 +1877,7 @@ export default function ExpertHome() {
             style={{ backgroundColor: Colors.white, borderRadius: 25, padding: 30, alignItems: 'center', width: 360, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.accent }}
           >
             <Text style={{ fontSize: 28, marginBottom: 10, color: Colors.text, fontWeight: 'bold', textAlign: 'center' }}>🌟 Expert Mood Check-In</Text>
-            
+
             {/* Progress Indicator */}
             {currentPromptInfo && (
               <View style={{ width: '100%', marginBottom: 15 }}>
@@ -1891,7 +1916,7 @@ export default function ExpertHome() {
                 )}
               </View>
             )}
-            
+
             <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', marginBottom: 15 }}>
               Hi {profile?.name}! How are you feeling right now?
             </Text>
@@ -2001,9 +2026,9 @@ export default function ExpertHome() {
                         >
                           <Text style={styles.pickerText}>
                             {notificationForm.receiver_type === 'ALL' ? 'All Users' :
-                            notificationForm.receiver_type === 'STUDENTS' ? 'Students' :
-                            notificationForm.receiver_type === 'EXPERTS' ? 'Experts' :
-                            notificationForm.receiver_type === 'PEERS' ? 'Peers' : 'Select...'}
+                              notificationForm.receiver_type === 'STUDENTS' ? 'Students' :
+                                notificationForm.receiver_type === 'EXPERTS' ? 'Experts' :
+                                  notificationForm.receiver_type === 'PEERS' ? 'Peers' : 'Select...'}
                           </Text>
                           <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
                         </TouchableOpacity>
@@ -2292,7 +2317,7 @@ export default function ExpertHome() {
                 }}>
                   Create New Post
                 </Text>
-                
+
                 <TextInput
                   style={{
                     borderWidth: 1,
@@ -2312,7 +2337,7 @@ export default function ExpertHome() {
                   value={postText}
                   onChangeText={setPostText}
                 />
-                
+
                 {selectedMedia && (
                   <View style={{
                     marginBottom: 20,
@@ -2335,7 +2360,7 @@ export default function ExpertHome() {
                     </TouchableOpacity>
                   </View>
                 )}
-                
+
                 <TouchableOpacity
                   style={{
                     alignItems: 'center',
@@ -2349,7 +2374,7 @@ export default function ExpertHome() {
                   <Ionicons name="images" size={24} color={Colors.primary} />
                   <Text style={{ color: Colors.text, marginTop: 5 }}>Add Photo/Video</Text>
                 </TouchableOpacity>
-                
+
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <TouchableOpacity
                     style={{
@@ -2367,7 +2392,7 @@ export default function ExpertHome() {
                   >
                     <Text style={{ color: Colors.text, fontWeight: 'bold' }}>Cancel</Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={{
                       flex: 1,
@@ -2528,6 +2553,149 @@ export default function ExpertHome() {
           </View>
         </TouchableOpacity>
       </View>
+
+      {/* Toolkit Page Modal */}
+      <Modal visible={showToolkitPage} animationType="slide" transparent={true}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <View style={{ backgroundColor: Colors.background, borderRadius: 25, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 30, width: '90%', maxWidth: 400, maxHeight: '80%', shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.primary }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 20, backgroundColor: Colors.white, borderRadius: 15, padding: 15, borderWidth: 1, borderColor: Colors.border }}>
+              <TouchableOpacity
+                onPress={() => setShowToolkitPage(false)}
+                style={{ paddingVertical: 8, paddingHorizontal: 16, backgroundColor: Colors.white, borderRadius: 15, marginRight: 15, borderWidth: 2, borderColor: Colors.primary, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 }}
+              >
+                <Text style={{ color: Colors.primary, fontSize: 15, fontWeight: 'bold' }}>← Back</Text>
+              </TouchableOpacity>
+              <Text style={{ color: Colors.text, fontSize: 15, fontWeight: 'bold', flex: 1, textAlign: 'center', marginRight: 60 }}>Self-help Toolkit</Text>
+            </View>
+
+            <View style={{ justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 }}>
+              {/* 2x3 Grid Layout for Toolkit */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10, paddingHorizontal: 5 }}>
+                <TouchableOpacity
+                  style={{ width: '45%', height: 100, borderRadius: 20, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 5, marginVertical: 6, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }}
+                  onPress={() => {
+                    setSelectedToolkitItem({
+                      name: 'Grounding Exercises',
+                      description: 'Grounding exercises help you stay present and connected to the current moment. These techniques can reduce anxiety and help you feel more centered.',
+                      route: `/expert/toolkit/toolkit-grounding?registration=${studentRegNo}`
+                    });
+                    setShowToolkitPopup(true);
+                  }}
+                >
+                  <Image source={require('@/assets/images/grounding.png')} style={{ width: 50, height: 50, marginBottom: 6, resizeMode: 'contain' }} />
+                  <Text style={{ color: Colors.primary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' }}>Grounding Exercises</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ width: '45%', height: 100, borderRadius: 20, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 5, marginVertical: 6, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }}
+                  onPress={() => {
+                    setSelectedToolkitItem({
+                      name: 'Breathing Exercises',
+                      description: 'Breathing exercises help calm your mind and body. Practice deep, mindful breathing to reduce stress and improve focus.',
+                      route: `/expert/toolkit/toolkit-breathing?registration=${studentRegNo}`
+                    });
+                    setShowToolkitPopup(true);
+                  }}
+                >
+                  <Image source={require('@/assets/images/breathing.png')} style={{ width: 50, height: 50, marginBottom: 6, resizeMode: 'contain' }} />
+                  <Text style={{ color: Colors.primary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' }}>Breathing Exercises</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10, paddingHorizontal: 5 }}>
+                <TouchableOpacity
+                  style={{ width: '45%', height: 100, borderRadius: 20, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 5, marginVertical: 6, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }}
+                  onPress={() => {
+                    setSelectedToolkitItem({
+                      name: 'Color Mandala',
+                      description: 'Coloring mandalas is a meditative practice that helps reduce stress and promotes mindfulness through creative expression.',
+                      route: `/expert/toolkit/mandala-editor?registration=${studentRegNo}`
+                    });
+                    setShowToolkitPopup(true);
+                  }}
+                >
+                  <Image source={require('@/assets/images/mandala.png')} style={{ width: 50, height: 50, marginBottom: 6, resizeMode: 'contain' }} />
+                  <Text style={{ color: Colors.primary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' }}>Color Mandala </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ width: '45%', height: 100, borderRadius: 20, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 5, marginVertical: 6, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }}
+                  onPress={() => {
+                    setSelectedToolkitItem({
+                      name: 'Movement Exercise',
+                      description: 'Movement exercises combine physical activity with mindfulness to help release tension and improve your mental well-being.',
+                      route: `/expert/toolkit/toolkit-movement?registration=${studentRegNo}`
+                    });
+                    setShowToolkitPopup(true);
+                  }}
+                >
+                  <Image source={require('@/assets/images/movement.png')} style={{ width: 50, height: 50, marginBottom: 6, resizeMode: 'contain' }} />
+                  <Text style={{ color: Colors.primary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' }}>Movement Exercise</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 5 }}>
+                <TouchableOpacity
+                  style={{ width: '45%', height: 100, borderRadius: 20, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 5, marginVertical: 6, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }}
+                  onPress={() => {
+                    setSelectedToolkitItem({
+                      name: 'Focus & Concentration',
+                      description: 'Focus exercises help improve your concentration and mental clarity. Practice techniques to enhance attention and productivity.',
+                      route: `/expert/toolkit/toolkit-focus?registration=${studentRegNo}`
+                    });
+                    setShowToolkitPopup(true);
+                  }}
+                >
+                  <Image source={require('@/assets/images/focus.png')} style={{ width: 50, height: 50, marginBottom: 6, resizeMode: 'contain' }} />
+                  <Text style={{ color: Colors.primary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' }}>Focus & Concentration</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Toolkit Information Popup */}
+      <Modal visible={showToolkitPopup} animationType="fade" transparent={true}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <View style={{ backgroundColor: Colors.white, borderRadius: 20, padding: 25, width: '85%', maxWidth: 400, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.primary }}>
+            {/* Header */}
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 22, fontWeight: 'bold', color: Colors.text, textAlign: 'center', marginBottom: 10 }}>
+                {selectedToolkitItem?.name}
+              </Text>
+              <View style={{ height: 2, width: 60, backgroundColor: Colors.primary, borderRadius: 1 }} />
+            </View>
+
+            {/* Description */}
+            <Text style={{ fontSize: 16, color: Colors.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: 25 }}>
+              {selectedToolkitItem?.description}
+            </Text>
+
+            {/* Action Buttons */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: Colors.backgroundLight, borderRadius: 15, paddingVertical: 12, marginRight: 10, borderWidth: 1, borderColor: Colors.border }}
+                onPress={() => {
+                  setShowToolkitPopup(false);
+                  setSelectedToolkitItem(null);
+                }}
+              >
+                <Text style={{ color: Colors.textSecondary, fontSize: 16, fontWeight: 'bold', textAlign: 'center' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: Colors.primary, borderRadius: 15, paddingVertical: 12, marginLeft: 10 }}
+                onPress={() => {
+                  setShowToolkitPopup(false);
+                  if (selectedToolkitItem) {
+                    router.push(selectedToolkitItem.route as any);
+                  }
+                  setSelectedToolkitItem(null);
+                }}
+              >
+                <Text style={{ color: Colors.white, fontSize: 16, fontWeight: 'bold', textAlign: 'center' }}>Start Exercise</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

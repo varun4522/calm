@@ -35,39 +35,6 @@ export default function AdminHome() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const router = useRouter();
 
-  // Check for OTA updates on app launch
-  useEffect(() => {
-    async function checkForUpdates() {
-      if (__DEV__) return; // Skip in development
-      
-      try {
-        const update = await Updates.checkForUpdateAsync();
-        
-        if (update.isAvailable) {
-          await Updates.fetchUpdateAsync();
-          Alert.alert(
-            '🎉 Update Available',
-            'A new version is available. Restart to apply updates?',
-            [
-              {
-                text: 'Later',
-                style: 'cancel'
-              },
-              {
-                text: 'Restart Now',
-                onPress: async () => {
-                  await Updates.reloadAsync();
-                }
-              }
-            ]
-          );
-        }
-      } catch (error) {
-        console.error('Error checking for updates:', error);
-      }
-    }
-    checkForUpdates();
-  }, []);
 
   // Redirect to admin settings page when settings tab is selected
   useEffect(() => {
@@ -158,7 +125,6 @@ export default function AdminHome() {
         });
 
         setUsers(allUsers);
-        console.log('Final users array:', allUsers);
       } catch (error) {
         console.error('Error fetching users:', error);
       } finally {

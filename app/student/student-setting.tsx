@@ -191,6 +191,12 @@ export default function StudentSetting() {
           </View>
         </View>
 
+        {/* CHange password Button */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={()=> router.push('./change-password')}>
+          <Ionicons name="key-outline" size={20} color={Colors.error} />
+          <Text style={styles.logoutText}>Change Password</Text>
+        </TouchableOpacity>
+
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color={Colors.error} />
