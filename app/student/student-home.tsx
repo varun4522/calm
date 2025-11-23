@@ -279,8 +279,12 @@ export default function StudentHome() {
           // Load notifications after session is established
           await loadNotifications();
 
-          // Register for push notifications
-          await registerForPushNotificationsAsync(regNo);
+          // Register for push notifications using session user ID
+          if (session?.user?.id) {
+            await registerForPushNotificationsAsync(session.user.id);
+          } else {
+            console.log('⚠️ No session user ID available for push notifications');
+          }
 
           // Setup notification listeners
           const listeners = setupNotificationListeners(
@@ -354,7 +358,11 @@ export default function StudentHome() {
         }
 
         if (!regNo) {
-          console.log('No registration number available yet for mood data');
+          console.log('⏳ Waiting for registration number to load mood data...');
+          // Set empty states so UI can still render
+          setMoodHistory({});
+          setDailyMoodEntries({});
+          setDetailedMoodEntries([]);
           return;
         }
 

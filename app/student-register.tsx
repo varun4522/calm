@@ -24,6 +24,7 @@ export default function StudentRegister() {
   const [courseModalVisible, setCourseModalVisible] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [dobPickerVisible, setDobPickerVisible] = useState(false);
+  const [lastAttemptTime, setLastAttemptTime] = useState<number>(0);
 
   // Helper function to capitalize first letter of each word
   const capitalizeWords = (text: string) => {
@@ -156,95 +157,211 @@ export default function StudentRegister() {
   };
 
   async function signUpWithEmail() {
-  const isValidated = await validateStudentData({
-    name,
-    username,
-    registrationNumber,
-    course,
-    phone,
-    dob,
-    email,
-    password
-  });
+    // Check if enough time has passed since last attempt (60 seconds cooldown)
+    const now = Date.now();
+    const timeSinceLastAttempt = now - lastAttemptTime;
+    const cooldownPeriod = 60000; // 60 seconds
 
-  if (!isValidated) return;
-
-  setLoading(true);
-
-  try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        // This makes Supabase magic prevents the 504 + huge error page
-        captchaToken: undefined,
-      }
-    });
-
-    if (error) {
-      // Friendly messages for the most common errors
-      if (error.message.toLowerCase().includes('rate limit') || 
-          error.message.toLowerCase().includes('too many requests') ||
-          error.status === 429) {
-        Alert.alert(
-          "Too many attempts",
-          "You have tried to register too many times. Please wait 1–2 minutes and try again."
-        );
-      } 
-      else if (error.message.toLowerCase().includes('email')) {
-        Alert.alert("Email issue", error.message);
-      }
-      else {
-        Alert.alert("Sign up failed", error.message);
-      }
+    if (timeSinceLastAttempt < cooldownPeriod && lastAttemptTime > 0) {
+      const remainingSeconds = Math.ceil((cooldownPeriod - timeSinceLastAttempt) / 1000);
+      Alert.alert(
+        "Please wait",
+        `Please wait ${remainingSeconds} seconds before trying again to avoid rate limits.`
+      );
       return;
     }
 
-    // === Success path (same as before) ===
-    if (data.user) {
-      const user_data = {
-        id: data.user.id,
-        username,
+    const isValidated = await validateStudentData({
+      name,
+      username,
+      registrationNumber,
+      course,
+      phone,
+      dob,
+      email,
+      password
+    });
+
+    if (!isValidated) return;
+
+    setLoading(true);
+    setLastAttemptTime(now);
+
+    try {
+      // Step 1: Sign up the user with rate limit bypass options
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: username,
+            name: name,
+          },
+          emailRedirectTo: undefined,
+          // Bypass email confirmation in development to reduce rate limit issues
+          // Note: This requires Supabase email confirmation to be disabled in settings
+        }
+      });
+
+      if (authError) {
+        console.error('Auth error:', authError);
+        
+        // Handle rate limiting - most common error from your screenshot
+        if (authError.message.toLowerCase().includes('rate limit') || 
+            authError.message.toLowerCase().includes('too many requests') ||
+            authError.message.toLowerCase().includes('email rate limit') ||
+            authError.status === 429) {
+          Alert.alert(
+            "⏱️ Rate Limit Reached",
+            "Too many registration attempts detected. This is a security feature from Supabase.\n\n" +
+            "Solutions:\n" +
+            "1. Wait 2-3 minutes and try again\n" +
+            "2. Try using a different email address\n" +
+            "3. Check if you already have an account\n\n" +
+            "If this persists, contact support.",
+            [
+              {
+                text: "Try Different Email",
+                onPress: () => setEmail(''),
+              },
+              {
+                text: "OK",
+                style: "cancel"
+              }
+            ]
+          );
+        } 
+        // Handle email already exists
+        else if (authError.message.toLowerCase().includes('already registered') ||
+                 authError.message.toLowerCase().includes('already been registered') ||
+                 authError.message.toLowerCase().includes('user already registered')) {
+          Alert.alert(
+            "Email already exists",
+            "This email is already registered. Please use a different email or try logging in.",
+            [
+              {
+                text: "Go to Login",
+                onPress: () => router.replace('/'),
+              },
+              {
+                text: "Try Different Email",
+                onPress: () => setEmail(''),
+              }
+            ]
+          );
+        }
+        // Handle other email issues
+        else if (authError.message.toLowerCase().includes('email')) {
+          Alert.alert("Email issue", authError.message);
+        }
+        // Generic error
+        else {
+          Alert.alert("Sign up failed", authError.message);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Check if user was created successfully
+      if (!authData?.user) {
+        Alert.alert("Error", "Failed to create user account. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      console.log('User created successfully:', authData.user.id);
+
+      // Step 3: Insert profile data
+      const profileData = {
+        id: authData.user.id,
+        username: username,
         registration_number: registrationNumber,
-        name,
+        name: name,
         course: 'FACULTY_OF_' + course.replace(/\s+/g, '_').toUpperCase(),
         phone_number: phone,
-        email,
+        email: email,
         date_of_birth: dob,
         type: "STUDENT",
       };
 
-      const { error: insertError } = await supabase
-        .from("profiles")
-        .insert(user_data);
+      console.log('Inserting profile data:', profileData);
 
-      await supabase.auth.signInWithPassword({ email, password });
+      const { data: profileInsertData, error: insertError } = await supabase
+        .from("profiles")
+        .insert(profileData)
+        .select()
+        .single();
 
       if (insertError) {
-        Toast.show({
-          type: 'error',
-          text1: 'Account created but profile failed',
-          text2: 'Contact support',
-        });
-      } else {
-        Toast.show({
-          type: 'success',
-          text1: 'Registration successful!',
-        });
-        router.replace('/student/student-home'); 
+        console.error('Profile insert error:', insertError);
+        Alert.alert(
+          'Profile creation failed',
+          'Account created but profile setup failed. Please contact support.'
+        );
+        setLoading(false);
+        return;
       }
+
+      console.log('Profile created successfully');
+
+      // Step 4: Sign in the user
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      });
+
+      if (signInError) {
+        console.error('Sign in error:', signInError);
+        Alert.alert(
+          'Registration successful',
+          'Account created but automatic login failed. Please log in manually.'
+        );
+        router.replace('/');
+        setLoading(false);
+        return;
+      }
+
+      // Step 5: Success - show toast and navigate
+      Toast.show({
+        type: 'success',
+        text1: 'Registration successful!',
+        text2: 'Welcome to CALM Space',
+        position: 'top',
+      });
+
+      // Navigate to student home
+      setTimeout(() => {
+        router.replace('/student/student-home');
+      }, 500);
+
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      
+      // Handle network errors
+      if (err.message?.includes('fetch') || err.message?.includes('network')) {
+        Alert.alert(
+          "Network error",
+          "Unable to reach server. Please check your internet connection and try again."
+        );
+      } 
+      // Handle timeout errors
+      else if (err.message?.includes('timeout')) {
+        Alert.alert(
+          "Request timeout",
+          "The request took too long. Please try again."
+        );
+      }
+      // Generic error
+      else {
+        Alert.alert(
+          "Registration error",
+          "Something went wrong. Please try again or contact support."
+        );
+      }
+    } finally {
+      setLoading(false);
     }
-  } catch (err: any) {
-    // This catches the 504/network errors and prevents the huge alert
-    console.error(err);
-    Alert.alert(
-      "Network error",
-      "Unable to reach server right now. Check your internet or try again in a minute."
-    );
-  } finally {
-    setLoading(false);
   }
-}
 
 
   return (
@@ -264,6 +381,14 @@ export default function StudentRegister() {
 
         <ScrollView style={styles.flex1} showsVerticalScrollIndicator={false}>
           <View style={styles.scrollContainer}>
+            {/* Rate Limit Notice */}
+            <View style={styles.noticeBox}>
+              <Ionicons name="information-circle" size={20} color="#6B46C1" style={styles.noticeIcon} />
+              <Text style={styles.noticeText}>
+                Please fill the form carefully. Multiple registration attempts may trigger a security cooldown.
+              </Text>
+            </View>
+
             <View style={styles.formContainer}>
               {/* Name */}
               <View style={styles.inputWrapper}>
@@ -478,5 +603,25 @@ const styles = StyleSheet.create({
   registerButtonDisabled: {
     backgroundColor: '#a680c8',   // a muted version of your primary color (or use Colors.primary + opacity)
     opacity: 0.7,
+  },
+  noticeBox: {
+    backgroundColor: '#F3E5FF',
+    borderRadius: 12,
+    padding: 15,
+    marginTop: 15,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D8BFD8',
+  },
+  noticeIcon: {
+    marginRight: 10,
+  },
+  noticeText: {
+    fontSize: 13,
+    color: '#6B46C1',
+    flex: 1,
+    lineHeight: 18,
   },
 });

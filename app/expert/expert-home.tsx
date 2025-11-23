@@ -213,7 +213,12 @@ export default function ExpertHome() {
     const initNotifications = async () => {
       try {
         console.log('📱 Registering expert for push notifications...');
-        await registerForPushNotificationsAsync(expertRegNo);
+        // Use session user ID (UUID) instead of registration number
+        if (session?.user?.id) {
+          await registerForPushNotificationsAsync(session.user.id);
+        } else {
+          console.log('⚠️ No session user ID available for push notifications');
+        }
 
         // Setup notification listeners with navigation
         const subscriptions = setupNotificationListeners(

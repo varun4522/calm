@@ -374,28 +374,42 @@ export default function BuddyConnect() {
           try {
             let username = `User ${comment.user_id}`;
             let userType = 'student';
+            let isExpert = false;
 
             // Try multiple tables to get user data
-            // 1. Try user_requests table (general users)
-            const { data: userData, error: userError } = await supabase
-              .from('user_requests')
-              .select('username, name')
+            // 1. Try profiles table (for all user types including experts)
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('name, username, type, registration_number')
               .eq('registration_number', comment.user_id)
               .single();
 
-            if (userData?.username || userData?.name) {
-              username = userData.username || userData.name;
+            if (profileData) {
+              username = profileData.name || profileData.username || username;
+              userType = profileData.type?.toLowerCase() || 'student';
+              isExpert = profileData.type === 'EXPERT';
             } else {
-              // 2. Try student_registrations table
-              const { data: studentData } = await supabase
-                .from('student_registrations')
-                .select('name, username')
-                .eq('registration', comment.user_id)
+              // 2. Try user_requests table (general users)
+              const { data: userData } = await supabase
+                .from('user_requests')
+                .select('username, name')
+                .eq('registration_number', comment.user_id)
                 .single();
 
-              if (studentData?.name || studentData?.username) {
-                username = studentData.name || studentData.username;
-                userType = 'student';
+              if (userData?.username || userData?.name) {
+                username = userData.username || userData.name;
+              } else {
+                // 3. Try student_registrations table
+                const { data: studentData } = await supabase
+                  .from('student_registrations')
+                  .select('name, username')
+                  .eq('registration', comment.user_id)
+                  .single();
+
+                if (studentData?.name || studentData?.username) {
+                  username = studentData.name || studentData.username;
+                  userType = 'student';
+                }
               }
             }
 
@@ -414,6 +428,7 @@ export default function BuddyConnect() {
               ...comment,
               username: username,
               userType: userType,
+              isExpert: isExpert,
               profilePicIndex: profilePicIndex,
             };
           } catch (userError) {
@@ -422,6 +437,7 @@ export default function BuddyConnect() {
               ...comment,
               username: `User ${comment.user_id}`,
               userType: 'student',
+              isExpert: false,
               profilePicIndex: 0,
             };
           }
@@ -1053,6 +1069,7 @@ export default function BuddyConnect() {
                   padding: 15,
                   borderBottomWidth: 1,
                   borderBottomColor: Colors.background,
+                  backgroundColor: item.isExpert ? '#f0f4ff' : Colors.surface,
                 }}>
                   <View style={{
                     flexDirection: 'row',
@@ -1067,28 +1084,48 @@ export default function BuddyConnect() {
                         borderRadius: 12.5,
                         marginRight: 8,
                         borderWidth: 1,
-                        borderColor: Colors.secondary,
+                        borderColor: item.isExpert ? '#7b1fa2' : Colors.secondary,
                       }}
                     />
-                    <Text style={{
-                      fontSize: 12,
-                      fontWeight: 'bold',
-                      color: Colors.text,
-                    }}>
-                      {item.username}
-                    </Text>
-                    <Text style={{
-                      fontSize: 10,
-                      color: Colors.textSecondary,
-                      marginLeft: 10,
-                    }}>
-                      {formatRelativeTime(item.created_at)}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <Text style={{
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        color: item.isExpert ? '#7b1fa2' : Colors.text,
+                      }}>
+                        {item.username}
+                      </Text>
+                      {item.isExpert && (
+                        <View style={{
+                          backgroundColor: '#7b1fa2',
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                          borderRadius: 10,
+                          marginLeft: 6,
+                        }}>
+                          <Text style={{
+                            fontSize: 9,
+                            fontWeight: 'bold',
+                            color: Colors.white,
+                          }}>
+                            EXPERT
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={{
+                        fontSize: 10,
+                        color: Colors.textSecondary,
+                        marginLeft: 10,
+                      }}>
+                        {formatRelativeTime(item.created_at)}
+                      </Text>
+                    </View>
                   </View>
                   <Text style={{
                     fontSize: 14,
                     color: Colors.text,
                     lineHeight: 18,
+                    marginLeft: 33,
                   }}>
                     {item.content}
                   </Text>

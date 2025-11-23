@@ -49,20 +49,38 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
 
     // Save token to database
     if (token && userId) {
-      const { error } = await supabase
-        .from('push_tokens')
-        .upsert({
-          user_id: userId,
-          push_token: token,
-          platform: Platform.OS,
-        }, {
-          onConflict: 'user_id',
-        });
+      try {
+        // First, try to get the authenticated user's ID from Supabase session
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError || !user) {
+          console.warn('⚠️ No authenticated user, skipping push token save to database');
+          console.log('📱 Push token obtained locally:', token.substring(0, 20) + '...');
+          return token;
+        }
 
-      if (error) {
-        console.error('Error saving push token:', error);
-      } else {
-        console.log('✅ Push token saved successfully');
+        // Use the authenticated user's UUID for the push_tokens table
+        const { error } = await supabase
+          .from('push_tokens')
+          .upsert({
+            user_id: user.id, // Use Supabase auth user ID (UUID)
+            push_token: token,
+            platform: Platform.OS,
+          }, {
+            onConflict: 'user_id',
+          });
+
+        if (error) {
+          console.error('⚠️ Error saving push token to database:', error);
+          console.log('📱 Push token still available locally:', token.substring(0, 20) + '...');
+          // Don't throw error - push notifications can still work locally
+        } else {
+          console.log('✅ Push token saved to database successfully');
+        }
+      } catch (dbError) {
+        console.error('⚠️ Database error while saving push token:', dbError);
+        console.log('📱 Push token still available locally');
+        // Continue - local notifications will still work
       }
     }
 

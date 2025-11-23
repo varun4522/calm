@@ -159,18 +159,56 @@ export default function ConsultationPage() {
         }
 
         try {
-            let query = supabase
+            console.log('🔍 Searching for students/peers with term:', searchText.trim());
+            
+            const searchTerm = searchText.trim();
+            
+            // Check if search term is a number (for registration number search)
+            const isNumericSearch = /^\d+$/.test(searchTerm);
+            
+            // First, check how many students and peers exist
+            const { data: allUsers, error: checkError } = await supabase
                 .from('profiles')
                 .select('*')
-                .eq('type', 'STUDENT');
-            query = query.or(
-                `name.ilike.%${searchText.trim()}%,email.ilike.%${searchText.trim()}%,username.ilike.%${searchText.trim()}%`
-            );
-            const { data: searchResults, error } = await query;
+                .in('type', ['STUDENT', 'PEER'])
+                .limit(5);
+
+            console.log('📊 Total students/peers check:', allUsers?.length || 0);
+            if (checkError) {
+                console.error('❌ Error checking users:', checkError);
+            }
+
+            let searchResults;
+            let error;
+
+            // Build search query based on search term type
+            if (isNumericSearch) {
+                // Numeric search - search by registration_number (bigint)
+                const { data, error: numError } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .in('type', ['STUDENT', 'PEER'])
+                    .eq('registration_number', searchTerm);
+                
+                searchResults = data;
+                error = numError;
+            } else {
+                // Text search - search by name, email, username
+                const { data, error: textError } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .in('type', ['STUDENT', 'PEER'])
+                    .or(`name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,username.ilike.%${searchTerm}%`);
+                
+                searchResults = data;
+                error = textError;
+            }
+
+            console.log('🔍 Search results:', searchResults?.length || 0);
 
             if (error) {
-                console.error('Error searching students:', error);
-                Alert.alert('Search Error', 'Failed to search for students. Please try again.');
+                console.error('❌ Error searching users:', error);
+                Alert.alert('Search Error', `Failed to search: ${error.message}`);
                 return;
             }
 
@@ -178,18 +216,20 @@ export default function ConsultationPage() {
                 // Convert search results to Student format
                 const foundStudents: Student[] = searchResults.map(result => ({
                     id: result.id,
-                    name: result.name,
-                    registration_number: result.registration_number,
+                    name: result.name || 'Unknown',
+                    registration_number: result.registration_number || '',
                     email: result.email || '',
                     course: result.course || 'Not specified',
-                    type: result.type
+                    type: result.type,
+                    username: result.username || ''
                 }));
 
+                console.log('✅ Found users:', foundStudents);
                 setStudents(foundStudents);
                 setFilteredStudents(foundStudents);
 
-                const studentCount = foundStudents.length;
-                const resultMessage = `Found ${studentCount} student${studentCount !== 1 ? 's' : ''} matching "${searchText}"`;
+                const userCount = foundStudents.length;
+                const resultMessage = `Found ${userCount} user${userCount !== 1 ? 's' : ''} matching "${searchText}"`;
 
                 Alert.alert('Search Results', resultMessage);
             } else {
@@ -198,8 +238,11 @@ export default function ConsultationPage() {
                 setFilteredStudents([]);
 
                 Alert.alert(
-                    'No Students Found',
-                    `No students found matching "${searchText}". Please check your search term and try again.`,
+                    'No Users Found',
+                    `No students or peers found matching "${searchText}".\n\n` +
+                    (allUsers && allUsers.length > 0 
+                        ? `There are ${allUsers.length} users in the database. Try searching by:\n• Full name (e.g., "John")\n• Username (e.g., "john123")\n• Email (e.g., "john@")\n• Registration number (e.g., "12345")`
+                        : 'No students or peers are currently registered in the system.'),
                     [
                         { text: 'OK' },
                         {
@@ -209,9 +252,9 @@ export default function ConsultationPage() {
                     ]
                 );
             }
-        } catch (error) {
-            console.error('Error during search:', error);
-            Alert.alert('Search Error', 'An unexpected error occurred. Please try again.');
+        } catch (error: any) {
+            console.error('❌ Error during search:', error);
+            Alert.alert('Search Error', `An unexpected error occurred: ${error.message || 'Unknown error'}`);
         }
     };
 
@@ -230,13 +273,18 @@ export default function ConsultationPage() {
         >
             <View style={styles.userCardHeader}>
                 <View style={styles.userIconContainer}>
-                    <Text style={styles.userIcon}>‍🎓</Text>
+                    <Text style={styles.userIcon}>
+                        {item.type === 'PEER_LISTENER' ? '🎧' : '🎓'}
+                    </Text>
                 </View>
                 <View style={styles.userCardInfo}>
                     <Text style={styles.userName}>{item.name}</Text>
                     <View style={styles.userTypeBadgeContainer}>
-                        <Text style={[styles.userTypeBadgeNew, styles.studentBadge]}>
-                            STUDENT
+                        <Text style={[
+                            styles.userTypeBadgeNew, 
+                            item.type === 'PEER_LISTENER' ? styles.peerBadge : styles.studentBadge
+                        ]}>
+                            {item.type === 'PEER_LISTENER' ? 'PEER LISTENER' : 'STUDENT'}
                         </Text>
                     </View>
                 </View>
@@ -376,9 +424,9 @@ export default function ConsultationPage() {
                 >
                     <Text style={styles.backButtonText}>← Back</Text>
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>� Consultation</Text>
+                <Text style={styles.headerTitle}>Consultation</Text>
                 <Text style={styles.headerSubtitle}>
-                    {activeTab === 'messages' ? 'Recent messages from students' : 'Enter student ID, name, or email to find students'}
+                    {activeTab === 'messages' ? 'Recent messages from students' : 'Enter user ID'}
                 </Text>
             </View>
 
@@ -389,7 +437,7 @@ export default function ConsultationPage() {
                     onPress={() => setActiveTab('messages')}
                 >
                     <Text style={[styles.tabText, activeTab === 'messages' && styles.activeTabText]}>
-                        � Conversations ({groupedConversations.length})
+                         Conversations ({groupedConversations.length})
                     </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -409,7 +457,7 @@ export default function ConsultationPage() {
                         <Text style={styles.searchIcon}>🔍</Text>
                         <TextInput
                             style={styles.searchInput}
-                            placeholder="Enter student ID, name, or email to chat..."
+                            placeholder="Enter user ID"
                             placeholderTextColor="#999"
                             value={searchText}
                             onChangeText={setSearchText}
@@ -464,9 +512,9 @@ export default function ConsultationPage() {
                             {searchText.length > 0 ? (
                                 <>
                                     <Text style={styles.emptyIcon}>🔍</Text>
-                                    <Text style={styles.emptyTitle}>No Students Found</Text>
+                                    <Text style={styles.emptyTitle}>No Users Found</Text>
                                     <Text style={styles.emptyText}>
-                                        No students found matching &quot;{searchText}&quot;
+                                        No user found matching &quot;{searchText}&quot;
                                     </Text>
                                     <Text style={styles.emptySubtext}>
                                         Try searching with different keywords or check the search type filter.
@@ -475,16 +523,9 @@ export default function ConsultationPage() {
                             ) : (
                                 <>
                                     <Text style={styles.emptyIcon}>👨‍🎓</Text>
-                                    <Text style={styles.emptyTitle}>Search for Students</Text>
                                     <Text style={styles.emptyText}>
-                                        Enter a student ID, name, or email in the search box above to find and connect with students.
+                                        Enter a user id.
                                     </Text>
-                                    <View style={styles.searchHintContainer}>
-                                        <Text style={styles.searchHintTitle}>💡 Search Tips:</Text>
-                                        <Text style={styles.searchHint}>• Use &quot;All Fields&quot; for broad search</Text>
-                                        <Text style={styles.searchHint}>• Use &quot;Reg. Number&quot; for exact match</Text>
-                                        <Text style={styles.searchHint}>• Partial matches are supported</Text>
-                                    </View>
                                 </>
                             )}
                         </View>
@@ -492,11 +533,9 @@ export default function ConsultationPage() {
                         <View style={styles.resultsContainer}>
                             <View style={styles.resultsHeader}>
                                 <Text style={styles.resultsCount}>
-                                    Found {filteredStudents.length} student{filteredStudents.length !== 1 ? 's' : ''}
+                                    Found {filteredStudents.length} user{filteredStudents.length !== 1 ? 's' : ''}
                                 </Text>
-                                <Text style={styles.resultsSubtext}>
-                                    Showing all matching student records
-                                </Text>
+
                             </View>
                             <FlatList
                                 data={filteredStudents}
@@ -517,7 +556,7 @@ export default function ConsultationPage() {
                     {activeTab === 'messages'
                         ? `${messages.length} message${messages.length !== 1 ? 's' : ''} received`
                         : searchText
-                            ? `${filteredStudents.length} student${filteredStudents.length !== 1 ? 's' : ''} found`
+                            ? `${filteredStudents.length} user${filteredStudents.length !== 1 ? 's' : ''} found`
                             : `Search for students to start chatting`
                     }
                 </Text>
@@ -809,10 +848,6 @@ const styles = StyleSheet.create({
         color: '#ffffff',
         marginBottom: 4,
     },
-    resultsSubtext: {
-        fontSize: 13,
-        color: '#e1bee7',
-    },
     userListContainer: {
         paddingHorizontal: 15,
         paddingVertical: 10,
@@ -943,20 +978,6 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 10,
         fontStyle: 'italic',
-    },
-    searchHintContainer: {
-        marginTop: 20,
-        backgroundColor: '#f3e5f5',
-        padding: 15,
-        borderRadius: 10,
-        borderLeftWidth: 3,
-        borderLeftColor: '#7b1fa2',
-    },
-    searchHintTitle: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: '#7b1fa2',
-        marginBottom: 8,
     },
     searchHint: {
         fontSize: 13,

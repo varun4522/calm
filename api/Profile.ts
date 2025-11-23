@@ -72,21 +72,57 @@ export const useSaveProfileChanges = () => {
   });
 };
 
-export const getAllUsernames = async() => {
-  const { data, error } = await supabase.from("profiles").select("username");
-  if (error) {
+export const getAllUsernames = async () => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("username");
+    
+    if (error) {
+      console.error('Error fetching usernames:', error);
+      return [];
+    }
+    
+    if (!data || !Array.isArray(data)) {
+      console.warn('No usernames data returned');
+      return [];
+    }
+    
+    const usernames = data
+      .map((user) => user?.username)
+      .filter(Boolean); // Remove null/undefined values
+    
+    return usernames;
+  } catch (err) {
+    console.error('Exception fetching usernames:', err);
     return [];
   }
-  const usernames = data.map((user) => user.username);
-  return usernames;
 };
 
 
-export const getAllRegistrationNumbers = async() => {
-  const { data, error } = await supabase.from("profiles").select("registration_number");
-  if (error) {
+export const getAllRegistrationNumbers = async () => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("registration_number");
+    
+    if (error) {
+      console.error('Error fetching registration numbers:', error);
+      return [];
+    }
+    
+    if (!data || !Array.isArray(data)) {
+      console.warn('No registration numbers data returned');
+      return [];
+    }
+    
+    const registrationNumbers = data
+      .map((user) => user?.registration_number)
+      .filter(Boolean); // Remove null/undefined values
+    
+    return registrationNumbers;
+  } catch (err) {
+    console.error('Exception fetching registration numbers:', err);
     return [];
   }
-  const registrationNumbers = data.map((user) => user.registration_number);
-  return registrationNumbers;
 };
