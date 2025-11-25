@@ -72,62 +72,65 @@ export default function FrontPage() {
   }
 };
 
-  useEffect(() => {
-    const redirectUser = async () => {
-      if (!loading && session && session.user?.id && !isRedirecting) {
-        setIsRedirecting(true);
-        try {
-          // Retry logic for new accounts where profile might not be immediately available
-          let data = null;
-          let error = null;
-          let retryCount = 0;
-          const maxRetries = 2; // Reduced from 3 to 2 for faster experience
-          
-          while (retryCount < maxRetries && !data) {
-            const result = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-            data = result.data;
-            error = result.error;
-            
-            if (error && retryCount < maxRetries - 1) {
-              console.log(`Profile not found, retrying... (${retryCount + 1}/${maxRetries})`);
-              await new Promise(resolve => setTimeout(resolve, 200)); // Reduced to 200ms
-              retryCount++;
-            } else {
-              break;
-            }
-          }
-          
-          if (error || !data) {
-            console.error('Profile fetch error:', error);
-            Toast.show({ 
-              type: 'error', 
-              text1: 'Profile not found', 
-              text2: 'Please try logging in again',
-              position: 'top' 
-            });
-            setIsRedirecting(false);
-            // Sign out and let user try again
-            await supabase.auth.signOut();
-            return;
-          }
-          
-          // Immediate redirect - no artificial delay
-          if (data.type === 'STUDENT' || data.type === 'PEER') {
-            router.replace('/student/student-home');
-          } else if (data.type === 'EXPERT') {
-            router.replace('/expert/expert-home');
-          } else {
-            router.replace('/admin/admin-home');
-          }
-        } catch (err) {
-          console.error('Redirect error:', err);
-          setIsRedirecting(false);
-        }
-      }
-    };
-    redirectUser();
-  }, [session, loading, isRedirecting]);
+useEffect(() => {
+  const redirectUser = async () => {
+    if (loading || !session?.user?.id || isRedirecting) return;
 
+    setIsRedirecting(true);
+
+    try {
+      // Try to fetch profile – max 3 fast attempts (total < 800ms)
+      let profile = null;
+      for (let i = 0; i < 3; i++) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('type')
+          .eq('id', session.user.id)
+          .single();
+
+        if (data) {
+          profile = data;
+          break;
+        }
+        if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
+          console.error('Profile fetch error:', error);
+          break;
+        }
+        // Only wait if no row was found (most common case for fresh accounts)
+        await new Promise(r => setTimeout(r, 250));
+      }
+
+      // If still no profile → assume it's a brand-new account and go to onboarding
+      // or just use a default route (you decide)
+      if (!profile) {
+        Toast.show({
+          type: 'info',
+          text1: 'Welcome!',
+          text2: 'Taking you to your dashboard...',
+        });
+        // Change this line to whatever makes sense for your app
+        router.replace('/student/student-home');   // or a common dashboard
+        return;
+      }
+
+      // Normal redirect based on type
+      if (profile.type === 'STUDENT' || profile.type === 'PEER') {
+        router.replace('/student/student-home');
+      } else if (profile.type === 'EXPERT') {
+        router.replace('/expert/expert-home');
+      } else {
+        router.replace('/admin/admin-home');
+      }
+    } catch (err) {
+      console.error('Redirect error:', err);
+      Toast.show({ type: 'error', text1: 'Something went wrong', text2: 'Please try again' });
+    } finally {
+      setIsRedirecting(false);
+    }
+  };
+
+  redirectUser();
+}, [session, loading, isRedirecting]);
 
   async function signInWithEmail() {
     setIsLoading(true);

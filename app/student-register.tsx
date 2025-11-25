@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Colors } from '@/constants/Colors';
@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { FACULTY } from '@/constants/courses';
 import { getAllUsernames, getAllRegistrationNumbers } from "@/api/Profile";
 import Toast from 'react-native-toast-message';
-import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { Picker } from '@react-native-picker/picker';
 
 export default function StudentRegister() {
   const router = useRouter();
@@ -23,17 +23,16 @@ export default function StudentRegister() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [courseModalVisible, setCourseModalVisible] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [dobPickerVisible, setDobPickerVisible] = useState(false);
   const [lastAttemptTime, setLastAttemptTime] = useState<number>(0);
+
+  // for date of birth selection
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedDay, setSelectedDay] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
 
   // Helper function to capitalize first letter of each word
   const capitalizeWords = (text: string) => {
     return text.replace(/\b\w/g, (char) => char.toUpperCase());
-  };
-
-  const parseDOB = (dob: string): Date => {
-    const [day, month, year] = dob.split("/").map(Number);
-    return new Date(year, month - 1, day);
   };
 
 
@@ -153,6 +152,62 @@ export default function StudentRegister() {
       return false;
     }
 
+    // ——— ADD THIS DOB VALIDATION BLOCK ———
+    if (dob) {
+      const parts = dob.split('/');
+      if (parts.length !== 3) {
+        Alert.alert("Invalid Date", "Please enter a valid date of birth.");
+        return false;
+      }
+
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const year = parseInt(parts[2], 10);
+
+      // Basic range checks
+      if (
+        isNaN(day) || isNaN(month) || isNaN(year) ||
+        month < 1 || month > 12 ||
+        day < 1 || day > 31 ||
+        year < 1900
+      ) {
+        Alert.alert("Invalid Date", "Please enter a valid date (DD/MM/YYYY).");
+        return false;
+      }
+
+      // Year cannot be in the future or current year if birthday hasn't passed yet
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      if (year > currentYear) {
+        Alert.alert("Invalid Date", "Year cannot be in the future.");
+        return false;
+      }
+
+      // Special case: if year == current year, month/day must not be in future
+      if (year === currentYear) {
+        const currentMonth = today.getMonth() + 1; // getMonth() is 0-indexed
+        const currentDay = today.getDate();
+
+        if (month > currentMonth || (month === currentMonth && day > currentDay)) {
+          Alert.alert("Invalid Date", "Date of birth cannot be in the future.");
+          return false;
+        }
+      }
+
+      // Validate days in month (including leap year for February)
+      const daysInMonth = new Date(year, month, 0).getDate(); // magic: day 0 = last day of previous month
+
+      if (day > daysInMonth) {
+        const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
+        Alert.alert(
+          "Invalid Date",
+          `${monthName} ${year} has only ${daysInMonth} days.`
+        );
+        return false;
+      }
+    }
+    // ——— END OF DOB VALIDATION ———
+
     return true;
   };
 
@@ -205,12 +260,12 @@ export default function StudentRegister() {
 
       if (authError) {
         console.error('Auth error:', authError);
-        
+
         // Handle rate limiting - most common error from your screenshot
-        if (authError.message.toLowerCase().includes('rate limit') || 
-            authError.message.toLowerCase().includes('too many requests') ||
-            authError.message.toLowerCase().includes('email rate limit') ||
-            authError.status === 429) {
+        if (authError.message.toLowerCase().includes('rate limit') ||
+          authError.message.toLowerCase().includes('too many requests') ||
+          authError.message.toLowerCase().includes('email rate limit') ||
+          authError.status === 429) {
           Alert.alert(
             "⏱️ Rate Limit Reached",
             "Too many registration attempts detected. This is a security feature from Supabase.\n\n" +
@@ -230,11 +285,11 @@ export default function StudentRegister() {
               }
             ]
           );
-        } 
+        }
         // Handle email already exists
         else if (authError.message.toLowerCase().includes('already registered') ||
-                 authError.message.toLowerCase().includes('already been registered') ||
-                 authError.message.toLowerCase().includes('user already registered')) {
+          authError.message.toLowerCase().includes('already been registered') ||
+          authError.message.toLowerCase().includes('user already registered')) {
           Alert.alert(
             "Email already exists",
             "This email is already registered. Please use a different email or try logging in.",
@@ -308,9 +363,9 @@ export default function StudentRegister() {
       await new Promise(resolve => setTimeout(resolve, 150)); // Reduced to 150ms
 
       // Step 4: Sign in the user
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ 
-        email, 
-        password 
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
       });
 
       if (signInError) {
@@ -339,14 +394,14 @@ export default function StudentRegister() {
 
     } catch (err: any) {
       console.error('Registration error:', err);
-      
+
       // Handle network errors
       if (err.message?.includes('fetch') || err.message?.includes('network')) {
         Alert.alert(
           "Network error",
           "Unable to reach server. Please check your internet connection and try again."
         );
-      } 
+      }
       // Handle timeout errors
       else if (err.message?.includes('timeout')) {
         Alert.alert(
@@ -365,6 +420,17 @@ export default function StudentRegister() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (selectedMonth && selectedDay && selectedYear) {
+      const day = selectedDay.padStart(2, '0');
+      const month = selectedMonth.toString().padStart(2, '0');
+      const formatted = `${day}/${month}/${selectedYear}`;
+      setDob(formatted);
+    } else {
+      setDob(''); // clear if incomplete
+    }
+  }, [selectedMonth, selectedDay, selectedYear]);
 
 
   return (
@@ -474,19 +540,68 @@ export default function StudentRegister() {
                 </TouchableOpacity>
               </View>
 
-              {/* Date of Birth */}
+              {/* Date of Birth - Google Style */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Date of Birth *</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
 
-                <TouchableOpacity
-                  style={styles.input}
-                  onPress={() => setDobPickerVisible(true)}
-                >
-                  <Text style={{ fontSize: 16, color: dob ? "#333" : "#a8a8a8" }}>
-                    {dob || "Select your date of birth"}
+                  {/* Month Dropdown */}
+                  <View style={{ flex: 2 }}>
+                    <Picker
+                      selectedValue={selectedMonth}
+                      onValueChange={(itemValue: string) => setSelectedMonth(itemValue)}
+                      style={styles.dobPicker}
+                    >
+                      <Picker.Item label="Month" value="" />
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                        <Picker.Item
+                          key={month}
+                          label={`${String(month).padStart(2, '0')} - ${new Date(2000, month - 1, 1).toLocaleString('default', { month: 'long' })}`}
+                          value={String(month)}   // <-- must be string because selectedValue is string
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+
+                  {/* Day */}
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      style={styles.dobInput}
+                      placeholder="Day"
+                      value={selectedDay}
+                      onChangeText={(text) => {
+                        const num = text.replace(/[^0-9]/g, '').slice(0, 2);
+                        setSelectedDay(num);
+                      }}
+                      keyboardType="numeric"
+                      maxLength={2}
+                    />
+                  </View>
+
+                  {/* Year */}
+                  <View style={{ flex: 1.5 }}>
+                    <TextInput
+                      style={styles.dobInput}
+                      placeholder="Year"
+                      value={selectedYear}
+                      onChangeText={(text) => {
+                        const num = text.replace(/[^0-9]/g, '').slice(0, 4);
+                        setSelectedYear(num);
+                      }}
+                      keyboardType="numeric"
+                      maxLength={4}
+                    />
+                  </View>
+                </View>
+
+                {/* Preview */}
+                {selectedMonth && selectedDay && selectedYear && (
+                  <Text style={{ fontSize: 12, color: '#666', marginTop: 5, alignSelf: 'flex-end' }}>
+                    → {selectedDay}/{selectedMonth.padStart(2, '0')}/{selectedYear}
                   </Text>
-                </TouchableOpacity>
+                )}
               </View>
+
 
               {/* Password */}
               <View style={styles.inputWrapper}>
@@ -553,26 +668,6 @@ export default function StudentRegister() {
           </View>
         </View>
       </Modal>
-      {dobPickerVisible && (
-        <DateTimePicker
-          value={dob ? parseDOB(dob) : new Date()}
-          mode="date"
-          display="inline"
-          maximumDate={new Date(new Date().setFullYear(new Date().getFullYear()))}
-          minimumDate={new Date(new Date().setFullYear(new Date().getFullYear() - 80))}
-          onChange={(event: DateTimePickerEvent, selectedDate?: Date) => {
-            setDobPickerVisible(false);
-            if (selectedDate) {
-              const d = selectedDate;
-              const formatted = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-              setDob(formatted);
-            }
-          }}
-        />
-      )
-      }
-
-
     </View>
   );
 }
@@ -593,8 +688,8 @@ const styles = StyleSheet.create({
   hint: { fontSize: 11, color: '#666', marginTop: 4, fontStyle: 'italic' },
   selectCourseButton: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: '#e0e0e0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   inputText: { fontSize: 16, flex: 1 },
-  passwordWrapper: { position: 'relative' },
-  passwordToggle: { position: 'absolute', right: 12, top: 14, padding: 4 },
+  passwordWrapper: { position: 'relative', color: 'black' },
+  passwordToggle: { position: 'absolute', right: 12, top: 14, padding: 4, color: 'black' },
   registerButton: { backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginTop: 10, elevation: 3, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 },
   registerButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
@@ -626,5 +721,22 @@ const styles = StyleSheet.create({
     color: '#6B46C1',
     flex: 1,
     lineHeight: 18,
+  },
+  dobPicker: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    height: 50,
+  },
+  dobInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 16,
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    height: 50,
   },
 });
