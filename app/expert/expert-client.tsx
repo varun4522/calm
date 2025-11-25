@@ -92,22 +92,22 @@ export default function ExpertClientPage() {
       } else if (sessionsData) {
         console.log('Successfully loaded session requests:', sessionsData.length);
         const transformedSessions: SessionRequest[] = sessionsData.map(session => ({
-          id: session.id,
-          student_id: session.student_id,
-          expert_id: session.expert_id,
-          student_name: session.student_name || 'Unknown Student',
-          student_registration_number: session.student_registration_number ?? 'N/A',
-          student_email: session.student_email || '',
-          student_course: session.student_course || 'N/A',
-          session_date: session.session_date || '',
-          session_time: session.session_time || '',
-          booking_mode: session.booking_mode,
-          status: session.status || 'pending',
-          updated_at: session.updated_at || session.created_at || '',
-          notes: session.notes || '',
-          expert_name: session.expert_name || '',
-          expert_registration_number: session.expert_registration_number || ''
-        }));
+  id: session.id,
+  student_id: session.student_id,
+  expert_id: session.expert_id,
+  student_name: session.student_name || 'Unknown Student',
+  student_registration_number: String(session.student_registration_number ?? 'N/A'),
+  student_email: session.student_email || '',
+  student_course: session.student_course || 'N/A',
+  session_date: session.session_date || '',
+  session_time: session.session_time || '',
+  booking_mode: session.booking_mode || 'online',
+  status: session.status || 'pending',
+  updated_at: session.updated_at || session.created_at || '',
+  notes: session.notes || '',
+  expert_name: session.expert_name || '',
+  expert_registration_number: session.expert_registration_number || ''
+}));
         setSessionRequests(transformedSessions);
         setFilteredSessions(transformedSessions);
       }
@@ -121,20 +121,19 @@ export default function ExpertClientPage() {
   };
 
   const handleSearch = (text: string) => {
-    setSearchQuery(text);
-    if (!text.trim()) {
-      setFilteredSessions(sessionRequests);
-      return;
-    }
-
-    const q = text.toLowerCase();
-    const filtered = sessionRequests.filter(s =>
-      (s.student_name || '').toLowerCase().includes(q) ||
-      (s.student_registration_number || '').toLowerCase().includes(q) ||
-      (s.status || '').toLowerCase().includes(q)
-    );
-    setFilteredSessions(filtered);
-  };
+  setSearchQuery(text);
+  if (!text.trim()) {
+    setFilteredSessions(sessionRequests);
+    return;
+  }
+  const q = text.toLowerCase();
+  const filtered = sessionRequests.filter(s =>
+    (s.student_name ?? '').toLowerCase().includes(q) ||
+    String(s.student_registration_number ?? '').toLowerCase().includes(q) ||
+    (s.status ?? '').toLowerCase().includes(q)
+  );
+  setFilteredSessions(filtered);
+};
 
   const onRefresh = async () => {
     setRefreshing(true);
