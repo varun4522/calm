@@ -160,6 +160,29 @@ export default function ExpertSchedulePage() {
       loadAllSchedules();
       // Automatically generate default slots for all dates in the month
       autoGenerateMonthlySlots();
+
+      // Set up real-time subscription for schedule changes
+      const channel = supabase
+        .channel(`expert_schedule_${profile.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // Listen to INSERT, UPDATE, DELETE
+            schema: 'public',
+            table: 'expert_schedule',
+            filter: `expert_id=eq.${profile.id}`,
+          },
+          (payload) => {
+            console.log('Schedule changed:', payload);
+            // Reload schedules immediately
+            loadAllSchedules();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [profile, currentMonth]);
 

@@ -44,6 +44,27 @@ export default function AdminSetting() {
 
   useEffect(() => {
     fetchHelpMessages();
+
+    // Set up real-time subscription for help messages
+    const channel = supabase
+      .channel('admin_help_messages')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'help',
+        },
+        (payload) => {
+          console.log('Help message changed:', payload);
+          fetchHelpMessages();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const onRefresh = () => {

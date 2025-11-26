@@ -148,6 +148,28 @@ export default function PeerSchedule() {
       loadAllSchedules();
       // Automatically generate default slots for all dates in the month
       autoGenerateMonthlySlots();
+
+      // Set up real-time subscription for schedule changes
+      const channel = supabase
+        .channel(`peer_schedule_${profile.registration_number}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'student_schedule',
+            filter: `peer_registration_number=eq.${profile.registration_number}`,
+          },
+          (payload) => {
+            console.log('Schedule changed:', payload);
+            loadAllSchedules();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [currentMonth, profile]);
 

@@ -54,15 +54,36 @@ export default function ExpertClientPage() {
     }, [profile])
   );
 
-  // Setup auto-refresh interval (every 45 seconds)
+  // Setup auto-refresh interval (every 45 seconds) + Real-time subscription
   useEffect(() => {
     if (!profile) return;
 
+    // Set up real-time subscription for instant updates
+    const channel = supabase
+      .channel(`expert_clients_${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'book_request',
+          filter: `expert_id=eq.${profile.id}`,
+        },
+        (payload) => {
+          console.log('Session request changed:', payload);
+          // Reload data immediately on any change
+          loadSessionRequests();
+        }
+      )
+      .subscribe();
+
+    // Also keep polling as backup (every 45 seconds)
     autoRefreshIntervalRef.current = setInterval(() => {
       loadSessionRequests();
     }, RefreshConfig.CLIENT_LIST_REFRESH_INTERVAL);
 
     return () => {
+      supabase.removeChannel(channel);
       if (autoRefreshIntervalRef.current) {
         clearInterval(autoRefreshIntervalRef.current);
       }

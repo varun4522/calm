@@ -74,14 +74,22 @@ export default function FrontPage() {
 
 useEffect(() => {
   const redirectUser = async () => {
-    if (loading || !session?.user?.id || isRedirecting) return;
+    if (loading) return;
+    if (!session?.user?.id) {
+      // No session - stay on login page
+      setIsRedirecting(false);
+      return;
+    }
+
+    // Don't run redirect multiple times for the same session
+    if (isRedirecting) return;
 
     setIsRedirecting(true);
 
     try {
-      // Try to fetch profile – max 3 fast attempts (total < 800ms)
+      // Try to fetch profile – max 2 fast attempts
       let profile = null;
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 2; i++) {
         const { data, error } = await supabase
           .from('profiles')
           .select('type')
@@ -96,20 +104,18 @@ useEffect(() => {
           console.error('Profile fetch error:', error);
           break;
         }
-        // Only wait if no row was found (most common case for fresh accounts)
-        await new Promise(r => setTimeout(r, 250));
+        // Only wait if no row was found
+        await new Promise(r => setTimeout(r, 200));
       }
 
-      // If still no profile → assume it's a brand-new account and go to onboarding
-      // or just use a default route (you decide)
+      // If still no profile → assume it's a brand-new account
       if (!profile) {
         Toast.show({
           type: 'info',
           text1: 'Welcome!',
           text2: 'Taking you to your dashboard...',
         });
-        // Change this line to whatever makes sense for your app
-        router.replace('/student/student-home');   // or a common dashboard
+        router.replace('/student/student-home');
         return;
       }
 
@@ -124,13 +130,12 @@ useEffect(() => {
     } catch (err) {
       console.error('Redirect error:', err);
       Toast.show({ type: 'error', text1: 'Something went wrong', text2: 'Please try again' });
-    } finally {
       setIsRedirecting(false);
     }
   };
 
   redirectUser();
-}, [session, loading, isRedirecting]);
+}, [session, loading]);
 
   async function signInWithEmail() {
     setIsLoading(true);
@@ -191,9 +196,9 @@ useEffect(() => {
         return;
       }
       Toast.show({ type: 'success', text1: 'Login successful', position: 'top', visibilityTime: 1500 });
-      setIsRedirecting(true);
       setIsLoading(false);
       setLoginModalVisible(false);
+      // The useEffect will handle redirect automatically when session updates
     } catch (err: any) {
       Toast.show({ 
         type: 'error', 
@@ -206,17 +211,20 @@ useEffect(() => {
     }
   }
 
-  // Show loading screen while redirecting
-  if (loading || isRedirecting) {
+  // Show only logo while checking auth session
+  if (loading) {
     return (
       <View style={styles.container}>
         <Image source={require('../assets/images/icon.png')} style={styles.logo} />
         <Text style={styles.mainTitle}>C.A.L.M</Text>
         <Text style={styles.subTitle}>Spaces</Text>
-        <ActivityIndicator size="large" color="#4F21A2" style={{ marginTop: 30 }} />
-        <Text style={{ color: '#4F21A2', marginTop: 15, fontSize: 16, fontFamily: 'Tinos' }}>Loading...</Text>
       </View>
     );
+  }
+
+  // If logged in and redirecting, show nothing (instant redirect)
+  if (isRedirecting) {
+    return null;
   }
 
   return (

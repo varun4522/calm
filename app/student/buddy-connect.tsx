@@ -77,6 +77,27 @@ export default function BuddyConnect() {
 
   useEffect(() => {
     fetchPosts();
+
+    // Set up real-time subscription for community posts
+    const channel = supabase
+      .channel('community_posts_all')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'community_post',
+        },
+        (payload) => {
+          console.log('Community post changed:', payload);
+          fetchPosts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const pickMedia = async () => {

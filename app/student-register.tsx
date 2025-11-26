@@ -684,7 +684,7 @@ const styles = StyleSheet.create({
   formContainer: { backgroundColor: 'white', borderRadius: 20, padding: 25, marginTop: 20, elevation: 8, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
   inputWrapper: { marginBottom: 20 },
   label: { fontSize: 14, fontWeight: '600', color: Colors.primary, marginBottom: 8 },
-  input: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1, borderColor: '#e0e0e0' },
+  input: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1, borderColor: '#e0e0e0', color: '#000000' },
   hint: { fontSize: 11, color: '#666', marginTop: 4, fontStyle: 'italic' },
   selectCourseButton: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: '#e0e0e0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   inputText: { fontSize: 16, flex: 1 },
