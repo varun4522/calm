@@ -74,52 +74,36 @@ export default function FrontPage() {
 
 useEffect(() => {
   const redirectUser = async () => {
+    // Wait for auth to finish loading
     if (loading) return;
+    
+    // No session - stay on login page
     if (!session?.user?.id) {
-      // No session - stay on login page
       setIsRedirecting(false);
       return;
     }
 
-    // Don't run redirect multiple times for the same session
+    // Only redirect once per session
     if (isRedirecting) return;
 
     setIsRedirecting(true);
 
     try {
-      // Try to fetch profile – max 2 fast attempts
-      let profile = null;
-      for (let i = 0; i < 2; i++) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('type')
-          .eq('id', session.user.id)
-          .single();
+      // Fetch profile with single attempt - fast and efficient
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('type')
+        .eq('id', session.user.id)
+        .single();
 
-        if (data) {
-          profile = data;
-          break;
-        }
-        if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
-          console.error('Profile fetch error:', error);
-          break;
-        }
-        // Only wait if no row was found
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      // If still no profile → assume it's a brand-new account
-      if (!profile) {
-        Toast.show({
-          type: 'info',
-          text1: 'Welcome!',
-          text2: 'Taking you to your dashboard...',
-        });
+      if (error) {
+        console.error('Profile fetch error:', error);
+        // Default to student home if profile not found
         router.replace('/student/student-home');
         return;
       }
 
-      // Normal redirect based on type
+      // Redirect based on user type
       if (profile.type === 'STUDENT' || profile.type === 'PEER') {
         router.replace('/student/student-home');
       } else if (profile.type === 'EXPERT') {
@@ -129,13 +113,13 @@ useEffect(() => {
       }
     } catch (err) {
       console.error('Redirect error:', err);
-      Toast.show({ type: 'error', text1: 'Something went wrong', text2: 'Please try again' });
-      setIsRedirecting(false);
+      // Fallback to student home on any error
+      router.replace('/student/student-home');
     }
   };
 
   redirectUser();
-}, [session, loading]);
+}, [session?.user?.id, loading]);
 
   async function signInWithEmail() {
     setIsLoading(true);
@@ -154,7 +138,7 @@ useEffect(() => {
           .from('profiles')
           .select('email')
           .eq('registration_number', loginInput)
-          .maybeSingle(); // Use maybeSingle for better performance
+          .maybeSingle();
         
         if (profileError) {
           console.error('Profile lookup error:', profileError);
@@ -195,10 +179,14 @@ useEffect(() => {
         setIsLoading(false);
         return;
       }
-      Toast.show({ type: 'success', text1: 'Login successful', position: 'top', visibilityTime: 1500 });
-      setIsLoading(false);
+      
+      // Success - close modal and let useEffect handle redirect
+      Toast.show({ type: 'success', text1: 'Login successful', position: 'top', visibilityTime: 1000 });
       setLoginModalVisible(false);
-      // The useEffect will handle redirect automatically when session updates
+      setLoginInput('');
+      setPassword('');
+      setIsLoading(false);
+      // useEffect will automatically redirect when session updates
     } catch (err: any) {
       Toast.show({ 
         type: 'error', 
@@ -211,19 +199,8 @@ useEffect(() => {
     }
   }
 
-  // Show only logo while checking auth session
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <Image source={require('../assets/images/icon.png')} style={styles.logo} />
-        <Text style={styles.mainTitle}>C.A.L.M</Text>
-        <Text style={styles.subTitle}>Spaces</Text>
-      </View>
-    );
-  }
-
-  // If logged in and redirecting, show nothing (instant redirect)
-  if (isRedirecting) {
+  // If checking auth or redirecting, show nothing (instant transition)
+  if (loading || isRedirecting) {
     return null;
   }
 
