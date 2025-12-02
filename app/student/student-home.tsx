@@ -1,3 +1,17 @@
+/*
+ * Student Home - Database-First Mood Tracking
+ * 
+ * Updated to use Supabase database as primary storage for all mood data.
+ * AsyncStorage is now only used for minimal offline backup and user preferences.
+ * 
+ * Key Changes:
+ * - Mood data loaded directly from database on initialization
+ * - Mood scheduling system uses database to check completed slots
+ * - Export function fetches fresh data from database
+ * - Real-time sync updates UI when mood data changes
+ * - Minimal AsyncStorage backup for offline scenarios only
+ */
+
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -125,46 +139,88 @@ export default function StudentHome() {
     bubbleAnimations.forEach((_, i) => startBubbleLoop(i));
   }, [bubbleAnimations, startBubbleLoop]);
 
-  // Initialize mood calendar data immediately on mount (for APK builds)
+  // Initialize mood calendar data immediately on mount - Database first approach
   useEffect(() => {
     const initializeMoodData = async () => {
       try {
-        // Try multiple sources for registration number
-        let regNo = studentRegNo || 
-                    await AsyncStorage.getItem('currentStudentReg') ||
-                    profile?.registration_number;
+        // Use session user ID to load mood data from database
+        const userId = session?.user?.id;
+        if (!userId) {
+          console.log('⏳ Waiting for user session to initialize mood data from database...');
+          return;
+        }
 
-        if (regNo) {
-          console.log('🎯 Initializing mood calendar for:', regNo);
-          
-          // Load mood history
-          const stored = await AsyncStorage.getItem(`moodHistory_${regNo}`);
-          if (stored) {
-            setMoodHistory(JSON.parse(stored));
-            console.log('✅ Mood history initialized');
-          }
+        console.log('🎯 Initializing mood calendar from database for user:', userId);
+        
+        // Load mood data directly from Supabase (primary source)
+        const { data: moodData, error } = await supabase
+          .from('mood_entries')
+          .select('*')
+          .eq('user_id', userId)
+          .order('entry_date', { ascending: true });
 
-          // Load daily mood entries
-          const dailyStored = await AsyncStorage.getItem(`dailyMoodEntries_${regNo}`);
-          if (dailyStored) {
-            setDailyMoodEntries(JSON.parse(dailyStored));
-            console.log('✅ Mood calendar initialized with', Object.keys(JSON.parse(dailyStored)).length, 'days');
-          }
+        if (error) {
+          console.error('❌ Error loading mood data from database during initialization:', error);
+          // Set empty state if database fails
+          setMoodHistory({});
+          setDailyMoodEntries({});
+          setDetailedMoodEntries([]);
+          return;
+        }
 
-          // Load detailed entries
-          const detailedStored = await AsyncStorage.getItem(`detailedMoodEntries_${regNo}`);
-          if (detailedStored) {
-            setDetailedMoodEntries(JSON.parse(detailedStored));
-          }
+        if (moodData && moodData.length > 0) {
+          // Transform database data to local format
+          const history: { [key: string]: string } = {};
+          const dailyEntries: { [key: string]: any[] } = {};
+          const detailed: any[] = [];
+
+          moodData.forEach((entry: any) => {
+            const date = entry.entry_date;
+            history[date] = entry.mood_emoji;
+            
+            if (!dailyEntries[date]) dailyEntries[date] = [];
+            dailyEntries[date].push({
+              emoji: entry.mood_emoji,
+              label: entry.mood_label,
+              time: entry.entry_time,
+              scheduled: entry.scheduled_label,
+              scheduleKey: entry.schedule_key
+            });
+
+            detailed.push({
+              date: entry.entry_date,
+              emoji: entry.mood_emoji,
+              label: entry.mood_label,
+              time: entry.entry_time,
+              scheduled: entry.scheduled_label,
+              scheduleKey: entry.schedule_key,
+              notes: entry.notes
+            });
+          });
+
+          setMoodHistory(history);
+          setDailyMoodEntries(dailyEntries);
+          setDetailedMoodEntries(detailed);
+          console.log(`✅ Mood calendar initialized from database with ${moodData.length} entries`);
+        } else {
+          console.log('📝 No mood data found in database - starting fresh');
+          setMoodHistory({});
+          setDailyMoodEntries({});
+          setDetailedMoodEntries([]);
         }
       } catch (error) {
-        console.error('❌ Error initializing mood data:', error);
+        console.error('❌ Error initializing mood data from database:', error);
+        setMoodHistory({});
+        setDailyMoodEntries({});
+        setDetailedMoodEntries([]);
       }
     };
 
-    // Run initialization immediately
-    initializeMoodData();
-  }, []); // Empty dependency array - runs once on mount
+    // Run initialization when session is available
+    if (session?.user?.id) {
+      initializeMoodData();
+    }
+  }, [session?.user?.id]); // Depend on user session
 
   // Student info state
   const [studentName, setStudentName] = useState('');
@@ -384,17 +440,15 @@ export default function StudentHome() {
             .order('entry_date', { ascending: true });
 
           if (error) {
-            console.error('❌ Error loading mood data from Supabase:', error);
-            // Fall back to AsyncStorage
-            if (regNo) {
-              const stored = await AsyncStorage.getItem(`moodHistory_${regNo}`);
-              if (stored) setMoodHistory(JSON.parse(stored));
-              const dailyStored = await AsyncStorage.getItem(`dailyMoodEntries_${regNo}`);
-              if (dailyStored) setDailyMoodEntries(JSON.parse(dailyStored));
-              const detailedStored = await AsyncStorage.getItem(`detailedMoodEntries_${regNo}`);
-              if (detailedStored) setDetailedMoodEntries(JSON.parse(detailedStored));
-            }
-          } else if (moodData && moodData.length > 0) {
+            console.error('❌ Error loading mood data from database:', error);
+            // Set empty state if database fails - no AsyncStorage fallback
+            setMoodHistory({});
+            setDailyMoodEntries({});
+            setDetailedMoodEntries([]);
+            return;
+          }
+          
+          if (moodData && moodData.length > 0) {
             // Transform Supabase data to local format
             const history: { [key: string]: string } = {};
             const dailyEntries: { [key: string]: any[] } = {};
@@ -430,16 +484,9 @@ export default function StudentHome() {
             setMoodHistory(history);
             setDailyMoodEntries(dailyEntries);
             setDetailedMoodEntries(detailed);
-            console.log(`✅ Loaded ${moodData.length} mood entries from Supabase`);
-
-            // Backup to AsyncStorage
-            if (regNo) {
-              await AsyncStorage.setItem(`moodHistory_${regNo}`, JSON.stringify(history));
-              await AsyncStorage.setItem(`dailyMoodEntries_${regNo}`, JSON.stringify(dailyEntries));
-              await AsyncStorage.setItem(`detailedMoodEntries_${regNo}`, JSON.stringify(detailed));
-            }
+            console.log(`✅ Loaded ${moodData.length} mood entries from database`);
           } else {
-            console.log('📝 No mood data found in Supabase');
+            console.log('📝 No mood data found in database');
             setMoodHistory({});
             setDailyMoodEntries({});
             setDetailedMoodEntries([]);
@@ -897,48 +944,46 @@ export default function StudentHome() {
     }
   };
 
-  // Initialize mood prompt system with fixed daily times
+  // Initialize mood prompt system with database-first approach
   const initializeMoodPromptSystem = async (regNo: string) => {
     try {
       const today = getTodayKey();
-      const now = new Date();
+      const userId = session?.user?.id;
 
-      // Get or create today's mood schedule
-      const scheduleKey = `moodSchedule_${regNo}_${today}`;
-      let scheduleData = await AsyncStorage.getItem(scheduleKey);
-
-      let dailySchedule;
-      if (!scheduleData) {
-        // Create new schedule with fixed times for today
-        const todayDate = new Date();
-        todayDate.setHours(0, 0, 0, 0); // Start of day
-        
-        dailySchedule = {
-          date: today,
-          promptTimes: generateMoodPromptTimes(todayDate),
-          completedPrompts: [],
-          count: 0,
-          lastChecked: now.toISOString()
-        };
-        await AsyncStorage.setItem(scheduleKey, JSON.stringify(dailySchedule));
-        console.log('📅 Created new mood schedule for', today, 'with 6 prompts at fixed times');
-      } else {
-        dailySchedule = JSON.parse(scheduleData);
-        console.log(`📊 Loaded mood schedule: ${dailySchedule.count}/6 completed`);
+      if (!userId) {
+        console.log('⏳ No user session for mood prompt initialization');
+        return;
       }
 
-      setMoodPromptsToday(dailySchedule.count);
-      setTodayMoodProgress({ completed: dailySchedule.count, total: 6 });
+      // Get today's completed mood entries from database
+      const { data: todayMoods, error } = await supabase
+        .from('mood_entries')
+        .select('schedule_key')
+        .eq('user_id', userId)
+        .eq('entry_date', today);
+
+      if (error) {
+        console.error('❌ Error loading today\'s moods for prompt system:', error);
+        return;
+      }
+
+      const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
+      const completedCount = completedSlots.size;
+
+      console.log(`📊 Mood prompt system initialized: ${completedCount}/6 completed from database`);
+      
+      setMoodPromptsToday(completedCount);
+      setTodayMoodProgress({ completed: completedCount, total: 6 });
 
       // Check if it's time for any prompts
-      await checkForMoodPrompt(regNo, dailySchedule);
+      await checkForMoodPrompt(regNo);
     } catch (error) {
       console.error('Error initializing mood prompt system:', error);
     }
   };
 
-  // Check if it's time for a mood prompt - checks Supabase for missing slots
-  const checkForMoodPrompt = async (regNo: string, dailySchedule?: any) => {
+  // Check if it's time for a mood prompt - uses database data directly
+  const checkForMoodPrompt = async (regNo: string) => {
     try {
       const now = new Date();
       const today = getTodayKey();
@@ -949,7 +994,7 @@ export default function StudentHome() {
         return;
       }
 
-      // Get today's mood entries from Supabase to check which slots are filled
+      // Get today's mood entries from database to check which slots are filled
       const { data: todayMoods, error } = await supabase
         .from('mood_entries')
         .select('schedule_key')
@@ -964,24 +1009,6 @@ export default function StudentHome() {
       // Get list of completed schedule keys
       const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
       console.log(`📊 Completed mood slots: ${completedSlots.size}/6`, Array.from(completedSlots));
-
-      // Load schedule if not provided
-      let schedule = dailySchedule;
-      if (!schedule) {
-        const scheduleKey = `moodSchedule_${regNo}_${today}`;
-        const scheduleData = await AsyncStorage.getItem(scheduleKey);
-        if (!scheduleData) {
-          console.log('⚠️ No mood schedule found for today, creating new one');
-          await initializeMoodPromptSystem(regNo);
-          return;
-        }
-        schedule = JSON.parse(scheduleData);
-      }
-
-      // Update last checked time
-      schedule.lastChecked = now.toISOString();
-      const scheduleKey = `moodSchedule_${regNo}_${today}`;
-      await AsyncStorage.setItem(scheduleKey, JSON.stringify(schedule));
 
       // Check which time slots are due and not completed
       const currentHour = now.getHours();
@@ -1086,11 +1113,25 @@ export default function StudentHome() {
   const showWelcomeMoodPrompt = async (regNo: string) => {
     try {
       const today = getTodayKey();
-      const scheduleKey = `moodSchedule_${regNo}_${today}`;
-      const scheduleData = await AsyncStorage.getItem(scheduleKey);
+      const userId = session?.user?.id;
 
-      // If no schedule exists or no prompts completed, show welcome check-in
-      if (!scheduleData) {
+      if (!userId) return;
+
+      // Check if user has any mood entries today from database
+      const { data: todayMoods, error } = await supabase
+        .from('mood_entries')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('entry_date', today)
+        .limit(1);
+
+      if (error) {
+        console.error('Error checking for existing moods:', error);
+        return;
+      }
+
+      // If no entries exist for today, show welcome check-in
+      if (!todayMoods || todayMoods.length === 0) {
         console.log('🌟 Showing welcome mood prompt for new session');
         setCurrentPromptInfo({ timeLabel: 'Welcome Check-in', scheduleKey: 'welcome' });
         setMoodModalVisible(true);
@@ -1100,66 +1141,91 @@ export default function StudentHome() {
     }
   };
 
-  // Record that mood prompt was completed
+  // Record that mood prompt was completed - check database for completion count
   const recordMoodPromptCompleted = async (regNo: string, intervalNumber: string) => {
     try {
       const today = getTodayKey();
-      const scheduleKey = `moodSchedule_${regNo}_${today}`;
-      const scheduleData = await AsyncStorage.getItem(scheduleKey);
+      const userId = session?.user?.id;
 
-      if (!scheduleData) return;
+      if (!userId) return;
 
-      const schedule = JSON.parse(scheduleData);
-      const interval = parseInt(intervalNumber);
+      // Get updated count from database after mood was saved
+      const { data: todayMoods, error } = await supabase
+        .from('mood_entries')
+        .select('schedule_key')
+        .eq('user_id', userId)
+        .eq('entry_date', today);
 
-      if (!schedule.completedPrompts.includes(interval)) {
-        schedule.completedPrompts.push(interval);
-        schedule.count = schedule.completedPrompts.length;
-        schedule.lastCompleted = new Date().toISOString();
+      if (error) {
+        console.error('Error fetching mood completion status:', error);
+        return;
+      }
 
-        await AsyncStorage.setItem(scheduleKey, JSON.stringify(schedule));
-        setMoodPromptsToday(schedule.count);
-        setTodayMoodProgress({ completed: schedule.count, total: 6 });
+      const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
+      const completedCount = completedSlots.size;
 
-        console.log(`✅ Mood prompt completed: ${schedule.count}/6 (Interval ${interval})`);
-        
-        // Show completion message
-        if (schedule.count === 6) {
-          Alert.alert(
-            '🎉 Amazing!',
-            'You\'ve completed all 6 mood check-ins for today! Great job tracking your emotional wellness.',
-            [{ text: 'Awesome!', style: 'default' }]
-          );
-        } else {
-          // Check for next pending prompt immediately
-          setTimeout(() => {
-            checkForMoodPrompt(regNo, schedule);
-          }, 1000);
-        }
+      setMoodPromptsToday(completedCount);
+      setTodayMoodProgress({ completed: completedCount, total: 6 });
+
+      console.log(`✅ Mood prompt completed: ${completedCount}/6 (${intervalNumber})`);
+      
+      // Show completion message
+      if (completedCount === 6) {
+        Alert.alert(
+          '🎉 Amazing!',
+          'You\'ve completed all 6 mood check-ins for today! Great job tracking your emotional wellness.',
+          [{ text: 'Awesome!', style: 'default' }]
+        );
+      } else {
+        // Check for next pending prompt immediately
+        setTimeout(() => {
+          checkForMoodPrompt(regNo);
+        }, 1000);
       }
     } catch (error) {
       console.error('Error recording mood prompt completion:', error);
     }
   };
 
-  // Set next mood prompt time based on schedule
+  // Set next mood prompt time based on database data
   const setNextMoodPrompt = async (regNo: string) => {
     try {
       const today = getTodayKey();
-      const scheduleKey = `moodSchedule_${regNo}_${today}`;
-      const scheduleData = await AsyncStorage.getItem(scheduleKey);
-
-      if (!scheduleData) return;
-
-      const schedule = JSON.parse(scheduleData);
+      const userId = session?.user?.id;
       const now = new Date();
 
-      // Find next incomplete prompt
-      for (const promptInfo of schedule.promptTimes) {
-        const promptTime = new Date(promptInfo.time);
-        const isCompleted = schedule.completedPrompts.includes(promptInfo.intervalNumber);
+      if (!userId) return;
 
-        if (promptTime > now && !isCompleted) {
+      // Get completed slots from database
+      const { data: todayMoods, error } = await supabase
+        .from('mood_entries')
+        .select('schedule_key')
+        .eq('user_id', userId)
+        .eq('entry_date', today);
+
+      if (error) {
+        console.error('Error fetching mood data for next prompt:', error);
+        return;
+      }
+
+      const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
+
+      // Define time slots
+      const timeSlots = [
+        { start: 8, scheduleKey: 'slot_1' },
+        { start: 11, scheduleKey: 'slot_2' },
+        { start: 13, scheduleKey: 'slot_3' },
+        { start: 15, scheduleKey: 'slot_4' },
+        { start: 17, scheduleKey: 'slot_5' },
+        { start: 19, scheduleKey: 'slot_6' }
+      ];
+
+      // Find next incomplete prompt
+      for (const slot of timeSlots) {
+        const promptTime = new Date();
+        promptTime.setHours(slot.start, 0, 0, 0);
+        
+        if (promptTime > now && !completedSlots.has(slot.scheduleKey)) {
           setNextMoodPromptTime(promptTime);
           return;
         }
@@ -1254,24 +1320,63 @@ export default function StudentHome() {
       const moodData = MOOD_EMOJIS.find(m => m.emoji === mood);
       const now = new Date();
 
+      // Validate required data before saving
+      if (!mood || !moodData) {
+        console.error('❌ Invalid mood data:', { mood, moodData });
+        Alert.alert('Error', 'Please select a valid mood');
+        return;
+      }
+
       // Save to Supabase first (primary storage)
+      console.log('💾 Saving mood entry:', {
+        user_id: userId,
+        user_type: profile?.type || 'STUDENT',
+        mood_emoji: mood,
+        mood_label: moodData.label,
+        entry_date: now.toISOString().split('T')[0],
+        entry_time: now.toTimeString().split(' ')[0],
+        scheduled_label: timeLabel,
+        schedule_key: scheduleKey
+      });
+
       const { error: dbError } = await supabase
         .from('mood_entries')
         .insert({
           user_id: userId,
           user_type: profile?.type || 'STUDENT',
           mood_emoji: mood,
-          mood_label: moodData?.label || 'Unknown',
+          mood_label: moodData.label,
           entry_date: now.toISOString().split('T')[0], // YYYY-MM-DD
           entry_time: now.toTimeString().split(' ')[0], // HH:MM:SS
           scheduled_label: timeLabel,
           schedule_key: scheduleKey,
-          notes: input || null
+          notes: input?.trim() || null
         });
       
       if (dbError) {
-        console.error('❌ Error saving mood to database:', dbError);
-        Alert.alert('Error', 'Failed to save mood. Please try again.');
+        console.error('❌ Database error details:', {
+          error: dbError,
+          code: dbError.code,
+          message: dbError.message,
+          details: dbError.details,
+          hint: dbError.hint
+        });
+
+        // Provide specific error messages based on error type
+        let errorMessage = 'Failed to save mood. ';
+        if (dbError.code === '23505') {
+          errorMessage += 'Duplicate entry detected. Please try again.';
+        } else if (dbError.code === '23502') {
+          errorMessage += 'Missing required information. Please check your profile.';
+        } else if (dbError.message?.includes('permission')) {
+          errorMessage += 'Permission denied. Please check your account.';
+        } else if (dbError.message?.includes('connection') || dbError.message?.includes('network')) {
+          errorMessage += 'Network connection issue. Please check your internet.';
+        } else {
+          errorMessage += `Database error: ${dbError.message}`;
+        }
+        
+        Alert.alert('Database Error', errorMessage);
         return;
       }
       
@@ -1280,7 +1385,7 @@ export default function StudentHome() {
       // Update local state for immediate UI update
       const newEntry = {
         emoji: mood,
-        label: moodData?.label || 'Unknown',
+        label: moodData.label,
         time: currentTime,
         scheduled: timeLabel,
         scheduleKey
@@ -1298,82 +1403,127 @@ export default function StudentHome() {
       const detailedEntry = {
         date: today,
         emoji: mood,
-        label: moodData?.label || 'Unknown',
+        label: moodData.label,
         time: currentTime,
         scheduled: timeLabel,
         scheduleKey,
-        notes: input || undefined
+        notes: input?.trim() || undefined
       };
       const updatedDetailedEntries = [...detailedMoodEntries, detailedEntry];
       setDetailedMoodEntries(updatedDetailedEntries);
 
-      // Backup to AsyncStorage
+      // Minimal offline backup to AsyncStorage (only for offline scenarios)
       const regNo = studentRegNo || profile?.registration_number?.toString() || userId;
-      await AsyncStorage.setItem(`moodHistory_${regNo}`, JSON.stringify(updatedHistory));
-      await AsyncStorage.setItem(`dailyMoodEntries_${regNo}`, JSON.stringify(updatedDailyEntries));
-      await AsyncStorage.setItem(`detailedMoodEntries_${regNo}`, JSON.stringify(updatedDetailedEntries));
+      try {
+        // Only backup essential mood history for offline access
+        await AsyncStorage.setItem(`lastMoodEntry_${regNo}`, JSON.stringify({
+          date: today,
+          mood: mood,
+          label: moodData.label,
+          time: currentTime,
+          savedAt: new Date().toISOString()
+        }));
+        console.log('💾 Last mood entry backed up locally for offline access');
+      } catch (storageError) {
+        console.error('⚠️ Minimal backup failed:', storageError);
+        // Don't fail the whole operation for storage errors
+      }
       
-      console.log(`✅ Mood saved for user ${userId}: ${mood} at ${currentTime} (${timeLabel})`);
+      console.log(`✅ Mood saved successfully for user ${userId}: ${mood} at ${currentTime} (${timeLabel})`);
       
       // Send push notification for mood entry
-      await sendLocalNotification(
-        '🎯 Mood Logged!',
-        `You're feeling ${moodData?.label || 'good'} today. Keep tracking your emotional journey!`,
-        { type: 'mood_entry', mood: mood, label: moodData?.label, time: currentTime }
-      );
+      try {
+        await sendLocalNotification(
+          '🎯 Mood Logged!',
+          `You're feeling ${moodData.label} today. Keep tracking your emotional journey!`,
+          { type: 'mood_entry', mood: mood, label: moodData.label, time: currentTime }
+        );
+      } catch (notifError) {
+        console.error('⚠️ Notification failed:', notifError);
+        // Don't fail for notification errors
+      }
       
       setMoodModalVisible(false);
       setSelectedMood(null);
       setInput('');
+      
       // Record that this prompt was completed
       if (currentPromptInfo && currentPromptInfo.scheduleKey !== 'welcome') {
-        await recordMoodPromptCompleted(regNo, currentPromptInfo.scheduleKey);
+        try {
+          await recordMoodPromptCompleted(regNo, currentPromptInfo.scheduleKey);
+        } catch (promptError) {
+          console.error('⚠️ Failed to record prompt completion:', promptError);
+        }
       }
 
       // Clear current prompt info
       setCurrentPromptInfo(null);
 
       // Update next prompt time
-      await setNextMoodPrompt(regNo);
-    } catch (error) {
-      console.error('Error saving mood:', error);
-      Alert.alert('Error', 'Failed to save mood');
+      try {
+        await setNextMoodPrompt(regNo);
+      } catch (promptError) {
+        console.error('⚠️ Failed to set next mood prompt:', promptError);
+      }
+
+    } catch (error: any) {
+      console.error('💥 Unexpected error in saveMood:', error);
+      
+      let errorMessage = 'An unexpected error occurred while saving your mood.';
+      if (error?.message) {
+        if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else if (error.message.includes('permission')) {
+          errorMessage = 'Permission denied. Please check your account settings.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out. Please try again.';
+        }
+      }
+      
+      Alert.alert('Unexpected Error', errorMessage);
     }
   };
 
-  // Export mood data function
+  // Export mood data function - Fetch fresh data from database
   const exportMoodData = async () => {
-    let regNo = studentRegNo;
-    if (!regNo) {
-      const storedReg = await AsyncStorage.getItem('currentStudentReg');
-      if (storedReg) regNo = storedReg;
-    }
-
-    if (!regNo) {
-      Alert.alert('Error', 'User registration not found');
+    const userId = session?.user?.id;
+    if (!userId) {
+      Alert.alert('Error', 'User session not found. Please log in again.');
       return;
     }
 
     try {
+      // Fetch latest mood data directly from database for export
+      const { data: moodData, error } = await supabase
+        .from('mood_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('entry_date', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching mood data for export:', error);
+        Alert.alert('Error', 'Failed to fetch mood data from database');
+        return;
+      }
+
       const exportData = {
-        userRegistration: regNo,
+        userId: userId,
+        userRegistration: studentRegNo || profile?.registration_number,
         userName: studentName || studentUsername,
         exportDate: new Date().toISOString(),
-        moodHistory: moodHistory,
-        dailyMoodEntries: dailyMoodEntries,
-        detailedMoodEntries: detailedMoodEntries,
+        totalMoodEntries: moodData?.length || 0,
+        moodEntries: moodData || [],
         appUsageStats: appUsageStats,
-        totalMoodEntries: detailedMoodEntries.length,
         dateRange: {
-          firstEntry: detailedMoodEntries[0]?.date || 'No entries',
-          lastEntry: detailedMoodEntries[detailedMoodEntries.length - 1]?.date || 'No entries'
+          firstEntry: moodData?.[0]?.entry_date || 'No entries',
+          lastEntry: moodData?.[moodData.length - 1]?.entry_date || 'No entries'
         }
       };
 
-      console.log('📁 Mood data export prepared:', JSON.stringify(exportData, null, 2));
+      console.log('📁 Mood data export prepared (from database):', JSON.stringify(exportData, null, 2));
       Alert.alert(
         '📁 Data Export Ready',
-        `Your mood data has been prepared for export.\n\nTotal entries: ${detailedMoodEntries.length}\nApp usage: ${Math.floor(appUsageStats.totalTimeSpent / 60)} minutes\n\nData has been logged to console for developer access.`,
+        `Your mood data has been exported from database.\n\nTotal entries: ${moodData?.length || 0}\nApp usage: ${Math.floor(appUsageStats.totalTimeSpent / 60)} minutes\n\nData has been logged to console for developer access.`,
         [{ text: 'OK', style: 'default' }]
       );
     } catch (error) {
