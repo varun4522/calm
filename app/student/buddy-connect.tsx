@@ -160,7 +160,7 @@ export default function BuddyConnect() {
 
       // Read file as base64
       const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: 'base64' as any,
       });
 
       console.log('File read as base64, length:', base64.length);

@@ -192,7 +192,7 @@ export default function ExpertHome() {
   }, [bubbleConfigs, bubbleAnimations]);
 
   useEffect(() => {
-    bubbleAnimations.forEach((_, i) => startBubbleLoop(i));
+    bubbleAnimations.forEach((_: any, i: number) => startBubbleLoop(i));
   }, [bubbleAnimations, startBubbleLoop]);
 
 
@@ -274,7 +274,7 @@ export default function ExpertHome() {
       setNotifications(data || []);
 
       // Count unread notifications
-      const unread = (data || []).filter(notification => !notification.is_read).length;
+      const unread = (data || []).filter((notification: NotificationData) => !notification.is_read).length;
       setUnreadCount(unread);
     } catch (error) {
       console.error('Error loading notifications:', error);
@@ -359,15 +359,15 @@ export default function ExpertHome() {
       }
 
       // Update local state
-      setNotifications(prev =>
-        prev.map(notification =>
+      setNotifications((prev: NotificationData[]) =>
+        prev.map((notification: NotificationData) =>
           notification.id === notificationId
             ? { ...notification, is_read: true, read_at: now, updated_at: now }
             : notification
         )
       );
 
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      setUnreadCount((prev: number) => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -1094,7 +1094,7 @@ export default function ExpertHome() {
 
       // Step 1: Read file as base64
       const base64Data = await FileSystem.readAsStringAsync(selectedFile.uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: 'base64' as any,
       });
 
       setUploadProgress(40);

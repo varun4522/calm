@@ -136,7 +136,7 @@ export default function StudentHome() {
   }, [bubbleConfigs, bubbleAnimations]);
 
   useEffect(() => {
-    bubbleAnimations.forEach((_, i) => startBubbleLoop(i));
+    bubbleAnimations.forEach((_: any, i: number) => startBubbleLoop(i));
   }, [bubbleAnimations, startBubbleLoop]);
 
   // Initialize mood calendar data immediately on mount - Database first approach
@@ -518,7 +518,7 @@ export default function StudentHome() {
           table: 'mood_entries',
           filter: `user_id=eq.${userId}`,
         },
-        async (payload) => {
+        async (payload: DatabasePayload) => {
           console.log('🔔 Mood entry changed:', payload);
           
           // Reload all mood data from Supabase
@@ -661,7 +661,7 @@ export default function StudentHome() {
 
       if (notificationsData) {
         setNotifications(notificationsData);
-        const unread = notificationsData.filter(n => !n.is_read).length;
+        const unread = notificationsData.filter((n: NotificationData) => !n.is_read).length;
         setUnreadCount(unread);
       }
     } catch (error) {
@@ -682,10 +682,10 @@ export default function StudentHome() {
       }
 
       // Update local state
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
+      setNotifications((prev: Notification[]) =>
+        prev.map((n: Notification) => n.id === notificationId ? { ...n, is_read: true } : n)
       );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      setUnreadCount((prev: number) => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -781,7 +781,7 @@ export default function StudentHome() {
           schema: 'public',
           table: 'community_post'
         },
-        async (payload) => {
+        async (payload: DatabasePayload) => {
           console.log('📝 New community post created:', payload.new);
           
           // Send local notification
@@ -804,7 +804,7 @@ export default function StudentHome() {
           schema: 'public',
           table: 'messages'
         },
-        async (payload) => {
+        async (payload: DatabasePayload) => {
           // Only notify if message is for current user
           if (payload.new.receiver_id === studentReg) {
             console.log('💬 New message received:', payload.new);
@@ -830,7 +830,7 @@ export default function StudentHome() {
           schema: 'public',
           table: 'learning_resource'
         },
-        async (payload) => {
+        async (payload: DatabasePayload) => {
           console.log('📚 New learning resource added:', payload.new);
           
           // Send local notification
@@ -853,7 +853,7 @@ export default function StudentHome() {
           schema: 'public',
           table: 'mood_entries'
         },
-        async (payload) => {
+        async (payload: DatabasePayload) => {
           // Only notify if it's another device of same user (for multi-device sync)
           if (payload.new.user_id === studentReg) {
             console.log('😊 Mood entry synced from another device:', payload.new);
@@ -967,7 +967,7 @@ export default function StudentHome() {
         return;
       }
 
-      const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
+      const completedSlots = new Set(todayMoods?.map((m: any) => m.schedule_key).filter(Boolean) || []);
       const completedCount = completedSlots.size;
 
       console.log(`📊 Mood prompt system initialized: ${completedCount}/6 completed from database`);
@@ -1007,7 +1007,7 @@ export default function StudentHome() {
       }
 
       // Get list of completed schedule keys
-      const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
+      const completedSlots = new Set(todayMoods?.map((m: any) => m.schedule_key).filter(Boolean) || []);
       console.log(`📊 Completed mood slots: ${completedSlots.size}/6`, Array.from(completedSlots));
 
       // Check which time slots are due and not completed
@@ -1161,7 +1161,7 @@ export default function StudentHome() {
         return;
       }
 
-      const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
+      const completedSlots = new Set(todayMoods?.map((m: any) => m.schedule_key).filter(Boolean) || []);
       const completedCount = completedSlots.size;
 
       setMoodPromptsToday(completedCount);
@@ -1208,7 +1208,7 @@ export default function StudentHome() {
         return;
       }
 
-      const completedSlots = new Set(todayMoods?.map(m => m.schedule_key).filter(Boolean) || []);
+      const completedSlots = new Set(todayMoods?.map((m: any) => m.schedule_key).filter(Boolean) || []);
 
       // Define time slots
       const timeSlots = [
@@ -1573,7 +1573,7 @@ export default function StudentHome() {
       });
 
       let entriesText = `📊 Mood check-ins for this day (${dayEntries.length}/6):\n\n`;
-      dayEntries.forEach((entry, index) => {
+      dayEntries.forEach((entry: any, index: number) => {
         const scheduledInfo = entry.scheduled ? `\n   ${entry.scheduled}` : '';
         entriesText += `${index + 1}. ${entry.emoji} ${entry.label} at ${entry.time}${scheduledInfo}\n`;
       });
@@ -1631,7 +1631,7 @@ export default function StudentHome() {
       })
       .flatMap(([_, entries]) => entries);
 
-    const emojiCounts = currentMonthEntries.reduce((counts: { [key: string]: number }, entry) => {
+    const emojiCounts = currentMonthEntries.reduce((counts: { [key: string]: number }, entry: any) => {
       counts[entry.emoji] = (counts[entry.emoji] || 0) + 1;
       return counts;
     }, {});
@@ -1780,7 +1780,7 @@ export default function StudentHome() {
       {/* Animated Bubble Background (only visible on Home tab) */}
       {activeTab === 'home' && (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }} pointerEvents="none">
-          {bubbleConfigs.map((cfg, i) => {
+          {bubbleConfigs.map((cfg: any, i: number) => {
             const translateY = bubbleAnimations[i].interpolate({
               inputRange: [0, 1],
               outputRange: [screenHeight + cfg.size, -cfg.size],
@@ -2078,7 +2078,7 @@ export default function StudentHome() {
           activeOpacity={1}
           onPress={() => setMoodModalVisible(false)}
         >
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+          <TouchableOpacity activeOpacity={1} onPress={(e: any) => e.stopPropagation()}>
             <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ backgroundColor: Colors.white, borderRadius: 25, padding: 30, alignItems: 'center', width: 360, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.accent }}
@@ -2178,7 +2178,7 @@ export default function StudentHome() {
                   <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 }}>You&apos;re all caught up! No new notifications at the moment.</Text>
                 </View>
               ) : (
-                notifications.map((notification) => (
+                notifications.map((notification: Notification) => (
                   <View key={notification.id} style={{
                     // backgroundColor: !notification.is_read ? Colors.accent + '10' : Colors.white,
                     borderRadius: 12,
@@ -2290,7 +2290,7 @@ export default function StudentHome() {
 
       {/* Tab Bar */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: Colors.white, paddingVertical: 20, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.22, shadowRadius: 5, elevation: 6, borderTopWidth: 3, borderTopColor: Colors.primary }}>
-        {TABS.map(tab => (
+        {TABS.map((tab: any) => (
           <TouchableOpacity
             key={tab.key}
             style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
