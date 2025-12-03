@@ -1,15 +1,58 @@
 import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-view';
 import Slider from '@react-native-community/slider';
-import { Canvas, Path } from '@shopify/react-native-skia';
 import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Alert, Dimensions, Modal, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
+// Conditional import for Skia to handle Expo Go limitations
+let Canvas: any = null;
+let Path: any = null;
+
+try {
+  const Skia = require('@shopify/react-native-skia');
+  Canvas = Skia.Canvas;
+  Path = Skia.Path;
+} catch (error) {
+  console.warn('Skia not available in this environment:', error instanceof Error ? error.message : String(error));
+}
+
 const { width, height } = Dimensions.get('window');
 
 export default function EnhancedDoodle() {
+  const router = useRouter();
+
+  // Show fallback UI if Skia is not available (e.g., in Expo Go)
+  if (!Canvas || !Path) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' }}>
+          🎨 Doodle Feature
+        </Text>
+        <Text style={{ fontSize: 16, marginBottom: 30, textAlign: 'center', color: '#666' }}>
+          The doodle feature requires a development build to work properly. It's not available in Expo Go.
+        </Text>
+        <Text style={{ fontSize: 14, marginBottom: 30, textAlign: 'center', color: '#888' }}>
+          To use this feature, please create a development build or use a physical device build.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{
+            backgroundColor: '#007AFF',
+            paddingHorizontal: 30,
+            paddingVertical: 15,
+            borderRadius: 25,
+          }}
+        >
+          <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            Go Back
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const [paths, setPaths] = useState<{ d: string; color: string; strokeWidth: number }[]>([]);
   const [redoStack, setRedoStack] = useState<{ d: string; color: string; strokeWidth: number }[]>([]);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -27,7 +70,6 @@ export default function EnhancedDoodle() {
   const [lightness, setLightness] = useState(50);
   const canvasRef = useRef<View>(null);
   const scrollViewRef = useRef<ScrollView>(null);
-  const router = useRouter();
 
   const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080'];
 

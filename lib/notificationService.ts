@@ -1,17 +1,23 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
-// Configure notification behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Check if running in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Configure notification behavior only if not in Expo Go
+if (!isExpoGo) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
 export interface PushNotificationToken {
   user_id: string;
@@ -27,6 +33,12 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
   let token: string | null = null;
 
   try {
+    // Skip push notifications in Expo Go since they're not supported in SDK 53+
+    if (isExpoGo) {
+      console.log('ℹ️ Push notifications are not available in Expo Go. Use a development build for full functionality.');
+      return null;
+    }
+
     // Request permissions
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
@@ -73,6 +85,12 @@ export async function sendLocalNotification(
   body: string,
   data?: any
 ) {
+  // Skip local notifications in Expo Go to avoid warnings
+  if (isExpoGo) {
+    console.log(`📱 Local notification (Expo Go): ${title} - ${body}`);
+    return;
+  }
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title,

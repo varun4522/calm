@@ -175,7 +175,14 @@ export default function StudentHome() {
           const detailed: any[] = [];
 
           moodData.forEach((entry: any) => {
+            // Ensure date is in YYYY-MM-DD format
             const date = entry.entry_date;
+            if (!date) {
+              console.warn('⚠️ Mood entry missing date:', entry);
+              return;
+            }
+            
+            // Use the last mood emoji for the day (for calendar display)
             history[date] = entry.mood_emoji;
             
             if (!dailyEntries[date]) dailyEntries[date] = [];
@@ -535,6 +542,11 @@ export default function StudentHome() {
 
             moodData.forEach((entry: any) => {
               const date = entry.entry_date;
+              if (!date) {
+                console.warn('⚠️ Real-time sync: Mood entry missing date:', entry);
+                return;
+              }
+              
               history[date] = entry.mood_emoji;
               
               if (!dailyEntries[date]) dailyEntries[date] = [];
@@ -586,6 +598,7 @@ export default function StudentHome() {
       if (!userId) return;
 
       try {
+        console.log('🔄 Reloading mood calendar data from database...');
         const { data: moodData, error } = await supabase
           .from('mood_entries')
           .select('*')
@@ -593,6 +606,7 @@ export default function StudentHome() {
           .order('entry_date', { ascending: true });
 
         if (!error && moodData) {
+          console.log(`📅 Processing ${moodData.length} mood entries for calendar`);
           const history: { [key: string]: string } = {};
           const dailyEntries: { [key: string]: any[] } = {};
           const detailed: any[] = [];
@@ -624,21 +638,38 @@ export default function StudentHome() {
           setMoodHistory(history);
           setDailyMoodEntries(dailyEntries);
           setDetailedMoodEntries(detailed);
-          console.log('✅ Mood calendar refreshed from Supabase');
+          console.log('✅ Mood calendar refreshed from Supabase:', {
+            totalEntries: moodData.length,
+            historyKeys: Object.keys(history).length,
+            dailyEntriesKeys: Object.keys(dailyEntries).length
+          });
+        } else {
+          console.log('📅 No mood data found, setting empty calendar state');
+          setMoodHistory({});
+          setDailyMoodEntries({});
+          setDetailedMoodEntries([]);
         }
       } catch (error) {
         console.error('❌ Error refreshing mood data:', error);
+        // Set empty state on error
+        setMoodHistory({});
+        setDailyMoodEntries({});
+        setDetailedMoodEntries([]);
       }
     };
 
     if (activeTab === 'mood') {
+      console.log('📅 Switching to mood tab - reloading calendar data');
       reloadMoodData();
       const now = new Date();
       setCurrentMonth(now.getMonth());
       setCurrentYear(now.getFullYear());
-      console.log('📅 Calendar reset to current month');
+      console.log('📅 Calendar reset to current month:', {
+        month: now.getMonth(),
+        year: now.getFullYear()
+      });
     }
-  }, [activeTab]);
+  }, [activeTab, session?.user?.id]);
 
   // Notification functions
   const loadNotifications = async () => {
@@ -1554,13 +1585,36 @@ export default function StudentHome() {
   // Get mood for specific date
   const getMoodForDate = (day: number) => {
     const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return moodHistory[dateKey];
+    const mood = moodHistory[dateKey];
+    
+    // Debug logging for calendar issues
+    if (activeTab === 'mood' && day === 1) {
+      console.log('🔍 Calendar Debug Info:', {
+        currentMonth: currentMonth,
+        currentYear: currentYear,
+        dateKey: dateKey,
+        moodHistoryKeys: Object.keys(moodHistory).slice(0, 5),
+        moodHistoryTotal: Object.keys(moodHistory).length,
+        foundMood: mood
+      });
+    }
+    
+    return mood;
   };
 
   // Handle calendar cell press
   const handleCalendarPress = (day: number) => {
     const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const dayEntries = dailyMoodEntries[dateKey];
+
+    // Debug calendar press
+    console.log('📅 Calendar cell pressed:', {
+      day: day,
+      dateKey: dateKey,
+      dayEntries: dayEntries,
+      dailyEntriesKeys: Object.keys(dailyMoodEntries).slice(0, 5),
+      totalDailyEntries: Object.keys(dailyMoodEntries).length
+    });
 
     if (dayEntries && dayEntries.length > 0) {
       const selectedDate = new Date(dateKey);
@@ -1622,6 +1676,15 @@ export default function StudentHome() {
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
+
+    // Debug calendar state
+    console.log('📅 Rendering MoodCalendar:', {
+      currentMonth,
+      currentYear,
+      calendarDays: calendar.length,
+      moodHistoryEntries: Object.keys(moodHistory).length,
+      dailyMoodEntries: Object.keys(dailyMoodEntries).length
+    });
 
     // Calculate most selected emoji for current month
     const currentMonthEntries = Object.entries(dailyMoodEntries)

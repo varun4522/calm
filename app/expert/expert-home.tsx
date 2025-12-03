@@ -448,7 +448,13 @@ export default function ExpertHome() {
         const detailed: any[] = [];
 
         moodData.forEach((entry: any) => {
+          // Ensure date is in YYYY-MM-DD format
           const date = entry.entry_date;
+          if (!date) {
+            console.warn('⚠️ Expert mood entry missing date:', entry);
+            return;
+          }
+          
           // Keep only the latest mood for simple history
           history[date] = entry.mood_emoji;
           
@@ -477,7 +483,11 @@ export default function ExpertHome() {
         setMoodHistory(history);
         setDailyMoodEntries(dailyEntries);
         setDetailedMoodEntries(detailed);
-        console.log(`✅ Loaded ${moodData.length} expert mood entries from Supabase`);
+        console.log(`✅ Loaded ${moodData.length} expert mood entries from Supabase:`, {
+          totalEntries: moodData.length,
+          historyKeys: Object.keys(history).length,
+          dailyEntriesKeys: Object.keys(dailyEntries).length
+        });
 
         // Backup to AsyncStorage
         if (regNo) {
@@ -861,13 +871,36 @@ export default function ExpertHome() {
   // Get mood for specific date
   const getMoodForDate = (day: number) => {
     const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return moodHistory[dateKey];
+    const mood = moodHistory[dateKey];
+    
+    // Debug logging for expert calendar issues
+    if (activeTab === 'mood' && day === 1) {
+      console.log('🔍 Expert Calendar Debug Info:', {
+        currentMonth: currentMonth,
+        currentYear: currentYear,
+        dateKey: dateKey,
+        moodHistoryKeys: Object.keys(moodHistory).slice(0, 5),
+        moodHistoryTotal: Object.keys(moodHistory).length,
+        foundMood: mood
+      });
+    }
+    
+    return mood;
   };
 
   // Handle calendar cell press
   const handleCalendarPress = (day: number) => {
     const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const dayEntries = dailyMoodEntries[dateKey];
+
+    // Debug expert calendar press
+    console.log('📅 Expert calendar cell pressed:', {
+      day: day,
+      dateKey: dateKey,
+      dayEntries: dayEntries,
+      dailyEntriesKeys: Object.keys(dailyMoodEntries).slice(0, 5),
+      totalDailyEntries: Object.keys(dailyMoodEntries).length
+    });
 
     if (dayEntries && dayEntries.length > 0) {
       const selectedDate = new Date(dateKey);
@@ -960,6 +993,11 @@ export default function ExpertHome() {
 
             moodData.forEach((entry: any) => {
               const date = entry.entry_date;
+              if (!date) {
+                console.warn('⚠️ Expert real-time sync: Mood entry missing date:', entry);
+                return;
+              }
+              
               history[date] = entry.mood_emoji;
               
               if (!dailyEntries[date]) dailyEntries[date] = [];
@@ -1229,6 +1267,15 @@ export default function ExpertHome() {
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
+
+    // Debug expert calendar state
+    console.log('📅 Rendering Expert MoodCalendar:', {
+      currentMonth,
+      currentYear,
+      calendarDays: calendar.length,
+      moodHistoryEntries: Object.keys(moodHistory).length,
+      dailyMoodEntries: Object.keys(dailyMoodEntries).length
+    });
 
     // Calculate most selected emoji for current month
     const currentMonthEntries = Object.entries(dailyMoodEntries)
@@ -1694,6 +1741,15 @@ export default function ExpertHome() {
   useEffect(() => {
     if (activeTab === 'community') {
       fetchPosts();
+    }
+  }, [activeTab]);
+
+  // Refresh mood data when mood tab becomes active
+  useEffect(() => {
+    console.log('Tab switching effect: activeTab =', activeTab);
+    if (activeTab === 'mood') {
+      console.log('Mood tab activated, refreshing mood data...');
+      loadMoodData();
     }
   }, [activeTab]);
 
