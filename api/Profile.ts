@@ -72,6 +72,37 @@ export const useSaveProfileChanges = () => {
   });
 };
 
+export const useUpdateProfilePicture = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { id: string; profilePictureIndex: number }) => {
+      const { error, data: updatedProfile } = await supabase
+        .from("profiles")
+        .update({
+          profile_picture_index: data.profilePictureIndex,
+        })
+        .eq("id", data.id)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return updatedProfile;
+    },
+
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['profile', variables.id], 
+      });
+      console.log('✅ Profile picture updated in Supabase');
+    },
+    
+    onError: (error) => {
+      console.error('❌ Error updating profile picture:', error);
+    },
+  });
+};
+
 export const getAllUsernames = async () => {
   try {
     const { data, error } = await supabase

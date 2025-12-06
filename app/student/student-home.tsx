@@ -918,17 +918,17 @@ export default function StudentHome() {
   useFocusEffect(
     useCallback(() => {
       const loadProfilePicture = async () => {
-        let regNo = studentRegNo;
-        if (!regNo) {
-          const storedReg = await AsyncStorage.getItem('currentStudentReg');
-          if (storedReg) regNo = storedReg;
-        }
-
-        if (regNo) {
+        if (profile?.id) {
           try {
-            const profilePicIndex = await AsyncStorage.getItem(`profilePic_${regNo}`);
-            if (profilePicIndex) {
-              setSelectedProfilePic(parseInt(profilePicIndex, 10));
+            // First try to get from Supabase profile
+            if (profile.profile_picture_index !== undefined && profile.profile_picture_index !== null) {
+              setSelectedProfilePic(profile.profile_picture_index);
+            } else if (studentRegNo) {
+              // Fallback to AsyncStorage for backwards compatibility
+              const profilePicIndex = await AsyncStorage.getItem(`profilePic_${studentRegNo}`);
+              if (profilePicIndex) {
+                setSelectedProfilePic(parseInt(profilePicIndex, 10));
+              }
             }
           } catch (error) {
             console.error('Error loading profile picture:', error);
@@ -937,7 +937,7 @@ export default function StudentHome() {
       };
 
       loadProfilePicture();
-    }, [studentRegNo])
+    }, [studentRegNo, profile?.id, profile?.profile_picture_index])
   );
 
   // Load app usage statistics for specific user

@@ -7,7 +7,7 @@ import { Animated,Image, Modal, Pressable, ScrollView, StyleSheet,Text,Touchable
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
-import { useProfile } from '@/api/Profile';
+import { useProfile, useUpdateProfilePicture } from '@/api/Profile';
 import { handleLogout } from '@/api/OtherMethods';
 
 export default function ExpertSetting() {
@@ -39,7 +39,32 @@ export default function ExpertSetting() {
 
   const {session } = useAuth();
   const {data: profile} = useProfile(session?.user.id);
+  const updateProfilePicture = useUpdateProfilePicture();
 
+  // Load profile picture from Supabase (with AsyncStorage fallback)
+  useEffect(() => {
+    const loadProfilePic = async () => {
+      if (profile?.id) {
+        try {
+          // First try to get from Supabase profile
+          if (profile.profile_picture_index !== undefined && profile.profile_picture_index !== null) {
+            setSelectedProfilePic(profile.profile_picture_index);
+            // Also save to AsyncStorage for offline access
+            await AsyncStorage.setItem(`expertProfilePic_${profile.registration_number}`, profile.profile_picture_index.toString());
+          } else if (expertRegNo) {
+            // Fallback to AsyncStorage if not in Supabase
+            const picIdx = await AsyncStorage.getItem(`expertProfilePic_${expertRegNo}`);
+            if (picIdx !== null) {
+              setSelectedProfilePic(parseInt(picIdx, 10));
+            }
+          }
+        } catch (error) {
+          console.error('Error loading expert profile pic:', error);
+        }
+      }
+    };
+    loadProfilePic();
+  }, [profile?.id, profile?.profile_picture_index, expertRegNo]);
 
   // Profile pic fade-in animation
   useEffect(() => {
@@ -50,17 +75,28 @@ export default function ExpertSetting() {
     setSelectedProfilePic(index);
     setChoosePicModal(false);
     try {
-      const regNo = expertRegNo;
-      if (regNo) {
-        await AsyncStorage.setItem(`expertProfilePic_${regNo}`, index.toString());
-        const persistentData = await AsyncStorage.getItem(`persistentExpertData_${regNo}`);
-        const data = persistentData ? JSON.parse(persistentData) : {};
-        data.profilePicIndex = index;
-        await AsyncStorage.setItem(`persistentExpertData_${regNo}`, JSON.stringify(data));
-        await AsyncStorage.setItem('currentExpertData', JSON.stringify(data));
+      if (profile?.id) {
+        // Save to AsyncStorage for immediate access
+        const regNo = expertRegNo || profile.registration_number;
+        if (regNo) {
+          await AsyncStorage.setItem(`expertProfilePic_${regNo}`, index.toString());
+          const persistentData = await AsyncStorage.getItem(`persistentExpertData_${regNo}`);
+          const data = persistentData ? JSON.parse(persistentData) : {};
+          data.profilePicIndex = index;
+          await AsyncStorage.setItem(`persistentExpertData_${regNo}`, JSON.stringify(data));
+          await AsyncStorage.setItem('currentExpertData', JSON.stringify(data));
+        }
+        
+        // Save to Supabase for persistent storage across devices
+        await updateProfilePicture.mutateAsync({
+          id: profile.id,
+          profilePictureIndex: index,
+        });
+        
+        console.log("✅ Expert profile picture saved to both AsyncStorage and Supabase");
       }
     } catch (err) {
-      console.error('Error saving expert profile pic:', err);
+      console.error('❌ Error saving expert profile pic:', err);
     }
   };
 

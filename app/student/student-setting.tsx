@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/providers/AuthProvider';
-import { useProfile } from '@/api/Profile';
+import { useProfile, useUpdateProfilePicture } from '@/api/Profile';
 import { handleLogout } from '@/api/OtherMethods';
 
 const profilePics = [
@@ -33,15 +33,24 @@ export default function StudentSetting() {
 
   const { session } = useAuth();
   const { data: profile, isLoading } = useProfile(session?.user.id);
+  const updateProfilePicture = useUpdateProfilePicture();
 
-  // Load profile picture from AsyncStorage
+  // Load profile picture from Supabase (with AsyncStorage fallback)
   useEffect(() => {
     const loadProfilePic = async () => {
       if (profile?.id) {
         try {
-          const picIdx = await AsyncStorage.getItem(`profilePic_${profile.id}`);
-          if (picIdx !== null) {
-            setSelectedProfilePic(parseInt(picIdx, 10));
+          // First try to get from Supabase profile
+          if (profile.profile_picture_index !== undefined && profile.profile_picture_index !== null) {
+            setSelectedProfilePic(profile.profile_picture_index);
+            // Also save to AsyncStorage for offline access
+            await AsyncStorage.setItem(`profilePic_${profile.id}`, profile.profile_picture_index.toString());
+          } else {
+            // Fallback to AsyncStorage if not in Supabase
+            const picIdx = await AsyncStorage.getItem(`profilePic_${profile.id}`);
+            if (picIdx !== null) {
+              setSelectedProfilePic(parseInt(picIdx, 10));
+            }
           }
         } catch (error) {
           console.error('Error loading profile pic:', error);
@@ -49,19 +58,27 @@ export default function StudentSetting() {
       }
     };
     loadProfilePic();
-  }, [profile?.id]);
+  }, [profile?.id, profile?.profile_picture_index]);
 
-  // Handle profile picture selection and save to AsyncStorage
+  // Handle profile picture selection and save to both AsyncStorage and Supabase
   const handleSelectProfilePic = async (index: number) => {
     setSelectedProfilePic(index);
     setChoosePicModal(false);
     try {
       if (profile?.id) {
+        // Save to AsyncStorage for immediate access
         await AsyncStorage.setItem(`profilePic_${profile.id}`, index.toString());
-        console.log("Profile picture saved successfully");
+        
+        // Save to Supabase for persistent storage across devices
+        await updateProfilePicture.mutateAsync({
+          id: profile.id,
+          profilePictureIndex: index,
+        });
+        
+        console.log("✅ Profile picture saved to both AsyncStorage and Supabase");
       }
     } catch (error) {
-      console.error('Error saving profile pic:', error);
+      console.error('❌ Error saving profile pic:', error);
       Alert.alert('Error', 'Failed to save profile picture');
     }
   };

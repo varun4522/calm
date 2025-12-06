@@ -8,4 +8,5 @@ export type Profile = {
   phone_number: number;
   date_of_birth: string;
   email: string;
+  profile_picture_index?: number;
 };
