@@ -193,7 +193,7 @@ export default function Journal() {
             borderColor: colors.border,
           }}
         >
-          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>← Back</Text>
+          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{'<'}</Text>
         </TouchableOpacity>
 
         {/* Title */}

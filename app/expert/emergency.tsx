@@ -116,7 +116,7 @@ export default function Emergency() {
         onPress={() => router.replace('./support')}
         style={styles.backButton}
       >
-        <Text style={styles.backButtonText}>Back</Text>
+        <Text style={styles.backButtonText}>{'<'}</Text>
       </TouchableOpacity>
 
       {/* Title */}

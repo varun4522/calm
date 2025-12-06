@@ -13,7 +13,7 @@ export default function SupportPage() {
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={styles.backButtonText}>{'<'}</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Support Shelf</Text>
       </View>

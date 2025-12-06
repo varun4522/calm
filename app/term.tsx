@@ -33,7 +33,7 @@ export default function TermsPage() {
           }}
           onPress={() => router.back()}
         >
-          <Text style={[globalStyles.button, { color: Colors.white, fontSize: 16, fontWeight: 'bold' }]}>Back</Text>
+          <Text style={[globalStyles.button, { color: Colors.white, fontSize: 16, fontWeight: 'bold' }]}>{'<'}</Text>
         </TouchableOpacity>
       </View>
 

@@ -254,7 +254,7 @@ export default function EnhancedDoodle() {
           }}
           onPress={() => router.back()}
         >
-          <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' }}>Back</Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' }}>{'<'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -488,7 +488,7 @@ export default function EnhancedDoodle() {
             shadowRadius: 2,
           }}
         >
-          <Text style={{ color: '#DC2626', fontSize: 16, fontWeight: 'bold' }}>Clear All</Text>
+          <Text style={{ fontSize: 24 }}>🗑️</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -505,7 +505,7 @@ export default function EnhancedDoodle() {
             shadowRadius: 2,
           }}
         >
-          <Text style={{ color: '#059669', fontSize: 16, fontWeight: 'bold' }}>Save</Text>
+          <Text style={{ fontSize: 24 }}>💾</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handleUndo}
@@ -517,7 +517,7 @@ export default function EnhancedDoodle() {
             borderRadius: 12,
           }}
         >
-          <Text style={{ color: "#B45309", fontSize: 16, fontWeight: "bold" }}>Undo</Text>
+          <Text style={{ fontSize: 24, opacity: paths.length === 0 ? 0.3 : 1 }}>↩️</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -530,7 +530,7 @@ export default function EnhancedDoodle() {
             borderRadius: 12,
           }}
         >
-          <Text style={{ color: "#1D4ED8", fontSize: 16, fontWeight: "bold" }}>Redo</Text>
+          <Text style={{ fontSize: 24, opacity: redoStack.length === 0 ? 0.3 : 1 }}>↪️</Text>
         </TouchableOpacity>
 
       </View>

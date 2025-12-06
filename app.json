@@ -21,7 +21,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.clamspace.app",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -42,7 +44,6 @@
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
-      "useNextNotificationsApi": true,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -51,7 +52,10 @@
               "scheme": "calmspace"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "config": {
@@ -88,7 +92,8 @@
       ],
       "expo-audio",
       "expo-video",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

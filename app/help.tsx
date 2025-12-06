@@ -61,7 +61,7 @@ export default function Help() {
             style={styles.backButton}
             onPress={() => router.push('./')}
           >
-            <Text style={styles.backButtonText}>Back</Text>
+            <Text style={styles.backButtonText}>{'<'}</Text>
           </TouchableOpacity>
         </View>
 

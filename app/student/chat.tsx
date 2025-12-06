@@ -640,7 +640,7 @@ export default function Chat() {
           activeOpacity={0.3}
           delayPressIn={0}
         >
-          <Text style={styles.backButtonText}>←</Text>
+          <Text style={styles.backButtonText}>{'<'}</Text>
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>

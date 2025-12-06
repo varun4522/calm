@@ -710,7 +710,7 @@ export default function MessagesPage() {
           }}
           style={styles.backButton}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={styles.backButtonText}>{'<'}</Text>
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>My Conversations</Text>

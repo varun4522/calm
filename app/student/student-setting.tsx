@@ -99,7 +99,7 @@ export default function StudentSetting() {
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>{'<'}</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
         <View style={styles.headerSpacer} />

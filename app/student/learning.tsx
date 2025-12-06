@@ -92,7 +92,7 @@ export default function LearningSupport() {
           activeOpacity={0.3}
           delayPressIn={0}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={styles.backButtonText}>{'<'}</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Learning Support</Text>

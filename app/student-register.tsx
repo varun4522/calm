@@ -443,7 +443,7 @@ export default function StudentRegister() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backButtonText}>← Back</Text>
+            <Text style={styles.backButtonText}>{'<'}</Text>
           </TouchableOpacity>
           <Text style={styles.headerText}>Registration Page</Text>
         </View>

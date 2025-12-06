@@ -254,6 +254,9 @@ export default function StudentHome() {
   // State to track current prompt info
   const [currentPromptInfo, setCurrentPromptInfo] = useState<{ timeLabel: string, scheduleKey: string } | null>(null);
   const [nextMoodPromptTime, setNextMoodPromptTime] = useState<Date | null>(null);
+  // Track which notifications have been sent today (reset daily)
+  const [sentNotificationsToday, setSentNotificationsToday] = useState<Set<string>>(new Set());
+  const [lastNotificationDate, setLastNotificationDate] = useState<string>('');
 
   // Notification states
   const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -1025,6 +1028,12 @@ export default function StudentHome() {
         return;
       }
 
+      // Reset notification tracking if it's a new day
+      if (lastNotificationDate !== today) {
+        setSentNotificationsToday(new Set());
+        setLastNotificationDate(today);
+      }
+
       // Get today's mood entries from database to check which slots are filled
       const { data: todayMoods, error } = await supabase
         .from('mood_entries')
@@ -1089,36 +1098,58 @@ export default function StudentHome() {
       if (!allMoodError && allMoodData && allMoodData.length > 0) {
         const history: { [key: string]: string } = {};
         const dailyEntries: { [key: string]: any[] } = {};
+        const detailedList: any[] = [];
         
         allMoodData.forEach((entry: any) => {
           const date = entry.entry_date;
+          // Use the last mood of the day for calendar display
           history[date] = entry.mood_emoji;
           
           if (!dailyEntries[date]) dailyEntries[date] = [];
           dailyEntries[date].push({
             emoji: entry.mood_emoji,
             label: entry.mood_label,
-            time: entry.entry_time,
+            time: entry.entry_time || 'N/A',
             scheduled: entry.scheduled_label,
             scheduleKey: entry.schedule_key
+          });
+
+          detailedList.push({
+            date: date,
+            emoji: entry.mood_emoji,
+            label: entry.mood_label,
+            time: entry.entry_time || 'N/A',
+            scheduled: entry.scheduled_label,
+            scheduleKey: entry.schedule_key,
+            notes: entry.notes
           });
         });
         
         setMoodHistory(history);
         setDailyMoodEntries(dailyEntries);
+        setDetailedMoodEntries(detailedList);
+        console.log('✅ Mood calendar data refreshed:', Object.keys(history).length, 'days');
       }
 
       if (missedSlots.length > 0) {
         // Show the earliest missed slot
         const nextPrompt = missedSlots[0];
-        console.log(`🎯 Showing mood prompt: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6) - ${missedSlots.length} pending`);
+        console.log(`🎯 Found pending mood slot: ${nextPrompt.label} (${nextPrompt.intervalNumber}/6)`);
         
-        // Send push notification for mood check-in reminder
-        await sendLocalNotification(
-          '😊 Time for Mood Check-in',
-          `${nextPrompt.label} - How are you feeling right now?`,
-          { type: 'mood_reminder', label: nextPrompt.label, intervalNumber: nextPrompt.intervalNumber }
-        );
+        // Only send notification if we haven't sent one for this slot today
+        if (!sentNotificationsToday.has(nextPrompt.scheduleKey)) {
+          console.log(`📬 Sending notification for ${nextPrompt.label}`);
+          await sendLocalNotification(
+            '😊 Time for Mood Check-in',
+            `${nextPrompt.label} - How are you feeling right now?`,
+            { type: 'mood_reminder', label: nextPrompt.label, intervalNumber: nextPrompt.intervalNumber }
+          );
+          
+          // Mark this notification as sent
+          setSentNotificationsToday(prev => new Set(prev).add(nextPrompt.scheduleKey));
+        } else {
+          console.log(`✓ Notification already sent for ${nextPrompt.label}`);
+        }
         
         setCurrentPromptInfo({
           timeLabel: nextPrompt.timeLabel,
@@ -1128,6 +1159,7 @@ export default function StudentHome() {
         setMoodModalVisible(true);
       } else {
         console.log(`✅ All ${completedSlots.size}/6 mood slots completed for today!`);
+        setMoodModalVisible(false);
       }
 
     } catch (error) {
@@ -1873,42 +1905,6 @@ export default function StudentHome() {
       {/* Floating Action Buttons - Only show on Home tab */}
       {activeTab === 'home' && (
         <View style={{ position: 'absolute', top: 42, right: 20, zIndex: 20, flexDirection: 'row', alignItems: 'center' }}>
-          {/* Mood Progress Indicator */}
-          <TouchableOpacity
-            style={{ 
-              height: 40, 
-              borderRadius: 22, 
-              backgroundColor: Colors.white, 
-              justifyContent: 'center', 
-              alignItems: 'center', 
-              elevation: 8, 
-              shadowColor: Colors.shadow, 
-              shadowOffset: { width: 0, height: 3 }, 
-              shadowOpacity: 0.22, 
-              shadowRadius: 5, 
-              borderWidth: 2, 
-              borderColor: Colors.primary, 
-              marginRight: 10,
-              paddingHorizontal: 12,
-              flexDirection: 'row'
-            }}
-            onPress={() => {
-              Alert.alert(
-                '📊 Today\'s Mood Tracking',
-                `You've completed ${todayMoodProgress.completed} out of 6 mood check-ins today.\n\n${todayMoodProgress.completed === 6 ? '🎉 Amazing! You\'ve completed all check-ins!' : `Keep going! ${6 - todayMoodProgress.completed} more to go.`}\n\nScheduled times:\n• 8:00 AM - Morning Check-in\n• 11:00 AM - Late Morning\n• 2:00 PM - Afternoon\n• 5:00 PM - Evening\n• 8:00 PM - Night\n• 11:00 PM - Before Sleep`,
-                [
-                  { text: 'Close', style: 'cancel' },
-                  ...(todayMoodProgress.completed < 6 ? [{ text: '✏️ Add Mood Now', onPress: () => setMoodModalVisible(true) }] : [])
-                ]
-              );
-            }}
-          >
-            <Text style={{ fontSize: 18, marginRight: 4 }}>😊</Text>
-            <Text style={{ color: Colors.primary, fontSize: 14, fontWeight: 'bold' }}>
-              {todayMoodProgress.completed}/6
-            </Text>
-          </TouchableOpacity>
-
           {/* Notification Bell */}
           <TouchableOpacity
             style={{ width: 40, height: 40, borderRadius: 22, backgroundColor: hasNewNotification ? '#ffeb3b' : Colors.white, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 5, borderWidth: 2, borderColor: hasNewNotification ? '#ff9800' : Colors.primary, marginRight: 10 }}
@@ -2001,7 +1997,7 @@ export default function StudentHome() {
                 onPress={() => setShowToolkitPage(false)}
                 style={{ paddingVertical: 8, paddingHorizontal: 16, backgroundColor: Colors.white, borderRadius: 15, marginRight: 15, borderWidth: 2, borderColor: Colors.primary, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 }}
               >
-                <Text style={{ color: Colors.primary, fontSize: 15, fontWeight: 'bold' }}>← Back</Text>
+                <Text style={{ color: Colors.primary, fontSize: 15, fontWeight: 'bold' }}>{'<'}</Text>
               </TouchableOpacity>
               <Text style={{ color: Colors.text, fontSize: 15, fontWeight: 'bold', flex: 1, textAlign: 'center', marginRight: 60 }}>Self-help Toolkit</Text>
             </View>

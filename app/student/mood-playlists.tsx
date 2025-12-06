@@ -116,7 +116,7 @@ export default function MoodPlaylists() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={styles.backButtonText}>{'<'}</Text>
         </TouchableOpacity>
   <Text style={styles.headerTitle}>Mood Playlists</Text>
       </View>

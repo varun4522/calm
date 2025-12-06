@@ -662,8 +662,7 @@ export default function BuddyConnect() {
           }}
           onPress={() => router.push('/student/student-home')}
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.white} />
-          <Text style={{ marginLeft: 8, color: Colors.white, fontSize: 16 }}>Back</Text>
+          <Text style={{ marginLeft: 8, color: Colors.white, fontSize: 16 }}>{'<'}</Text>
         </TouchableOpacity>
         
         <Text style={{

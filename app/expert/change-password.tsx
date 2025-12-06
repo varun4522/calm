@@ -91,7 +91,7 @@ export default function ExpertChangePassword() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>{'<'}</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Change Password</Text>
         <View style={styles.refreshButton} />
